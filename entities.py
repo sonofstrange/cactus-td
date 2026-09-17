@@ -972,6 +972,7 @@ class Tower:
             p_rad = 24 + int(math.sin(ticks * 0.006) * 3)
             pygame.draw.circle(surface, (*acol, 90), (int(self.x), int(self.y + 8)), p_rad, width=2)
 
+        front_orbs = []
         if self.level >= 10:
             orb_cols = {
                 "magic": (220, 110, 255),
@@ -985,12 +986,27 @@ class Tower:
             orb_angle = ticks * 0.0035
             for oi in range(3):
                 ang = orb_angle + oi * (2 * math.pi / 3)
-                ox = int(self.x + math.cos(ang) * 26)
-                oy = int((self.y - 12) + math.sin(ang) * 11)
-                pygame.draw.circle(surface, ocol, (ox, oy), 4)
-                pygame.draw.circle(surface, (255, 255, 255), (ox, oy), 2)
+                sin_v = math.sin(ang)
+                ox = int(self.x + math.cos(ang) * 28)
+                oy = int((self.y - 10) + sin_v * 12)
+                if sin_v < 0:
+                    # Задняя половина орбиты — рисуем ЗА башней
+                    pygame.draw.circle(surface, ocol, (ox, oy), 3)
+                    pygame.draw.circle(surface, (230, 230, 230), (ox, oy), 1)
+                else:
+                    # Передняя половина орбиты — отрисуем ПЕРЕД башней
+                    front_orbs.append((ox, oy, ocol))
 
+        # Отрисовка самой башни
         surface.blit(self.image, self.rect)
+
+        # Передняя половина орбиты (вращается ПЕРЕД башней, создавая честный 3D-эффект)
+        for ox, oy, ocol in front_orbs:
+            glow_surf = pygame.Surface((18, 18), pygame.SRCALPHA)
+            pygame.draw.circle(glow_surf, (*ocol, 75), (9, 9), 8)
+            surface.blit(glow_surf, (ox - 9, oy - 9))
+            pygame.draw.circle(surface, ocol, (ox, oy), 5)
+            pygame.draw.circle(surface, (255, 255, 255), (ox - 1, oy - 1), 2)
 
         # Бейдж уровня башни (кэшируем текст уровня)
         lvl_badge = pygame.Rect(self.x - 16, self.y - 34, 32, 16)
@@ -2594,6 +2610,8 @@ class MapDecorManager:
         return _create_desert_rock(), False
 
     def draw(self, surface, bg_time=0):
+        if get_graphics_preset() == "optimized":
+            return
         for item in self.items:
             x, y = item["x"], item["y"]
             surf = item["surf"]

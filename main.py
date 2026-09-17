@@ -3397,8 +3397,9 @@ def run_game():
                         field_surf.blit(slot_img, (slot[0] - 22, slot[1] - 22))
 
                 # Атмосферные частицы биома (снежинки, пепел, песчинки, споры)
-                ambient_particles.update(game_dt)
-                ambient_particles.draw(field_surf)
+                if get_graphics_preset() != "optimized":
+                    ambient_particles.update(game_dt)
+                    ambient_particles.draw(field_surf)
 
                 # Подсветка радиусов всех башен (Талант «Тактическая Сетка»)
                 if savedata.get("Upgrades", {}).get("range_grid", 0) > 0 and savedata.get("Toggles", {}).get("range_grid", False):

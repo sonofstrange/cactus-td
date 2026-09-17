@@ -4209,7 +4209,7 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
         lbl_aw = small_font.render("Авто-запуск следующей волны:", True, WHITE)
         surface.blit(lbl_aw, (col2_x + 18, row4_y + 3))
 
-        sub_gp = tiny_font.render("Нормальный: живой волновой фон и эффекты. Оптимизация: лёгкий дрейф, макс. FPS.", True, (140, 185, 230))
+        sub_gp = tiny_font.render("Нормальный: живой фон и декор. Оптимизация: скрыт декор биомов, макс. FPS.", True, (140, 185, 230))
         surface.blit(sub_gp, (col2_x + 18, 326))
         sub_gp2 = tiny_font.render("Режим оптимизации снижает нагрузку на CPU/GPU и бережёт батарею смартфона.", True, (120, 150, 180))
         surface.blit(sub_gp2, (col2_x + 18, 344))
