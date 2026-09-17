@@ -2579,6 +2579,28 @@ ACHIEVEMENTS_DATA = [
     # 1. БОЙ И БОССЫ (COMBAT & BOSSES)
     # -------------------------------------------------------------------------
     {
+        "id": "first_slime_click",
+        "category": "combat",
+        "cat_name": "Бой и Боссы",
+        "title": "Тык!",
+        "desc": "Кликните по любому слайму на карте",
+        "reward": 1,
+        "icon": mob1_img,
+        "check": lambda s: s.get("Stats", {}).get("slime_clicks", 0) >= 1,
+        "progress": lambda s: (min(1, s.get("Stats", {}).get("slime_clicks", 0)), 1)
+    },
+    {
+        "id": "hundred_slime_clicks",
+        "category": "combat",
+        "cat_name": "Бой и Боссы",
+        "title": "Пальцевый Пулемёт",
+        "desc": "Кликните по слаймам 100 раз",
+        "reward": 4,
+        "icon": mob2_img,
+        "check": lambda s: s.get("Stats", {}).get("slime_clicks", 0) >= 100,
+        "progress": lambda s: (min(100, s.get("Stats", {}).get("slime_clicks", 0)), 100)
+    },
+    {
         "id": "slimes_100",
         "category": "combat",
         "cat_name": "Бой и Боссы",
@@ -2909,8 +2931,8 @@ ACHIEVEMENTS_DATA = [
         "desc": "Постройте Башню Тесла в бою",
         "reward": 3,
         "icon": tesla_tower_img,
-        "check": lambda s: s.get("Stats", {}).get("tesla_built", 0) >= 1 or s.get("Upgrades", {}).get("tesla_tower", 0) > 0,
-        "progress": lambda s: (1 if (s.get("Stats", {}).get("tesla_built", 0) >= 1 or s.get("Upgrades", {}).get("tesla_tower", 0) > 0) else 0, 1)
+        "check": lambda s: s.get("Stats", {}).get("tesla_built", 0) >= 1,
+        "progress": lambda s: (min(1, s.get("Stats", {}).get("tesla_built", 0)), 1)
     },
     {
         "id": "tesla_overload",
@@ -2953,8 +2975,8 @@ ACHIEVEMENTS_DATA = [
         "desc": "Постройте Ферму Кактусов",
         "reward": 3,
         "icon": farm_tower_img,
-        "check": lambda s: s.get("Stats", {}).get("max_farms_built", 0) >= 1 or s.get("Upgrades", {}).get("farm_tower", 0) > 0,
-        "progress": lambda s: (1 if (s.get("Stats", {}).get("max_farms_built", 0) >= 1 or s.get("Upgrades", {}).get("farm_tower", 0) > 0) else 0, 1)
+        "check": lambda s: s.get("Stats", {}).get("max_farms_built", 0) >= 1,
+        "progress": lambda s: (min(1, s.get("Stats", {}).get("max_farms_built", 0)), 1)
     },
     {
         "id": "farm_magnate",

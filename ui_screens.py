@@ -1260,13 +1260,22 @@ def draw_map_selection_screen(surface, game_map, current_offset, savedata, mouse
                 surface.blit(s_txt, (star_box.centerx - s_txt.get_width() // 2, star_box.centery - s_txt.get_height() // 2))
 
             if sb_hov:
-                tt_txt = tiny_font.render(f"{rank}: {mw} волна (+{rew} ⭐)", True, (255, 235, 130) if achieved else (200, 220, 240))
-                tt_w, tt_h = tt_txt.get_width() + 14, 24
+                txt_prefix = f"{rank}: {mw} волна (+{rew}"
+                tt_txt = tiny_font.render(txt_prefix, True, (255, 235, 130) if achieved else (200, 220, 240))
+                tt_close = tiny_font.render(")", True, (255, 235, 130) if achieved else (200, 220, 240))
+                icon_w = stellar_cactus_img_xs.get_width()
+                tt_w = tt_txt.get_width() + icon_w + tt_close.get_width() + 18
+                tt_h = 24
                 tt_x = max(10, min(SCREEN_WIDTH - tt_w - 10, star_box.centerx - tt_w // 2))
                 tt_y = star_box.top - 28
                 pygame.draw.rect(surface, (14, 18, 26), (tt_x, tt_y, tt_w, tt_h), border_radius=6)
                 pygame.draw.rect(surface, GOLD if achieved else (60, 90, 130), (tt_x, tt_y, tt_w, tt_h), width=1, border_radius=6)
-                surface.blit(tt_txt, (tt_x + 7, tt_y + 12 - tt_txt.get_height() // 2))
+                cur_draw_x = tt_x + 8
+                surface.blit(tt_txt, (cur_draw_x, tt_y + 12 - tt_txt.get_height() // 2))
+                cur_draw_x += tt_txt.get_width() + 3
+                surface.blit(stellar_cactus_img_xs, (cur_draw_x, tt_y + 12 - stellar_cactus_img_xs.get_height() // 2))
+                cur_draw_x += icon_w + 1
+                surface.blit(tt_close, (cur_draw_x, tt_y + 12 - tt_close.get_height() // 2))
 
         # Нижняя плашка: Рекорд, выбор карты и кнопка анализа волн
         bot_rect = pygame.Rect(x_pos + 14, y_pos + 250, card_w - 28, 104)
@@ -3550,65 +3559,99 @@ def play_start_window_animation(bg_time, game_map=0, path=None, tower_slots=None
 
         return screen
 
-    # --- ПК ВЕРСИЯ: Плавная кинематографичная анимация окна ОС без тряски ---
-    os.environ['SDL_VIDEO_CENTERED'] = '1'
-    anim_bg = pygame.Surface((SCREEN_WIDTH + 360, SCREEN_HEIGHT + 202))
+    # --- ПК ВЕРСИЯ: Плавная кинематографичная анимация окна ОС без джитеринга и рывков ---
+    try:
+        win = pygame.Window.from_display_module()
+        orig_pos = win.position
+        cx = orig_pos[0] + SCREEN_WIDTH // 2
+        cy = orig_pos[1] + SCREEN_HEIGHT // 2
+        has_win = True
+    except Exception:
+        has_win = False
 
-    # Фаза 1: Плавное полное сужение окна к центру (52 шага с мягким замедлением)
-    steps_shrink = 52
-    min_w = 4
-    min_h = 4
-    for i in range(steps_shrink + 1):
-        for ev in pygame.event.get():
-            if ev.type == pygame.QUIT:
-                break
-        t = i / float(steps_shrink)
-        ease = 0.5 * (1.0 - math.cos(math.pi * t))
-        w = max(min_w, int(SCREEN_WIDTH - (SCREEN_WIDTH - min_w) * ease))
-        h = max(min_h, int(SCREEN_HEIGHT - (SCREEN_HEIGHT - min_h) * ease))
+    if has_win:
+        # Предварительный рендер фона меню (без тяжелых пересчетов в каждом кадре)
+        start_bg = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+        generate_background(start_bg, bg_time, custom_cols=(menu_col_a, menu_col_b))
 
-        scr = pygame.display.set_mode((w, h))
-        ox = (w - SCREEN_WIDTH) // 2
-        oy = (h - SCREEN_HEIGHT) // 2
-        scr.fill((8, 12, 18))
+        min_w, min_h = 24, 14
+        steps_shrink = 48
 
-        cur_a = (
-            int(menu_col_a[0] + (target_col_a[0] - menu_col_a[0]) * t),
-            int(menu_col_a[1] + (target_col_a[1] - menu_col_a[1]) * t),
-            int(menu_col_a[2] + (target_col_a[2] - menu_col_a[2]) * t),
-        )
-        cur_b = (
-            int(menu_col_b[0] + (target_col_b[0] - menu_col_b[0]) * t),
-            int(menu_col_b[1] + (target_col_b[1] - menu_col_b[1]) * t),
-            int(menu_col_b[2] + (target_col_b[2] - menu_col_b[2]) * t),
-        )
-        generate_background(anim_bg, bg_time + i * 20, custom_cols=(cur_a, cur_b))
-        scr.blit(anim_bg, (ox, oy))
-        pygame.display.flip()
-        clock.tick(FPS)
+        # Фаза 1: Плавное центрированное сужение окна к центру без сброса контекста SDL
+        for i in range(steps_shrink + 1):
+            for ev in pygame.event.get():
+                if ev.type == pygame.QUIT:
+                    break
+            t = i / float(steps_shrink)
+            ease = 0.5 * (1.0 - math.cos(math.pi * t))
+            w = max(min_w, int(SCREEN_WIDTH - (SCREEN_WIDTH - min_w) * ease))
+            h = max(min_h, int(SCREEN_HEIGHT - (SCREEN_HEIGHT - min_h) * ease))
 
-    # Фаза 2: Плавное расширение окна из центра до полного размера с открытием карты (54 шага)
-    steps_expand = 54
-    for i in range(1, steps_expand + 1):
-        for ev in pygame.event.get():
-            if ev.type == pygame.QUIT:
-                break
-        t = i / float(steps_expand)
-        ease = 0.5 * (1.0 - math.cos(math.pi * t))
-        w = min(SCREEN_WIDTH, max(min_w, int(min_w + (SCREEN_WIDTH - min_w) * ease)))
-        h = min(SCREEN_HEIGHT, max(min_h, int(min_h + (SCREEN_HEIGHT - min_h) * ease)))
+            win.size = (w, h)
+            win.position = (cx - w // 2, cy - h // 2)
 
-        scr = pygame.display.set_mode((w, h))
-        ox = (w - SCREEN_WIDTH) // 2
-        oy = (h - SCREEN_HEIGHT) // 2
-        scr.fill((8, 12, 18))
-        scr.blit(map_full_surf, (ox, oy))
-        pygame.display.flip()
-        clock.tick(FPS)
+            screen.blit(start_bg, (0, 0))
+            pygame.display.flip()
+            clock.tick(FPS)
 
-    os.environ['SDL_VIDEO_CENTERED'] = '1'
-    restored_screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-    return restored_screen
+        # Фаза 2: Плавное центрированное расширение окна из центра с открытием боевой карты
+        steps_expand = 48
+        for i in range(1, steps_expand + 1):
+            for ev in pygame.event.get():
+                if ev.type == pygame.QUIT:
+                    break
+            t = i / float(steps_expand)
+            ease = 0.5 * (1.0 - math.cos(math.pi * t))
+            w = min(SCREEN_WIDTH, max(min_w, int(min_w + (SCREEN_WIDTH - min_w) * ease)))
+            h = min(SCREEN_HEIGHT, max(min_h, int(min_h + (SCREEN_HEIGHT - min_h) * ease)))
+
+            win.size = (w, h)
+            win.position = (cx - w // 2, cy - h // 2)
+
+            screen.blit(map_full_surf, (0, 0))
+            pygame.display.flip()
+            clock.tick(FPS)
+
+        win.size = (SCREEN_WIDTH, SCREEN_HEIGHT)
+        win.position = orig_pos
+        restored_screen = pygame.display.get_surface()
+        if restored_screen is None or restored_screen.get_size() != (SCREEN_WIDTH, SCREEN_HEIGHT):
+            restored_screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+        return restored_screen
+    else:
+        # Запасной ультра-плавный режим диафрагмы без перемещения окна ОС
+        center_x, center_y = SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2
+        max_r = int(math.hypot(center_x, center_y))
+        steps = 45
+        for i in range(steps + 1):
+            t = i / float(steps)
+            progress = t ** 1.3
+            r = max(0, int(max_r * (1.0 - progress)))
+            screen.fill((8, 12, 18))
+            if r > 0:
+                generate_background(screen, bg_time + i * 20, map_id=game_map)
+                mask_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+                mask_surf.fill((8, 12, 18, 255))
+                pygame.draw.circle(mask_surf, (0, 0, 0, 0), (center_x, center_y), r)
+                screen.blit(mask_surf, (0, 0))
+            pygame.display.flip()
+            clock.tick(FPS)
+
+        for i in range(1, steps + 1):
+            progress = (i / float(steps)) ** 1.3
+            r = min(max_r, int(max_r * progress))
+            screen.fill((8, 12, 18))
+            if r > 0:
+                screen.blit(map_full_surf, (0, 0))
+                if r < max_r:
+                    mask_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+                    mask_surf.fill((8, 12, 18, 255))
+                    pygame.draw.circle(mask_surf, (0, 0, 0, 0), (center_x, center_y), r)
+                    screen.blit(mask_surf, (0, 0))
+            pygame.display.flip()
+            clock.tick(FPS)
+
+        return screen
 
 
 # -------------------------------------------------------------------------

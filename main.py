@@ -2627,6 +2627,8 @@ def run_game():
                                 for _ in range(4):
                                     effects.append(DropSpark(clicked_enemy.x, clicked_enemy.y, burst=True))
                                 sfx_click.play()
+                                st_stats = savedata.setdefault("Stats", {})
+                                st_stats["slime_clicks"] = st_stats.get("slime_clicks", 0) + 1
                             elif inspected_tower and not (last_card_rect and last_card_rect.collidepoint(mouse_pos)):
                                 # Клик по свободному полю карты снимает выделение башни
                                 if mouse_pos[1] < SCREEN_HEIGHT - 72:
