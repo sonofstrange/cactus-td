@@ -1029,24 +1029,99 @@ def import_save_string(cipher_str: str) -> dict:
     return data
 
 def set_clipboard_text(text: str) -> bool:
-    """Копирует строку в буфер обмена операционной системы."""
+    """Копирует строку в буфер обмена операционной системы (ПК + Android)."""
+    # 1. Попытка через Android ClipboardManager (pyjnius)
+    try:
+        from jnius import autoclass
+        PythonActivity = autoclass('org.kivy.android.PythonActivity')
+        Context = autoclass('android.content.Context')
+        ClipData = autoclass('android.content.ClipData')
+        activity = PythonActivity.mActivity
+        clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE)
+        clip = ClipData.newPlainText("CactusTD Save", str(text))
+        clipboard.setPrimaryClip(clip)
+        return True
+    except Exception:
+        pass
+
+    # 2. Попытка через pygame.scrap
     try:
         import pygame.scrap
-        pygame.scrap.put_text(str(text))
-        return True
+        if not pygame.scrap.get_init():
+            pygame.scrap.init()
+        if hasattr(pygame.scrap, "put_text"):
+            pygame.scrap.put_text(str(text))
+            return True
+        elif hasattr(pygame.scrap, "put"):
+            import pygame
+            pygame.scrap.put(pygame.SCRAP_TEXT, str(text).encode('utf-8'))
+            return True
     except Exception as e:
         print(f"Clipboard put error: {e}")
-        return False
+
+    # 3. Fallback через tkinter (ПК)
+    try:
+        import tkinter as tk
+        r = tk.Tk()
+        r.withdraw()
+        r.clipboard_clear()
+        r.clipboard_append(str(text))
+        r.update()
+        r.destroy()
+        return True
+    except Exception:
+        pass
+
+    return False
 
 def get_clipboard_text() -> str:
-    """Извлекает строку из буфера обмена операционной системы."""
+    """Извлекает строку из буфера обмена операционной системы (ПК + Android)."""
+    # 1. Попытка через Android ClipboardManager (pyjnius)
+    try:
+        from jnius import autoclass
+        PythonActivity = autoclass('org.kivy.android.PythonActivity')
+        Context = autoclass('android.content.Context')
+        activity = PythonActivity.mActivity
+        clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE)
+        if clipboard.hasPrimaryClip():
+            clip = clipboard.getPrimaryClip()
+            if clip and clip.getItemCount() > 0:
+                item = clip.getItemAt(0)
+                text = item.getText()
+                if text is not None:
+                    return str(text.toString()).strip()
+    except Exception:
+        pass
+
+    # 2. Попытка через pygame.scrap
     try:
         import pygame.scrap
-        res = pygame.scrap.get_text()
-        if res:
-            return res.strip()
+        if not pygame.scrap.get_init():
+            pygame.scrap.init()
+        if hasattr(pygame.scrap, "get_text"):
+            res = pygame.scrap.get_text()
+            if res:
+                return res.strip()
+        elif hasattr(pygame.scrap, "get"):
+            import pygame
+            raw = pygame.scrap.get(pygame.SCRAP_TEXT)
+            if raw:
+                return raw.decode('utf-8', errors='ignore').rstrip('\x00').strip()
     except Exception as e:
         print(f"Clipboard get error: {e}")
+
+    # 3. Fallback через tkinter (ПК)
+    try:
+        import tkinter as tk
+        r = tk.Tk()
+        r.withdraw()
+        res = r.clipboard_get()
+        r.destroy()
+        if res:
+            return str(res).strip()
+    except Exception:
+        pass
+
     return ""
 
 def is_map_unlocked(mid, sdata):
