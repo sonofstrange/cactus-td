@@ -3518,29 +3518,32 @@ def draw_mechanics_guide_modal(surface, mouse_pos, current_tab=0):
     """
     # 1. Затемняющий оверлей
     overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-    overlay.fill((0, 0, 0, 195))
+    overlay.fill((0, 0, 0, 205))
     surface.blit(overlay, (0, 0))
 
-    box_w = 880
-    box_h = 580
+    box_w = 980
+    box_h = 610
     box_x = (SCREEN_WIDTH - box_w) // 2
     box_y = (SCREEN_HEIGHT - box_h) // 2
     modal_rect = pygame.Rect(box_x, box_y, box_w, box_h)
 
-    pygame.draw.rect(surface, (18, 24, 34), modal_rect, border_radius=14)
+    pygame.draw.rect(surface, (16, 22, 32), modal_rect, border_radius=14)
     pygame.draw.rect(surface, (65, 170, 240), modal_rect, width=2, border_radius=14)
 
     # 2. Шапка
-    hdr_h = 52
+    hdr_h = 50
     header_rect = pygame.Rect(box_x, box_y, box_w, hdr_h)
-    pygame.draw.rect(surface, (24, 36, 52), header_rect, border_top_left_radius=14, border_top_right_radius=14)
-    pygame.draw.line(surface, (55, 80, 115), (box_x, box_y + hdr_h), (box_x + box_w, box_y + hdr_h), 2)
+    pygame.draw.rect(surface, (22, 32, 48), header_rect, border_top_left_radius=14, border_top_right_radius=14)
+    pygame.draw.line(surface, (50, 75, 110), (box_x, box_y + hdr_h), (box_x + box_w, box_y + hdr_h), 2)
 
-    title_txt = font.render("СПРАВОЧНИК МЕХАНИК И ТАКТИКИ БОЯ", True, (240, 255, 250))
-    surface.blit(title_txt, (box_x + 24, box_y + 14))
+    title_txt = font.render("СПРАВОЧНИК МЕХАНИК И СИНЕРГИЙ", True, (240, 255, 250))
+    surface.blit(title_txt, (box_x + 24, box_y + 13))
+
+    sub_info = tiny_font.render("Оазис • Тактический гид по обороне", True, (130, 170, 210))
+    surface.blit(sub_info, (box_x + 30 + title_txt.get_width(), box_y + 17))
 
     # Кнопка закрытия [X]
-    close_btn = pygame.Rect(box_x + box_w - 44, box_y + 10, 32, 32)
+    close_btn = pygame.Rect(box_x + box_w - 44, box_y + 9, 32, 32)
     cl_hov = close_btn.collidepoint(mouse_pos)
     pygame.draw.rect(surface, (160, 40, 60) if cl_hov else (90, 25, 40), close_btn, border_radius=6)
     pygame.draw.rect(surface, (255, 100, 120) if cl_hov else (180, 50, 75), close_btn, width=1, border_radius=6)
@@ -3551,14 +3554,14 @@ def draw_mechanics_guide_modal(surface, mouse_pos, current_tab=0):
     tabs = [
         ("БОЕВЫЕ СИНЕРГИИ", (255, 160, 50)),
         ("ТАКТИКА БАШЕН", (80, 220, 130)),
-        ("ПРОКАЧКА И КАКТУСЫ", (255, 215, 60))
+        ("РЕСУРСЫ И РЕЛИКВИИ", (255, 215, 60))
     ]
-    tab_w = 270
+    tab_w = 300
     tab_h = 36
-    tab_gap = 10
+    tab_gap = 12
     total_tabs_w = len(tabs) * tab_w + (len(tabs) - 1) * tab_gap
     start_tab_x = box_x + (box_w - total_tabs_w) // 2
-    tab_y = box_y + hdr_h + 12
+    tab_y = box_y + hdr_h + 10
     tab_rects = []
 
     for t_idx, (t_name, t_accent) in enumerate(tabs):
@@ -3585,134 +3588,187 @@ def draw_mechanics_guide_modal(surface, mouse_pos, current_tab=0):
         tab_lbl = small_font.render(t_name, True, txt_c)
         surface.blit(tab_lbl, (t_rect.centerx - tab_lbl.get_width() // 2, t_rect.centery - tab_lbl.get_height() // 2))
 
-    # 4. Содержимое вкладок
-    content_y = tab_y + tab_h + 14
+    # 4. Содержимое вкладок (заполняет всю высоту окна без пустых зон)
+    content_y = tab_y + tab_h + 12
     content_rect = pygame.Rect(box_x + 18, content_y, box_w - 36, box_h - (content_y - box_y) - 16)
     pygame.draw.rect(surface, (14, 18, 26), content_rect, border_radius=10)
     pygame.draw.rect(surface, (36, 48, 68), content_rect, width=1, border_radius=10)
 
-    cy = content_rect.top + 16
-    cx = content_rect.left + 20
-    cw = content_rect.width - 40
+    cy = content_rect.top + 12
+    cx = content_rect.left + 16
+    cw = content_rect.width - 32
 
-    def draw_guide_card(title, title_col, lines, badge_text=""):
+    def draw_guide_card(title, title_col, lines, badge_text="", icons=None):
         nonlocal cy
-        card_h = 28 + len(lines) * 22 + 10
+        card_h = 126
         c_rect = pygame.Rect(cx, cy, cw, card_h)
-        pygame.draw.rect(surface, (20, 28, 40), c_rect, border_radius=8)
-        pygame.draw.rect(surface, (45, 65, 90), c_rect, width=1, border_radius=8)
+        pygame.draw.rect(surface, (20, 26, 38), c_rect, border_radius=10)
+        pygame.draw.rect(surface, (42, 60, 85), c_rect, width=1, border_radius=10)
 
         # Левая цветовая полоска
-        pygame.draw.rect(surface, title_col, (cx, cy, 5, card_h), border_top_left_radius=8, border_bottom_left_radius=8)
+        pygame.draw.rect(surface, title_col, (cx, cy, 5, card_h), border_top_left_radius=10, border_bottom_left_radius=10)
+
+        # Иконки слева
+        if icons:
+            ibox = pygame.Rect(cx + 14, cy + (card_h - 52) // 2, 52, 52)
+            pygame.draw.rect(surface, (28, 38, 54), ibox, border_radius=8)
+            pygame.draw.rect(surface, title_col, ibox, width=1, border_radius=8)
+            if len(icons) == 1:
+                ic = pygame.transform.smoothscale(icons[0], (38, 38))
+                surface.blit(ic, (ibox.centerx - 19, ibox.centery - 19))
+            elif len(icons) >= 2:
+                ic1 = pygame.transform.smoothscale(icons[0], (26, 26))
+                ic2 = pygame.transform.smoothscale(icons[1], (26, 26))
+                surface.blit(ic1, (ibox.left + 4, ibox.top + 4))
+                surface.blit(ic2, (ibox.right - 30, ibox.bottom - 30))
+            text_x = cx + 78
+        else:
+            text_x = cx + 18
 
         # Заголовок
         t_surf = font.render(title, True, title_col)
-        surface.blit(t_surf, (cx + 16, cy + 8))
+        surface.blit(t_surf, (text_x, cy + 12))
 
+        # Бэйдж
         if badge_text:
             b_surf = tiny_font.render(badge_text, True, (255, 240, 180))
             bw = b_surf.get_width() + 16
-            bh = 20
-            b_rect = pygame.Rect(cx + cw - bw - 12, cy + 8, bw, bh)
-            pygame.draw.rect(surface, (55, 45, 20), b_rect, border_radius=4)
-            pygame.draw.rect(surface, (200, 160, 40), b_rect, width=1, border_radius=4)
+            bh = 22
+            b_rect = pygame.Rect(cx + cw - bw - 14, cy + 12, bw, bh)
+            pygame.draw.rect(surface, (42, 34, 18), b_rect, border_radius=4)
+            pygame.draw.rect(surface, title_col, b_rect, width=1, border_radius=4)
             surface.blit(b_surf, (b_rect.centerx - b_surf.get_width() // 2, b_rect.centery - b_surf.get_height() // 2))
 
+        # Строки пояснений
+        start_ly = cy + 42
         for li, (label, val, val_col) in enumerate(lines):
-            ly = cy + 34 + li * 22
-            l_surf = small_font.render(label, True, (180, 200, 220))
-            surface.blit(l_surf, (cx + 18, ly))
+            ly = start_ly + li * 26
+            l_surf = small_font.render(label, True, (215, 230, 245))
+            surface.blit(l_surf, (text_x, ly))
             if val:
                 v_surf = small_font.render(val, True, val_col)
-                surface.blit(v_surf, (cx + 18 + l_surf.get_width(), ly))
+                surface.blit(v_surf, (text_x + l_surf.get_width() + 4, ly))
 
-        cy += card_h + 12
+        cy += card_h + 8
 
     if current_tab == 0:
         # Вкладка 0: БОЕВЫЕ СИНЕРГИИ
         draw_guide_card(
-            "ЭЛЕМЕНТАРНОЕ КОМБО: ОГОНЬ + ЛЁД (ТЕРМОШОК)",
+            "ТЕРМОШОК: ОГОНЬ + ЛЁД",
             (255, 140, 40),
             [
-                ("Механика: ", "Замороженные или замедленные враги получают +75% комбо-урона от огня!", (255, 215, 80)),
-                ("Тактика: ", "Ставьте Ледяную башню на повороте, а Огненную башню сразу за ней по тропе.", (130, 230, 150)),
-                ("Эффект: ", "Снаряды разлетаются брызгами пара со звуком комбо и фиолетовыми искрами.", (180, 220, 255))
+                ("• Механика: ", "Заморозка или замедление активируют статус льда на врагах.", (240, 245, 255)),
+                ("• Синергия: ", "Снаряды Огненной башни наносят +75% комбо-урона по заморозке!", (255, 215, 80)),
+                ("• Тактика: ", "Ставьте Ледяную башню перед поворотом, а Огненную — сразу за ней по тропе.", (130, 235, 160))
             ],
-            badge_text="+75% УРОНА"
+            badge_text="+75% КОМБО-УРОН",
+            icons=[rock_tower_img, freeze_tower_img]
         )
         draw_guide_card(
             "БРОНЯ ВРАГОВ (ARMOR) И ЧИСТЫЙ УРОН",
-            (100, 200, 255),
+            (80, 210, 255),
             [
-                ("Бронированные враги: ", "Серые и тяжелые слаймы срезают от 30% до 60% физического урона.", (255, 130, 130)),
-                ("Магическая башня: ", "Её стрелы на 100% игнорируют броню и наносят полный урон!", (140, 240, 160)),
-                ("Башня Тесла: ", "Цепная молния бьёт чистой энергией сквозь любую броню по цепочке целей.", (120, 230, 255))
+                ("• Броня мобов: ", "Серые и тяжелые слаймы срезают от 30% до 60% урона от обычных башен.", (255, 180, 180)),
+                ("• Пробитие: ", "Магические стрелы и Цепная молния Теслы на 100% игнорируют броню!", (140, 255, 180)),
+                ("• Совет: ", "Всегда ставьте Магию и Теслу на ранних участках против бронированных волн.", (255, 235, 140))
             ],
-            badge_text="ПРОБИТИЕ БРОНИ"
+            badge_text="100% ЧИСТЫЙ УРОН",
+            icons=[magic_tower_img, tesla_tower_img]
+        )
+        draw_guide_card(
+            "КОНТРОЛЬ ПОЛЯ И ТЁМНЫЙ ЭГИС",
+            (210, 140, 255),
+            [
+                ("• Прорыв врагов: ", "Каждый прорвавшийся слайм отнимает жизни базы (базово 12 сердец).", (240, 245, 255)),
+                ("• Тёмный Эгис: ", "Космический барьер поглощает до 2 прорывов за волну без урона базе!", (120, 240, 255)),
+                ("• Сверхновая: ", "Уничтожение метеорита с орбиты наносит колоссальный урон всей карте.", (255, 215, 100))
+            ],
+            badge_text="ЗАЩИТА БАЗЫ",
+            icons=[heart_img, crown_upg_icon]
         )
     elif current_tab == 1:
         # Вкладка 1: ТАКТИКА БАШЕН
         draw_guide_card(
-            "ПАЛАТКА СОЛДАТ: ТОЧКА СБОРА И ШИПЫ",
-            (80, 220, 130),
+            "ПАЛАТКА ВОИНОВ: ТОЧКА СБОРА И ШИПЫ",
+            (80, 225, 120),
             [
-                ("Удержание: ", "Храбрые кактусовые воины блокируют мобов на тропе, давая башням время стрелять.", (220, 240, 230)),
-                ("Точка сбора [R]: ", "Нажмите [Флаг / R] в меню палатки и кликните на дорогу в её радиусе!", (255, 215, 80)),
-                ("Талант «Шипы»: ", "При атаке врагов воины возвращают атакующему +30% урона за каждый уровень!", (255, 140, 100))
+                ("• Точка сбора [R]: ", "В меню палатки нажмите кнопку флага и укажите точку на дороге в её зоне.", (240, 245, 255)),
+                ("• Талант «Шипы»: ", "Солдаты возвращают атакующему врагу +30%/ур. урона (до 150%)!", (255, 140, 100)),
+                ("• Воскрешение: ", "Павшие бойцы гарнизона автоматически возвращаются в строй за 6-8 сек.", (140, 240, 180))
             ],
-            badge_text="ШИПЫ +30%/УР"
+            badge_text="ГАРНИЗОН И ШИПЫ",
+            icons=[tent_tower_img, soldier_img]
         )
         draw_guide_card(
-            "КАКТУСОВАЯ ФЕРМА: ДОХОД И ОРОШЕНИЕ",
+            "КАКТУСОВАЯ ФЕРМА: ОРОШЕНИЕ И ДОХОД",
             (255, 215, 60),
             [
-                ("Экономика: ", "Ферма приносит гарантированные кактусы в конце каждой отбитой волны.", (240, 240, 200)),
-                ("Талант «Орошение»: ", "Активирует полив! Ферма раз в 15-20 сек поливает башни в радиусе ауры.", (130, 240, 160)),
-                ("Бонус темпа: ", "Орошенные башни стреляют на 10-35% быстрее, круша волны за секунды.", (100, 230, 255))
+                ("• Пассивный доход: ", "Ферма приносит гарантированные кактусы за каждую отбитую волну.", (240, 245, 255)),
+                ("• Аура Орошения: ", "Талант поливает соседние башни в радиусе ауры раз в 15-20 секунд.", (130, 240, 160)),
+                ("• Бонус темпа: ", "Орошенные башни атакуют на +10%..+35% быстрее обычного!", (100, 235, 255))
             ],
-            badge_text="АУРА УСКОРЕНИЯ"
+            badge_text="ЭКОНОМИКА И ТЕМП",
+            icons=[farm_tower_img, cactus_img]
+        )
+        draw_guide_card(
+            "БАШНЯ ТЕСЛА И СВЕРХЗАРЯД",
+            (90, 235, 255),
+            [
+                ("• Цепной разряд: ", "Молния мгновенно поражает от 3 до 6 целей по цепочке рикошетов.", (240, 245, 255)),
+                ("• Реликвия «Громовой Зуб»: ", "Добавляет до +3 дополнительных перескоков цепи!", (255, 215, 80)),
+                ("• Кактусовый Дрон: ", "Парящий спутник автоматически расстреливает ближайших слаймов.", (180, 220, 255))
+            ],
+            badge_text="ЦЕПНАЯ МОЛНИЯ",
+            icons=[tesla_tower_img]
         )
     else:
-        # Вкладка 2: ПРОКАЧКА И КАКТУСЫ
+        # Вкладка 2: РЕСУРСЫ, МУЗЕЙ И МЕТА
         draw_guide_card(
-            "ЗВЁЗДНЫЕ И ТЁМНЫЕ КАКТУСЫ (МЕТА-ПРОКАЧКА)",
-            (255, 215, 80),
+            "ЗВЁЗДНЫЕ И ТЁМНЫЕ КАКТУСЫ",
+            (255, 205, 80),
             [
-                ("Звёздные кактусы: ", "Выпадают со слаймов, боссов, золотых мобов и за рубежи волн (10, 25, 50, 75).", (255, 235, 140)),
-                ("Древо талантов: ", "Открывает новые башни, авто-сбор, шипы, орошение и стартовые бонусы.", (140, 220, 255)),
-                ("Тёмные кактусы: ", "Выпадают в Теневом Космосе. Открывают Орбитальный залп, Дрона и Сверхновую!", (220, 130, 255))
+                ("• Звёздные кактусы: ", "Дроп со слаймов (8%), боссов (25%) и рубежей волн (10, 25, 50, 75).", (255, 235, 140)),
+                ("• Тёмные кактусы: ", "Падают из метеоритов и великих боссов. Нужны для технологий Бездны.", (220, 140, 255)),
+                ("• Авто-старт волн: ", "Рубежи открывают быстрый старт забега сразу с 6, 11, 26 или 101 волны!", (140, 245, 170))
             ],
-            badge_text="ПОСТОЯННЫЙ ПРОГРЕСС"
+            badge_text="МЕТА-ПРОГРЕСС",
+            icons=[stellar_cactus_img_m, dark_cactus_img_m]
         )
         draw_guide_card(
             "АРХЕОЛОГИЯ И ТЁМНЫЙ РЕЗОНАНС",
-            (110, 205, 255),
+            (195, 120, 255),
             [
-                ("Зоны раскопок: ", "Случайно появляются на картах. Пройдите мини-игру 5х5, чтобы откопать артефакт!", (160, 220, 255)),
-                ("Музей реликвий [R]: ", "Устанавливайте до 5 реликвий на пьедесталы для мощных глобальных эффектов.", (255, 220, 130)),
-                ("Тёмный Резонанс: ", "Тёмная нода даёт до +20% силы ВСЕМ реликвиям вне пьедесталов пассивно!", (220, 140, 255))
+                ("• Раскопки [R]: ", "Зоны раскопок на картах открывают мини-игру 5х5 для поиска реликвий биомов.", (160, 220, 255)),
+                ("• Пьедесталы (100%): ", "До 5 активных пьедесталов для максимальных глобальных бонусов.", (255, 220, 130)),
+                ("• Тёмный Резонанс: ", "Тёмная нода даёт до +20% силы ВСЕМ реликвиям вне пьедесталов пассивно!", (225, 160, 255))
             ],
-            badge_text="МУЗЕЙ И РЕЛИКВИИ"
+            badge_text="МУЗЕЙ 20 РЕЛИКВИЙ",
+            icons=[relic_icon, crown_upg_icon]
         )
         draw_guide_card(
-            "СУПЕР-СПОСОБНОСТИ И БЫСТРАЯ ИГРА",
-            (180, 130, 255),
+            "ГОРЯЧИЕ КЛАВИШИ И СУПЕР-АТАКИ",
+            (255, 120, 150),
             [
-                ("Орбитальный залп [F]: ", "Клавиша F или кнопка на экране наносит катастрофический урон по площади.", (255, 140, 200)),
-                ("Кнопка [МАКС]: ", "В меню любой башни мгновенно прокачивает её на все деньги одним кликом.", (140, 255, 170)),
-                ("Авто-старт волн: ", "Рубежи мастерства позволяют начинать забег сразу с 6, 11, 26 или 101 волны!", (255, 215, 90))
+                ("• Орбитальный залп [F]: ", "Катастрофический удар с орбиты со стягиванием мобов в сингулярность.", (255, 150, 210)),
+                ("• Кнопка [МАКС]: ", "В меню башни прокачивает её на все доступные деньги одним кликом.", (140, 255, 170)),
+                ("• Скорость [ПРОБЕЛ]: ", "Переключает темп боя: 1X, 2X, 3X, 5X и тактическое 0.2X замедление.", (255, 215, 90))
             ],
-            badge_text="ГОРЯЧИЕ КЛАВИШИ"
+            badge_text="УПРАВЛЕНИЕ",
+            icons=[meteorite_img]
         )
+
+    # Нижняя статусная панель с подсказками
+    footer_rect = pygame.Rect(cx, cy + 2, cw, 28)
+    pygame.draw.rect(surface, (18, 24, 34), footer_rect, border_radius=6)
+    pygame.draw.rect(surface, (40, 56, 78), footer_rect, width=1, border_radius=6)
+    nav_hint = tiny_font.render("[СТРЕЛКИ / TAB / Клик] — Навигация по вкладкам  •  [ESC / ПРОБЕЛ] — Закрыть гид", True, (160, 190, 220))
+    surface.blit(nav_hint, (footer_rect.centerx - nav_hint.get_width() // 2, footer_rect.centery - nav_hint.get_height() // 2))
 
     return close_btn, tab_rects
 
 
 
 def play_start_window_animation(bg_time, game_map=0, path=None, tower_slots=None):
-    if IS_ANDROID or get_graphics_preset() == "optimized":
-        return screen
-
     # 1. Цвета меню и биома целевой карты
     biome = MAP_BIOMES_DATA.get(game_map, MAP_BIOMES_DATA[0])
     target_col_a = biome.get("bg_col_a", (155, 195, 155))
@@ -3739,24 +3795,28 @@ def play_start_window_animation(bg_time, game_map=0, path=None, tower_slots=None
     center_x, center_y = SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2
     max_r = int(math.hypot(center_x, center_y))
 
+    # Выделяем одну быструю Colorkey-маску (0 покадровых аллокаций памяти, 60 FPS на Android и PC)
+    mask_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+    mask_surf.set_colorkey((255, 0, 255))
+    mask_bg = (8, 12, 18)
+
     # Детерминированные частицы вихря (звёздная пыль и колючки кактуса)
     stardust = [
-        {'ang': (k / 36.0) * math.pi * 2, 'dist': 0.75 + (k % 5) * 0.12, 'sz': 2 if k % 2 == 0 else 3}
-        for k in range(36)
+        {'ang': (k / 24.0) * math.pi * 2, 'dist': 0.75 + (k % 4) * 0.12, 'sz': 2 if k % 2 == 0 else 3}
+        for k in range(24)
     ]
 
-    # Фаза 1: Сжатие диафрагмы к центру с закручивающимся вихрем и лучами (быстрый переход)
-    steps = 16
+    # Фаза 1: Сжатие диафрагмы к центру с закручивающимся вихрем и лучами (10 быстрых кадров)
+    steps = 10
     for i in range(steps + 1):
         for ev in pygame.event.get():
             if ev.type == pygame.QUIT:
                 break
         t = min(1.0, max(0.0, i / float(steps)))
-        progress = t ** 1.25
+        progress = t ** 1.3
         r = max(0, int(max_r * (1.0 - progress)))
-        rot = progress * math.pi * 2.5
+        rot = progress * math.pi * 2.0
 
-        # Плавная интерполяция цвета фона меню -> цвет биома карты
         cur_a = (
             int(menu_col_a[0] + (target_col_a[0] - menu_col_a[0]) * t),
             int(menu_col_a[1] + (target_col_a[1] - menu_col_a[1]) * t),
@@ -3767,28 +3827,25 @@ def play_start_window_animation(bg_time, game_map=0, path=None, tower_slots=None
             int(menu_col_b[1] + (target_col_b[1] - menu_col_b[1]) * t),
             int(menu_col_b[2] + (target_col_b[2] - menu_col_b[2]) * t),
         )
-        screen.fill((8, 12, 18))
+        screen.fill(mask_bg)
         if r > 0:
             generate_background(screen, bg_time + i * 20, custom_cols=(cur_a, cur_b))
-            mask_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-            mask_surf.fill((8, 12, 18, 255))
-            pygame.draw.circle(mask_surf, (0, 0, 0, 0), (center_x, center_y), r)
+            mask_surf.fill(mask_bg)
+            pygame.draw.circle(mask_surf, (255, 0, 255), (center_x, center_y), r)
             screen.blit(mask_surf, (0, 0))
 
             # Многоуровневые светящиеся кольца
             pygame.draw.circle(screen, target_col_b, (center_x, center_y), r, width=3)
             if r > 20:
-                pygame.draw.circle(screen, (255, 255, 255), (center_x, center_y), r - 2, width=1)
-                # Вращающиеся лучи диафрагмы / портала
-                for k in range(12):
-                    ra = rot + k * (math.pi / 6)
+                pygame.draw.circle(screen, WHITE, (center_x, center_y), r - 2, width=1)
+                for k in range(8):
+                    ra = rot + k * (math.pi / 4)
                     x1 = center_x + math.cos(ra) * r
                     y1 = center_y + math.sin(ra) * r
-                    x2 = center_x + math.cos(ra) * (r + 18)
-                    y2 = center_y + math.sin(ra) * (r + 18)
-                    pygame.draw.line(screen, (255, 225, 100), (x1, y1), (x2, y2), 3)
+                    x2 = center_x + math.cos(ra) * (r + 16)
+                    y2 = center_y + math.sin(ra) * (r + 16)
+                    pygame.draw.line(screen, (255, 225, 100), (x1, y1), (x2, y2), 2)
 
-            # Закручивающиеся частицы звёздной пыли
             for p in stardust:
                 pr = int(r * p['dist'])
                 if pr > 5:
@@ -3799,55 +3856,53 @@ def play_start_window_animation(bg_time, game_map=0, path=None, tower_slots=None
                         pygame.draw.circle(screen, target_col_b, (px, py), p['sz'])
 
         pygame.display.flip()
-        clock.tick(FPS)
+        clock.tick(60)
 
-    # Кульминация в центре: яркая вспышка сверхновой и ударная волна (4 кадра)
-    for fi in range(4):
+    # Кульминация в центре: яркая вспышка сверхновой (2 быстрых кадра)
+    for fi in range(2):
         for ev in pygame.event.get():
             if ev.type == pygame.QUIT:
                 break
-        screen.fill((8, 12, 18))
-        fr = (fi + 1) * 28
-        pygame.draw.circle(screen, (255, 255, 255), (center_x, center_y), max(4, 16 - fi * 3))
+        screen.fill(mask_bg)
+        fr = (fi + 1) * 36
+        pygame.draw.circle(screen, WHITE, (center_x, center_y), 16)
         pygame.draw.circle(screen, (255, 220, 100), (center_x, center_y), fr, width=3)
-        span = 140 - fi * 30
-        pygame.draw.line(screen, (255, 255, 255), (center_x - span, center_y), (center_x + span, center_y), 3)
-        pygame.draw.line(screen, (255, 255, 255), (center_x, center_y - span), (center_x, center_y + span), 3)
+        span = 120 - fi * 40
+        pygame.draw.line(screen, WHITE, (center_x - span, center_y), (center_x + span, center_y), 3)
+        pygame.draw.line(screen, WHITE, (center_x, center_y - span), (center_x, center_y + span), 3)
         pygame.display.flip()
-        clock.tick(FPS)
+        clock.tick(60)
 
-    # Фаза 2: Максимально сузилось -> появляется сама карта, плавно открывается с рассеиванием энергии (быстрый переход)
-    steps_exp = 16
+    # Фаза 2: Раскрытие карты (10 быстрых кадров)
+    steps_exp = 10
     for i in range(1, steps_exp + 1):
         for ev in pygame.event.get():
             if ev.type == pygame.QUIT:
                 break
         progress = (i / float(steps_exp)) ** 1.25
         r = min(max_r, int(max_r * progress))
-        rot = -progress * math.pi * 2.0
+        rot = -progress * math.pi * 1.8
 
-        screen.fill((8, 12, 18))
+        screen.fill(mask_bg)
         if r > 0:
             screen.blit(map_full_surf, (0, 0))
             if r < max_r:
-                mask_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-                mask_surf.fill((8, 12, 18, 255))
-                pygame.draw.circle(mask_surf, (0, 0, 0, 0), (center_x, center_y), r)
+                mask_surf.fill(mask_bg)
+                pygame.draw.circle(mask_surf, (255, 0, 255), (center_x, center_y), r)
                 screen.blit(mask_surf, (0, 0))
 
-                pygame.draw.circle(screen, (255, 255, 255), (center_x, center_y), r, width=2)
+                pygame.draw.circle(screen, WHITE, (center_x, center_y), r, width=2)
                 pygame.draw.circle(screen, (255, 215, 80), (center_x, center_y), r + 3, width=3)
-                # Расходящиеся световые лучи
-                for k in range(12):
-                    ra = rot + k * (math.pi / 6)
+                for k in range(8):
+                    ra = rot + k * (math.pi / 4)
                     x1 = center_x + math.cos(ra) * r
                     y1 = center_y + math.sin(ra) * r
-                    x2 = center_x + math.cos(ra) * (r + 24)
-                    y2 = center_y + math.sin(ra) * (r + 24)
-                    pygame.draw.line(screen, (255, 215, 80), (x1, y1), (x2, y2), 3)
+                    x2 = center_x + math.cos(ra) * (r + 20)
+                    y2 = center_y + math.sin(ra) * (r + 20)
+                    pygame.draw.line(screen, (255, 215, 80), (x1, y1), (x2, y2), 2)
 
         pygame.display.flip()
-        clock.tick(FPS)
+        clock.tick(60)
 
     return screen
 

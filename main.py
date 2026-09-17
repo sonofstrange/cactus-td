@@ -193,6 +193,7 @@ def run_game():
     pause_click_rects = {}
     r_btn = None
     q_btn = None
+    hud_menu_btn = None
 
     session_kills = 0
     session_cacti = 0
@@ -236,7 +237,7 @@ def run_game():
         nonlocal upgrade_mode, selected_tower_type, inspected_tower, speed_levels, current_speed_index, game_speed
         nonlocal session_kills, session_cacti, session_stellar, is_paused, current_state, pause_frozen_frame
         nonlocal last_card_rect, last_btn_rect, last_target_rect, last_sell_rect, last_max_rect
-        nonlocal r_btn, q_btn, pause_click_rects
+        nonlocal r_btn, q_btn, hud_menu_btn, pause_click_rects
         nonlocal current_wave_queue, upcoming_wave_preview, shake_amount, ambient_particles, map_decor, slime_splats
         nonlocal active_meteorite, next_meteor_wave, cactus_drone, orbital_strike_cd, orbital_targeting, rally_targeting_tent, dark_aegis_charges, flawless_streak, lives_at_wave_start, session_start_wave
         nonlocal active_dig_site, dig_window, dig_session, dig_window_close_timer, battle_ui_fade_alpha
@@ -2370,8 +2371,24 @@ def run_game():
                         else:
                             is_paused = True
                             sfx_click.play()
+                    elif active_guide_modal and event.key in (pygame.K_TAB, pygame.K_RIGHT):
+                        guide_modal_tab = (guide_modal_tab + 1) % 3
+                        sfx_click.play()
+                    elif active_guide_modal and event.key == pygame.K_LEFT:
+                        guide_modal_tab = (guide_modal_tab - 1) % 3
+                        sfx_click.play()
+                    elif event.key in (pygame.K_F1, pygame.K_SLASH, pygame.K_h):
+                        if not game_over:
+                            if not is_paused:
+                                is_paused = True
+                                pause_frozen_frame = screen.copy()
+                            active_guide_modal = not active_guide_modal
+                            sfx_click.play()
                     elif event.key == pygame.K_SPACE:
-                        if not wave_in_progress and not is_paused and not game_over:
+                        if active_guide_modal:
+                            active_guide_modal = False
+                            sfx_click.play()
+                        elif not wave_in_progress and not is_paused and not game_over:
                             between_waves_timer = 0.0
                         else:
                             mods = pygame.key.get_mods()
@@ -2427,6 +2444,16 @@ def run_game():
                             continue
 
                     elif event.button == 1:
+                        # 0. Клик по кнопке меню в верхнем HUD (работает всегда на ПК и Android)
+                        if hud_menu_btn and hud_menu_btn.collidepoint(mouse_pos) and not game_over:
+                            if active_guide_modal:
+                                active_guide_modal = False
+                            is_paused = not is_paused
+                            if not is_paused:
+                                pause_frozen_frame = None
+                            sfx_click.play()
+                            continue
+
                         # Клик по активному метеориту (фокус башен на нём)
                         if active_meteorite and not is_paused and not game_over:
                             if math.hypot(mouse_pos[0] - active_meteorite.x, mouse_pos[1] - active_meteorite.y) <= active_meteorite.radius + 15:
@@ -2511,11 +2538,19 @@ def run_game():
                                     active_guide_modal = False
                                     sfx_click.play()
                                 else:
+                                    clicked_tab = False
                                     for t_i, tr in enumerate(guide_tab_rects):
                                         if tr.collidepoint(mouse_pos):
                                             guide_modal_tab = t_i
                                             sfx_click.play()
+                                            clicked_tab = True
                                             break
+                                    if not clicked_tab:
+                                        gw, gh = 980, 610
+                                        gx, gy = (SCREEN_WIDTH - gw) // 2, (SCREEN_HEIGHT - gh) // 2
+                                        if not pygame.Rect(gx, gy, gw, gh).collidepoint(mouse_pos):
+                                            active_guide_modal = False
+                                            sfx_click.play()
                                 continue
 
                             for b_id, brect in pause_click_rects.items():
@@ -3543,6 +3578,14 @@ def run_game():
                 screen.blit(c_icon_scaled, (24, cacti_panel.centery - 15))
                 cacti_txt = large_font.render(f"{cacti:,}".replace(",", " "), True, (15, 55, 22))
                 screen.blit(cacti_txt, (64, cacti_panel.centery - cacti_txt.get_height() // 2))
+
+                # 1.1 Кнопка меню в бою (доступна на ПК и на мобильных устройствах)
+                hud_menu_btn = pygame.Rect(209, 6, 115, 38)
+                hud_menu_hov = hud_menu_btn.collidepoint(mouse_pos)
+                pygame.draw.rect(screen, (32, 44, 58) if not hud_menu_hov else (48, 65, 88), hud_menu_btn, border_radius=10)
+                pygame.draw.rect(screen, (75, 145, 210) if not hud_menu_hov else (115, 200, 255), hud_menu_btn, width=2, border_radius=10)
+                hud_menu_txt = font.render("МЕНЮ", True, (225, 240, 255) if not hud_menu_hov else WHITE)
+                screen.blit(hud_menu_txt, (hud_menu_btn.centerx - hud_menu_txt.get_width() // 2, hud_menu_btn.centery - hud_menu_txt.get_height() // 2))
 
                 # 2. Звёздные кактусы
                 st_hud = pygame.Rect(16, SCREEN_HEIGHT - 138, 145, 48)

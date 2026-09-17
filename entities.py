@@ -1056,18 +1056,13 @@ class Tower:
 
         if hovered and self.range > 0:
             rx, ry, rr = int(self.x), int(self.y), int(self.range)
-            if IS_ANDROID or get_graphics_preset() == "optimized":
-                # В режиме оптимизации и на мобильных устройствах рисуем чёткий векторный контур (0 тяжелого альфа-блендинга)
-                bcol = (50, 230, 90) if not upgrade_mode else (255, 155, 45)
-                pygame.draw.circle(surface, bcol, (rx, ry), rr, width=2)
-            else:
-                col = (60, 240, 100, 45) if not upgrade_mode else (255, 140, 40, 55)
-                bcol = (40, 180, 70, 170) if not upgrade_mode else (255, 140, 30, 190)
-                r_surf = get_cached_range_surf(rr, col, bcol, 2)
-                if r_surf:
-                    surface.blit(r_surf, (rx - rr, ry - rr))
+            col = (60, 240, 100, 45) if not upgrade_mode else (255, 140, 40, 55)
+            bcol = (40, 180, 70, 170) if not upgrade_mode else (255, 140, 30, 190)
+            r_surf = get_cached_range_surf(rr, col, bcol, 2)
+            if r_surf:
+                surface.blit(r_surf, (rx - rr, ry - rr))
 
-            # В режиме улучшений показываем круг будущего радиуса
+            # В режиме улучшений показываем круг будущего радиуса с полупрозрачной заливкой
             if upgrade_mode and self.level < self.max_level:
                 nxt_rng = getattr(self, "_cached_nxt_range", None)
                 if nxt_rng is None or getattr(self, "_cached_nxt_range_lvl", None) != self.level:
@@ -1076,14 +1071,11 @@ class Tower:
                     self._cached_nxt_range = nxt_rng
                     self._cached_nxt_range_lvl = self.level
                 if nxt_rng > self.range:
-                    if IS_ANDROID or get_graphics_preset() == "optimized":
-                        pygame.draw.circle(surface, (255, 215, 60), (rx, ry), nxt_rng, width=1)
-                    else:
-                        nxt_col = (255, 200, 50, 30)
-                        nxt_bcol = (255, 200, 50, 150)
-                        nxt_surf = get_cached_range_surf(nxt_rng, nxt_col, nxt_bcol, 1)
-                        if nxt_surf:
-                            surface.blit(nxt_surf, (rx - nxt_rng, ry - nxt_rng))
+                    nxt_col = (255, 200, 50, 30)
+                    nxt_bcol = (255, 200, 50, 150)
+                    nxt_surf = get_cached_range_surf(nxt_rng, nxt_col, nxt_bcol, 1)
+                    if nxt_surf:
+                        surface.blit(nxt_surf, (rx - nxt_rng, ry - nxt_rng))
 
 
 # -------------------------------------------------------------------------
