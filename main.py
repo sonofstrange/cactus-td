@@ -2747,15 +2747,6 @@ def run_game():
                             effects.append(FloatingText(SCREEN_WIDTH // 2, 150, "ДОСТИЖЕНИЕ РАЗБЛОКИРОВАНО!", GOLD))
                             sfx_achievement.play()
 
-                        # Награда за каждые 5 волн (+1 Звёздный Кактус)
-                        if completed_wave % 5 == 0:
-                            savedata["StellarCactuses"] = savedata.get("StellarCactuses", 0) + 1
-                            session_stellar += 1
-                            save_data(savedata)
-                            effects.append(FloatingText(SCREEN_WIDTH // 2, 230, f"+1 ЗВЁЗДНЫЙ КАКТУС (ВОЛНА {completed_wave})", CYAN))
-                            effects.append(RingEffect(SCREEN_WIDTH // 2, 230, 65, CYAN))
-                            for _ in range(8):
-                                effects.append(DropSpark(SCREEN_WIDTH // 2, 230, burst=True))
 
                         # Талант «Звёздная Алхимия»: +1 Звёздный Кактус каждые 5 / 4 / 3 волн
                         star_alchemy_lvl = savedata["Upgrades"].get("star_alchemy", 0)
