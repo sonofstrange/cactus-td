@@ -4086,11 +4086,33 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
         t_opt = nav_font.render("ОПТИМИЗАЦИЯ", True, WHITE if is_opt else (160, 185, 210))
         surface.blit(t_opt, (preset_opt_rect.centerx - t_opt.get_width() // 2, preset_opt_rect.centery - t_opt.get_height() // 2))
 
-        # 3.1 Тряска физического окна ОС (отключена по запросу пользователя)
+        # 3.1 Масштабирование экрана (Чёткость / Сглаживание)
         row1_y = 204
-        win_shake_toggle_rect = None
-        lbl_wsh = small_font.render("Тряска окна ОС: Отключена (вместо неё тряска экрана)", True, (140, 160, 185))
-        surface.blit(lbl_wsh, (col2_x + 18, row1_y + 3))
+        lbl_scale = small_font.render("Чёткость экрана (Масштаб):", True, WHITE)
+        surface.blit(lbl_scale, (col2_x + 18, row1_y + 4))
+
+        scale_mode = savedata.get("Settings", {}).get("scale_quality", "sharp")
+        is_sharp = (scale_mode != "smooth")
+        is_smooth = (scale_mode == "smooth")
+
+        scale_sharp_rect = pygame.Rect(col2_x + 276, row1_y, 134, 26)
+        scale_smooth_rect = pygame.Rect(col2_x + 418, row1_y, 144, 26)
+        ssh_hov = scale_sharp_rect.collidepoint(mouse_pos)
+        ssm_hov = scale_smooth_rect.collidepoint(mouse_pos)
+
+        p_sharp_bg = (30, 95, 150) if is_sharp else ((28, 40, 56) if ssh_hov else (20, 26, 36))
+        p_sharp_bd = (110, 215, 255) if is_sharp else ((70, 105, 140) if ssh_hov else (45, 60, 80))
+        pygame.draw.rect(surface, p_sharp_bg, scale_sharp_rect, border_radius=6)
+        pygame.draw.rect(surface, p_sharp_bd, scale_sharp_rect, width=2 if is_sharp else 1, border_radius=6)
+        t_sharp = nav_font.render("ЧЁТКИЙ (100%)", True, WHITE if is_sharp else (160, 185, 210))
+        surface.blit(t_sharp, (scale_sharp_rect.centerx - t_sharp.get_width() // 2, scale_sharp_rect.centery - t_sharp.get_height() // 2))
+
+        p_smooth_bg = (35, 125, 65) if is_smooth else ((28, 40, 56) if ssm_hov else (20, 26, 36))
+        p_smooth_bd = (95, 235, 140) if is_smooth else ((70, 105, 140) if ssm_hov else (45, 60, 80))
+        pygame.draw.rect(surface, p_smooth_bg, scale_smooth_rect, border_radius=6)
+        pygame.draw.rect(surface, p_smooth_bd, scale_smooth_rect, width=2 if is_smooth else 1, border_radius=6)
+        t_smooth = nav_font.render("СГЛАЖИВАНИЕ", True, WHITE if is_smooth else (160, 185, 210))
+        surface.blit(t_smooth, (scale_smooth_rect.centerx - t_smooth.get_width() // 2, scale_smooth_rect.centery - t_smooth.get_height() // 2))
 
         # 3.2 Тряска экрана (Screen Shake)
         row2_y = 234
@@ -4545,7 +4567,9 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
         "music_plus": music_plus_rect,
         "preset_normal": preset_normal_rect,
         "preset_opt": preset_opt_rect,
-        "window_shake_toggle": win_shake_toggle_rect,
+        "scale_sharp": scale_sharp_rect,
+        "scale_smooth": scale_smooth_rect,
+        "window_shake_toggle": None,
         "shake_toggle": shake_toggle_rect,
         "dmg_toggle": dmg_toggle_rect,
         "auto_wave_toggle": auto_wave_toggle_rect,

@@ -3,6 +3,26 @@
 # =========================================================================
 import os
 import sys
+
+# Включаем аппаратную осведомленность о DPI Windows (Per-Monitor DPI Aware v2).
+# Это предотвращает размытие DWM на 2K/4K мониторах и при масштабировании 125%/150%.
+if sys.platform == "win32":
+    try:
+        import ctypes
+        u32 = ctypes.windll.user32
+        u32.SetProcessDpiAwarenessContext.argtypes = [ctypes.c_void_p]
+        u32.SetProcessDpiAwarenessContext.restype = ctypes.c_bool
+        if not u32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4)):
+            raise ValueError("SetProcessDpiAwarenessContext failed")
+    except Exception:
+        try:
+            ctypes.windll.shcore.SetProcessDpiAwareness(2)
+        except Exception:
+            try:
+                ctypes.windll.user32.SetProcessDPIAware()
+            except Exception:
+                pass
+
 import math
 import random
 import pygame
@@ -72,6 +92,7 @@ def run_game():
 
     apply_audio_settings(savedata)
     set_graphics_preset(savedata.get("Settings", {}).get("graphics_preset", "normal"))
+    screen = set_scale_quality(savedata.get("Settings", {}).get("scale_quality", "sharp"))
     if not is_dark_cacti_unlocked(savedata) and savedata.get("DarkCactuses", 0) > 0:
         savedata["DarkCactuses"] = 0
         save_data(savedata)
@@ -1715,6 +1736,18 @@ def run_game():
                             elif ui_rects.get("preset_opt") and ui_rects["preset_opt"].collidepoint(mouse_pos):
                                 savedata.setdefault("Settings", {})["graphics_preset"] = "optimized"
                                 set_graphics_preset("optimized")
+                                save_data(savedata)
+                                sfx_click.play()
+
+                            elif ui_rects.get("scale_sharp") and ui_rects["scale_sharp"].collidepoint(mouse_pos):
+                                savedata.setdefault("Settings", {})["scale_quality"] = "sharp"
+                                screen = set_scale_quality("sharp")
+                                save_data(savedata)
+                                sfx_click.play()
+
+                            elif ui_rects.get("scale_smooth") and ui_rects["scale_smooth"].collidepoint(mouse_pos):
+                                savedata.setdefault("Settings", {})["scale_quality"] = "smooth"
+                                screen = set_scale_quality("smooth")
                                 save_data(savedata)
                                 sfx_click.play()
 

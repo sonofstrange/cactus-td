@@ -2,20 +2,41 @@
 config.py - Конфигурация, ресурсы, шрифты, звуки и данные биомов/карт.
 """
 
+import sys
+import os
+import ctypes
+
+# Включаем аппаратную осведомленность о DPI Windows (Per-Monitor DPI Aware v2).
+# Это полностью отключает размывающее виртуальное масштабирование Windows DWM (125%, 150%, 175%)
+# и позволяет игре рендериться на физическом 2K/4K разрешении экрана без мыла.
+if sys.platform == "win32":
+    try:
+        u32 = ctypes.windll.user32
+        u32.SetProcessDpiAwarenessContext.argtypes = [ctypes.c_void_p]
+        u32.SetProcessDpiAwarenessContext.restype = ctypes.c_bool
+        if not u32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4)):
+            raise ValueError("SetProcessDpiAwarenessContext failed")
+    except Exception:
+        try:
+            ctypes.windll.shcore.SetProcessDpiAwareness(2)
+        except Exception:
+            try:
+                ctypes.windll.user32.SetProcessDPIAware()
+            except Exception:
+                pass
+
+# По умолчанию на ПК ставим nearest neighbor ("0") — 100% кристальная чёткость (пиксель-в-пиксель)
+if "SDL_RENDER_SCALE_QUALITY" not in os.environ:
+    os.environ["SDL_RENDER_SCALE_QUALITY"] = "0"
+
 import io
 import math
-import os
-# Качественное билинейное сглаживание при масштабировании GPU (устраняет пикселизацию)
-os.environ["SDL_RENDER_SCALE_QUALITY"] = "1"
-
 import random
 import struct
 import wave
 import pygame
 
 pygame.init()
-
-import sys
 
 IS_ANDROID = hasattr(sys, 'getandroidapilevel') or 'ANDROID_ARGUMENT' in os.environ or 'ANDROID_PRIVATE' in os.environ
 GAME_VERSION = "0.1.0"
@@ -151,12 +172,30 @@ if IS_ANDROID:
 
     pygame.display.flip = _scaled_flip
     pygame.display.update = _scaled_flip
+
+    def set_scale_quality(mode_name):
+        return screen
 else:
     real_screen = None
     try:
         screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SCALED | pygame.RESIZABLE)
     except Exception:
         screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+
+    def set_scale_quality(mode_name):
+        """
+        mode_name: 'sharp' (0 - nearest, pixel-perfect 100% clarity) or 'smooth' (1 - bilinear).
+        """
+        global screen
+        val = "1" if mode_name == "smooth" else "0"
+        os.environ["SDL_RENDER_SCALE_QUALITY"] = val
+        if not IS_ANDROID and screen is not None:
+            try:
+                flags = screen.get_flags()
+                screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), flags)
+            except Exception as e:
+                print(f"[DISPLAY] Failed to reapply scale quality: {e}", flush=True)
+        return screen
 
     def _get_layout(*args, **kwargs):
         return {
