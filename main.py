@@ -2078,6 +2078,9 @@ def run_game():
                                             actual_dmg = int(actual_dmg * 0.75)
                                         if void_amp > 0 and (ne.type in (10, 3000, 4000) or ne.type >= 1000):
                                             actual_dmg = int(actual_dmg * (1.0 + 0.30 * void_amp))
+                                        # Лимит по урону в 75% от HP слайма
+                                        max_limit = max(1, int(getattr(ne, "max_health", ne.health) * 0.75))
+                                        actual_dmg = min(actual_dmg, max_limit)
                                         ne.health -= actual_dmg
                                         hits += 1
                                         effects.append(FloatingText(ne.x, ne.y - 12, f"-{actual_dmg}", (220, 100, 255)))
@@ -2438,6 +2441,9 @@ def run_game():
                                         actual_dmg = int(actual_dmg * 0.75)
                                     if void_amp > 0 and (ne.type in (10, 3000, 4000) or ne.type >= 1000):
                                         actual_dmg = int(actual_dmg * (1.0 + 0.30 * void_amp))
+                                    # Лимит по урону в 75% от HP слайма
+                                    max_limit = max(1, int(getattr(ne, "max_health", ne.health) * 0.75))
+                                    actual_dmg = min(actual_dmg, max_limit)
                                     ne.health -= actual_dmg
                                     hits += 1
                                     effects.append(FloatingText(ne.x, ne.y - 12, f"-{actual_dmg}", (220, 100, 255)))
