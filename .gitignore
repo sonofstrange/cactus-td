@@ -1,0 +1,32 @@
+﻿# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*.class
+
+# PyInstaller / Build
+build/
+dist/
+bin/
+*.spec
+!buildozer.spec
+.buildozer/
+
+# Binaries / Packages
+*.apk
+*.aab
+*.exe
+
+# User Saves & Logs
+saves/
+savedata*.json
+*.log
+app_log.txt
+soundtracks_wikitext.txt
+all_texts_dump.txt
+ai_symbols_report.txt
+=0.3.3
+
+# Root-level screenshots and debug images
+/*.png
+/*.jpg
+*_backup.py
