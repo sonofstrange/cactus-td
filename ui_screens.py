@@ -5265,18 +5265,14 @@ def draw_main_menu_screen(surface, mouse_pos, demo_sim, bg_time=None):
 
     cx = SCREEN_WIDTH // 2
 
-    # 3. Верхний сияющий заголовок (Парящий логотип с крупным кактусом)
+    # 3. Верхний заголовок (Парящий логотип с четким HD-кактусом)
     title_y = 22
     c_sz = 112
-    c_icon = pygame.transform.smoothscale(cactus_img, (c_sz, c_sz)) if 'cactus_img' in globals() else stellar_cactus_img
+    c_icon = cactus_img_xl if 'cactus_img_xl' in globals() else pygame.transform.smoothscale(cactus_img, (c_sz, c_sz))
     
-    # Мягкое парение и свечение кактуса
+    # Мягкое парение кактуса без фонового круга
     float_y = math.sin(bg_time * 0.0025) * 5.0
     c_y = title_y - 4 + float_y
-    glow_sz = 140
-    glow_s = pygame.Surface((glow_sz, glow_sz), pygame.SRCALPHA)
-    pygame.draw.circle(glow_s, (50, 210, 110, 45), (glow_sz // 2, glow_sz // 2), 62)
-    surface.blit(glow_s, (cx - glow_sz // 2, int(c_y + c_sz // 2 - glow_sz // 2)))
     surface.blit(c_icon, (cx - c_sz // 2, int(c_y)))
 
     t_shadow = massive_font.render("CACTUS TD", True, (0, 0, 0))

@@ -490,6 +490,7 @@ def load_texture(filename, target_size=None):
 
 # Кактусы и валюта
 cactus_img = load_texture("Cactus.png", target_size=(44, 44))
+cactus_img_xl = load_texture("Cactus.png", target_size=(112, 112))
 cactus_img_s = load_texture("Cactus.png", target_size=(22, 22))
 stellar_cactus_img = load_texture("Stellar_Cactus.png", target_size=(48, 48))
 stellar_cactus_img_m = load_texture("Stellar_Cactus.png", target_size=(36, 36))
