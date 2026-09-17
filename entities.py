@@ -240,16 +240,49 @@ class AmbientParticleSystem:
             p.draw(surface)
 
 
+def draw_rally_flag(surface, x, y, active=False, bg_time=None):
+    """Отрисовывает тактический флаг точки сбора солдат на карте."""
+    x, y = int(x), int(y)
+    t = (bg_time / 1000.0) if bg_time is not None else time.time()
+    pulse = math.sin(t * 5.0) * 2
+
+    # 1. Тень и маркер на земле
+    pygame.draw.ellipse(surface, (0, 0, 0, 95), (x - 11, y + 2, 22, 8))
+    if active:
+        r_rad = max(8, int(13 + pulse))
+        pygame.draw.circle(surface, (60, 235, 120), (x, y + 5), r_rad, width=2)
+        pygame.draw.circle(surface, (150, 255, 190), (x, y + 5), 4)
+    else:
+        pygame.draw.circle(surface, (45, 150, 80), (x, y + 5), 5, width=1)
+
+    # 2. Древко флага
+    pygame.draw.line(surface, (60, 50, 40), (x, y + 5), (x, y - 24), 2)
+    # Золотое навершие
+    pygame.draw.circle(surface, (255, 215, 60), (x, y - 25), 3)
+
+    # 3. Полотно флага (треугольный вымпел с лёгким колыханием)
+    flutter = int(math.sin(t * 8.0) * 2)
+    flag_pts = [(x, y - 24), (x + 16 + flutter, y - 17), (x, y - 10)]
+    f_col = (50, 215, 100) if active else (40, 165, 75)
+    b_col = (180, 255, 200) if active else (100, 225, 140)
+    pygame.draw.polygon(surface, f_col, flag_pts)
+    pygame.draw.polygon(surface, b_col, flag_pts, width=1)
+
+
 # -------------------------------------------------------------------------
 # СОЛДАТЫ И КАЗАРМА
 # -------------------------------------------------------------------------
 class Soldier:
-    def __init__(self, x, y, path_index, tent):
+    def __init__(self, x, y, path_index, tent, target_x=None, target_y=None):
         self.x = float(x)
         self.y = float(y)
+        self.target_x = float(target_x if target_x is not None else x)
+        self.target_y = float(target_y if target_y is not None else y)
         self.path_index = path_index
         self.tent = tent
         self.engaged_count = 0
+        self.move_speed = 95.0
+        self.walk_timer = random.random() * 6.28
 
         stats = tent.get_stats_at_level(tent.level)
         self.max_hp = stats.get("soldier_hp", 28 + tent.level * 16)
@@ -265,6 +298,21 @@ class Soldier:
         if not self.active: return
         self.engaged_count = 0
         self.attack_timer += dt
+
+        # Плавное перемещение к назначенной точке сбора
+        dx = self.target_x - self.x
+        dy = self.target_y - self.y
+        dist_to_target = math.hypot(dx, dy)
+        if dist_to_target > 2.0:
+            step = min(dist_to_target, self.move_speed * dt)
+            self.x += (dx / dist_to_target) * step
+            self.y += (dy / dist_to_target) * step
+            self.walk_timer += dt * 12.0
+            self.rect.center = (int(self.x), int(self.y))
+        else:
+            self.x = self.target_x
+            self.y = self.target_y
+            self.rect.center = (int(self.x), int(self.y))
 
         closest_enemy = None
         closest_dist = 36.0
@@ -317,13 +365,18 @@ class Soldier:
 
     def draw(self, surface):
         if not self.active: return
-        surface.blit(self.image, self.rect)
+        dx = self.target_x - self.x
+        dy = self.target_y - self.y
+        is_walking = math.hypot(dx, dy) > 2.0
+        bob = int(math.sin(self.walk_timer) * 2) if is_walking else 0
+        draw_y = self.rect.y + bob
+        surface.blit(self.image, (self.rect.x, draw_y))
         # Шкала здоровья с тенью
         bw = 26
         ratio = max(0.0, self.hp / self.max_hp)
-        pygame.draw.rect(surface, BLACK, (int(self.x - bw // 2 - 1), int(self.y - 19), bw + 2, 5))
-        pygame.draw.rect(surface, RED, (int(self.x - bw // 2), int(self.y - 18), bw, 3))
-        pygame.draw.rect(surface, GREEN, (int(self.x - bw // 2), int(self.y - 18), int(bw * ratio), 3))
+        pygame.draw.rect(surface, BLACK, (int(self.x - bw // 2 - 1), int(self.y - 19 + bob), bw + 2, 5))
+        pygame.draw.rect(surface, RED, (int(self.x - bw // 2), int(self.y - 18 + bob), bw, 3))
+        pygame.draw.rect(surface, GREEN, (int(self.x - bw // 2), int(self.y - 18 + bob), int(bw * ratio), 3))
 
 
 # -------------------------------------------------------------------------
@@ -379,6 +432,7 @@ class Tower:
             self.cost = 220
             self.soldiers = []
             self.target_path_point = None
+            self.rally_point = None
         elif tower_type == "tesla":
             self.image = tesla_tower_img
             self.base_max_level = 15
@@ -444,6 +498,48 @@ class Tower:
             self.damage_history.popleft()
         tot = sum(d for t, d in self.damage_history)
         return round(tot / max(0.5, window), 1)
+
+    def set_rally_point(self, rx, ry, path=None):
+        """Устанавливает точку сбора солдат для палатки (в пределах зоны действия)."""
+        d = math.hypot(rx - self.x, ry - self.y)
+        max_r = float(self.range)
+        if d > max_r and d > 0:
+            rx = self.x + (rx - self.x) * (max_r / d)
+            ry = self.y + (ry - self.y) * (max_r / d)
+
+        self.rally_point = (float(rx), float(ry))
+
+        best_idx = 0
+        if path:
+            best_dist = float('inf')
+            for idx, pt in enumerate(path):
+                dp = math.hypot(rx - pt[0], ry - pt[1])
+                if dp < best_dist:
+                    best_dist = dp
+                    best_idx = idx
+        self.target_path_point = (float(rx), float(ry), best_idx)
+        self._reposition_soldiers()
+
+    def _get_soldier_formation_offsets(self, count):
+        """Возвращает тактические смещения солдат вокруг флага сбора."""
+        if count <= 1:
+            return [(0, 0)]
+        elif count == 2:
+            return [(-12, 0), (12, 0)]
+        elif count == 3:
+            return [(0, -12), (-12, 10), (12, 10)]
+        else:
+            return [(0, -14), (0, 14), (-14, 0), (14, 0)]
+
+    def _reposition_soldiers(self):
+        if not self.rally_point:
+            return
+        rx, ry = self.rally_point
+        active_soldiers = [s for s in self.soldiers if s.active]
+        offsets = self._get_soldier_formation_offsets(len(active_soldiers))
+        for s, (ox, oy) in zip(active_soldiers, offsets):
+            s.target_x = rx + ox
+            s.target_y = ry + oy
 
     def get_stats_at_level(self, lvl):
         """Возвращает словарь всех характеристик башни для заданного уровня."""
@@ -729,26 +825,36 @@ class Tower:
                 return 0
 
         if self.type == "tent":
-            if self.target_path_point is None:
-                best_dist = float('inf')
-                best_idx = 0
-                best_pt = path[0]
-                for idx, pt in enumerate(path):
-                    d = math.hypot(self.x - pt[0], self.y - pt[1])
-                    if d < best_dist:
-                        best_dist = d
-                        best_idx = idx
-                        best_pt = pt
-                self.target_path_point = (best_pt[0], best_pt[1], best_idx)
+            if self.rally_point is None:
+                if self.target_path_point is not None:
+                    self.rally_point = (float(self.target_path_point[0]), float(self.target_path_point[1]))
+                else:
+                    best_dist = float('inf')
+                    best_idx = 0
+                    best_pt = path[0] if path else (self.x, self.y)
+                    if path:
+                        for idx, pt in enumerate(path):
+                            d = math.hypot(self.x - pt[0], self.y - pt[1])
+                            if d < best_dist:
+                                best_dist = d
+                                best_idx = idx
+                                best_pt = pt
+                    self.target_path_point = (float(best_pt[0]), float(best_pt[1]), best_idx)
+                    self.rally_point = (float(best_pt[0]), float(best_pt[1]))
 
             self.soldiers = [s for s in self.soldiers if s.active]
 
-            if self.timer >= self.cooldown and len(self.soldiers) < self.max_soldiers and self.target_path_point:
+            if self.timer >= self.cooldown and len(self.soldiers) < self.max_soldiers and self.rally_point:
                 self.timer = 0.0
-                px, py, pidx = self.target_path_point
-                ox = px + random.randint(-14, 14)
-                oy = py + random.randint(-14, 14)
-                self.soldiers.append(Soldier(ox, oy, pidx, self))
+                rx, ry = self.rally_point
+                pidx = self.target_path_point[2] if self.target_path_point else 0
+                offsets = self._get_soldier_formation_offsets(len(self.soldiers) + 1)
+                assigned_offset = offsets[len(self.soldiers)] if len(self.soldiers) < len(offsets) else (0, 0)
+                target_x = rx + assigned_offset[0]
+                target_y = ry + assigned_offset[1]
+                spawn_x = self.x
+                spawn_y = self.y + 6
+                self.soldiers.append(Soldier(spawn_x, spawn_y, pidx, self, target_x=target_x, target_y=target_y))
 
             for s in self.soldiers:
                 s.update(dt, enemies, effects)
@@ -899,12 +1005,15 @@ class Tower:
         if self.type == "tent":
             for s in self.soldiers:
                 s.draw(surface)
-            if hovered and self.target_path_point:
-                # Линия и маркер точки сбора солдат на дороге
-                t_pos = (int(self.target_path_point[0]), int(self.target_path_point[1]))
-                pygame.draw.line(surface, (80, 220, 120), (self.x, self.y), t_pos, 2)
-                pygame.draw.circle(surface, GREEN, t_pos, 8, width=2)
-                pygame.draw.circle(surface, (80, 220, 120), t_pos, 4)
+            rp = getattr(self, "rally_point", None)
+            if rp is None and self.target_path_point:
+                rp = (self.target_path_point[0], self.target_path_point[1])
+            if rp:
+                rx, ry = int(rp[0]), int(rp[1])
+                is_active = (hovered or getattr(self, "_rally_selecting", False) or getattr(self, "_is_inspected", False) or getattr(self, "_is_rally_targeting", False))
+                if is_active:
+                    pygame.draw.line(surface, (70, 210, 120), (self.x, self.y), (rx, ry), 2)
+                draw_rally_flag(surface, rx, ry, active=is_active)
 
         if hovered and self.range > 0:
             rx, ry, rr = int(self.x), int(self.y), int(self.range)

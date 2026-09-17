@@ -138,6 +138,7 @@ def run_game():
     cactus_drone = None
     orbital_strike_cd = 0.0
     orbital_targeting = False
+    rally_targeting_tent = None
     dark_aegis_charges = 0
     flawless_streak = savedata.get("FlawlessWaveStreak", 0)
     lives_at_wave_start = 12
@@ -234,7 +235,7 @@ def run_game():
         nonlocal last_card_rect, last_btn_rect, last_target_rect, last_sell_rect, last_max_rect
         nonlocal r_btn, q_btn, pause_click_rects
         nonlocal current_wave_queue, upcoming_wave_preview, shake_amount, ambient_particles, map_decor, slime_splats
-        nonlocal active_meteorite, next_meteor_wave, cactus_drone, orbital_strike_cd, orbital_targeting, dark_aegis_charges, flawless_streak, lives_at_wave_start, session_start_wave
+        nonlocal active_meteorite, next_meteor_wave, cactus_drone, orbital_strike_cd, orbital_targeting, rally_targeting_tent, dark_aegis_charges, flawless_streak, lives_at_wave_start, session_start_wave
         nonlocal active_dig_site, dig_window, dig_session, dig_window_close_timer, battle_ui_fade_alpha
 
         pause_frozen_frame = None
@@ -287,6 +288,7 @@ def run_game():
         cactus_drone = CactusDrone(drone_lvl) if drone_lvl > 0 else None
         orbital_strike_cd = 0.0
         orbital_targeting = False
+        rally_targeting_tent = None
         dark_aegis_charges = savedata["Upgrades"].get("dark_aegis", 0)
 
         start_wave = savedata.get("SelectedStartWave", 1)
@@ -2004,10 +2006,14 @@ def run_game():
                             break
 
                 if new_hovered:
-                    inspected_tower = new_hovered
+                    if not rally_targeting_tent:
+                        inspected_tower = new_hovered
                 elif last_card_rect and last_card_rect.collidepoint(mouse_pos) and not is_paused:
                     # Курсор внутри карточки башни — меню остаётся открытым
                     pass
+                elif rally_targeting_tent and not is_paused:
+                    # Режим выбора точки сбора — сохраняем выделение палатки
+                    inspected_tower = rally_targeting_tent
                 else:
                     if not is_paused:
                         inspected_tower = None
@@ -2292,7 +2298,11 @@ def run_game():
                                 pause_frozen_frame = None
                             sfx_click.play()
                     elif event.key in [pygame.K_ESCAPE, getattr(pygame, 'K_AC_BACK', -999)]:
-                        if orbital_targeting:
+                        if rally_targeting_tent:
+                            rally_targeting_tent._rally_selecting = False
+                            rally_targeting_tent = None
+                            sfx_click.play()
+                        elif orbital_targeting:
                             orbital_targeting = False
                             sfx_click.play()
                         elif is_paused:
@@ -2308,6 +2318,9 @@ def run_game():
                         elif selected_tower_type:
                             selected_tower_type = None
                         elif inspected_tower:
+                            if rally_targeting_tent:
+                                rally_targeting_tent._rally_selecting = False
+                                rally_targeting_tent = None
                             inspected_tower = None
                         elif upgrade_mode:
                             upgrade_mode = False
@@ -2326,7 +2339,15 @@ def run_game():
                             game_speed = speed_levels[current_speed_index]
                             sfx_click.play()
                     elif event.key == pygame.K_r:
-                        if game_over or is_paused:
+                        if inspected_tower and inspected_tower.type == "tent" and not is_paused and not game_over:
+                            if rally_targeting_tent == inspected_tower:
+                                rally_targeting_tent._rally_selecting = False
+                                rally_targeting_tent = None
+                            else:
+                                rally_targeting_tent = inspected_tower
+                                inspected_tower._rally_selecting = True
+                            sfx_click.play()
+                        elif game_over or is_paused:
                             start_battle_session()
                             sfx_click.play()
                         else:
@@ -2337,8 +2358,13 @@ def run_game():
                     ctrl_dock_x = 1052
                     speed_btn_rect = pygame.Rect(ctrl_dock_x, SCREEN_HEIGHT - 66, 216, 52)
 
-                    # ПКМ: Отмена прицеливания орбиталки, уменьшение скорости и сброс выбора
+                    # ПКМ: Отмена прицеливания орбиталки / точки сбора, уменьшение скорости и сброс выбора
                     if event.button == 3:
+                        if rally_targeting_tent:
+                            rally_targeting_tent._rally_selecting = False
+                            rally_targeting_tent = None
+                            sfx_click.play()
+                            continue
                         if orbital_targeting:
                             orbital_targeting = False
                             sfx_click.play()
@@ -2594,6 +2620,35 @@ def run_game():
                                             ne.speed_multiplier = min(ne.speed_multiplier, 0.40)
                             continue
 
+                    # Установка точки сбора солдат палатки при активном прицеливании
+                    if rally_targeting_tent and not is_paused and not game_over:
+                        # Если клик внутри карточки осмотра башни
+                        if last_card_rect and last_card_rect.collidepoint(mouse_pos):
+                            if last_target_rect and last_target_rect.collidepoint(mouse_pos):
+                                rally_targeting_tent._rally_selecting = False
+                                rally_targeting_tent = None
+                                sfx_click.play()
+                                continue
+                            # Если клик по другим кнопкам карточки — сбрасываем режим выбора, но даём сработать кнопкам
+                            rally_targeting_tent._rally_selecting = False
+                            rally_targeting_tent = None
+                        elif mouse_pos[1] < SCREEN_HEIGHT - 72:
+                            r_dist = math.hypot(mouse_pos[0] - rally_targeting_tent.x, mouse_pos[1] - rally_targeting_tent.y)
+                            if r_dist <= rally_targeting_tent.range:
+                                rally_targeting_tent.set_rally_point(mouse_pos[0], mouse_pos[1], path=path)
+                                effects.append(RingEffect(mouse_pos[0], mouse_pos[1], 32, (80, 255, 130)))
+                                for _ in range(10):
+                                    effects.append(DropSpark(mouse_pos[0], mouse_pos[1], burst=True))
+                                effects.append(FloatingText(mouse_pos[0], mouse_pos[1] - 22, "ТОЧКА СБОРА!", (130, 255, 170)))
+                                sfx_click.play()
+                                rally_targeting_tent._rally_selecting = False
+                                rally_targeting_tent = None
+                                continue
+                            else:
+                                effects.append(FloatingText(mouse_pos[0], mouse_pos[1] - 18, "ВНЕ ЗОНЫ ПАЛАТКИ!", (255, 110, 110)))
+                                laser.play()
+                                continue
+
                     # Клик по кнопкам дока башен
                     b1_rect = pygame.Rect(18, SCREEN_HEIGHT - 70, 136, 58)
                     b2_rect = pygame.Rect(166, SCREEN_HEIGHT - 70, 136, 58)
@@ -2649,16 +2704,29 @@ def run_game():
                     # Клик по кнопкам в карточке башни
                     if inspected_tower:
                         if last_target_rect and last_target_rect.collidepoint(mouse_pos):
-                            if savedata.get("Upgrades", {}).get("smart_targeting", 0) >= 1:
-                                modes = ["FIRST", "STRONGEST", "WEAKEST", "LAST", "CLOSEST"]
-                            else:
-                                modes = ["FIRST", "STRONGEST", "LAST", "CLOSEST"]
-                            cur_idx = modes.index(inspected_tower.target_priority) if inspected_tower.target_priority in modes else 0
-                            inspected_tower.target_priority = modes[(cur_idx + 1) % len(modes)]
-                            sfx_click.play()
-                            continue
+                            if inspected_tower.type == "tent":
+                                if rally_targeting_tent == inspected_tower:
+                                    rally_targeting_tent._rally_selecting = False
+                                    rally_targeting_tent = None
+                                else:
+                                    rally_targeting_tent = inspected_tower
+                                    inspected_tower._rally_selecting = True
+                                sfx_click.play()
+                                continue
+                            elif inspected_tower.type != "farm":
+                                if savedata.get("Upgrades", {}).get("smart_targeting", 0) >= 1:
+                                    modes = ["FIRST", "STRONGEST", "WEAKEST", "LAST", "CLOSEST"]
+                                else:
+                                    modes = ["FIRST", "STRONGEST", "LAST", "CLOSEST"]
+                                cur_idx = modes.index(inspected_tower.target_priority) if inspected_tower.target_priority in modes else 0
+                                inspected_tower.target_priority = modes[(cur_idx + 1) % len(modes)]
+                                sfx_click.play()
+                                continue
 
                         if last_sell_rect and last_sell_rect.collidepoint(mouse_pos):
+                            if rally_targeting_tent:
+                                rally_targeting_tent._rally_selecting = False
+                                rally_targeting_tent = None
                             sell_val = max(20, int(inspected_tower.total_invested * 0.70))
                             cacti += sell_val
                             for s_idx, slot in enumerate(tower_slots):
@@ -2758,13 +2826,16 @@ def run_game():
                             selected_tower_type = None
 
                     # Клик по башне на карте для её осмотра/выбора (особенно важно для сенсорных экранов)
-                    if not selected_tower_type and not orbital_targeting and not is_paused and not game_over:
+                    if not selected_tower_type and not orbital_targeting and not rally_targeting_tent and not is_paused and not game_over:
                         clicked_map_tower = None
                         for tower in towers:
                             if math.hypot(mouse_pos[0] - tower.x, mouse_pos[1] - tower.y) < 32:
                                 clicked_map_tower = tower
                                 break
                         if clicked_map_tower:
+                            if rally_targeting_tent and rally_targeting_tent != clicked_map_tower:
+                                rally_targeting_tent._rally_selecting = False
+                                rally_targeting_tent = None
                             inspected_tower = clicked_map_tower
                             sfx_click.play()
                         else:
@@ -2788,6 +2859,9 @@ def run_game():
                             elif inspected_tower and not (last_card_rect and last_card_rect.collidepoint(mouse_pos)):
                                 # Клик по свободному полю карты снимает выделение башни
                                 if mouse_pos[1] < SCREEN_HEIGHT - 72:
+                                    if rally_targeting_tent:
+                                        rally_targeting_tent._rally_selecting = False
+                                        rally_targeting_tent = None
                                     inspected_tower = None
                                     last_card_rect = last_btn_rect = last_target_rect = last_sell_rect = last_max_rect = None
 
@@ -3803,6 +3877,51 @@ def run_game():
                     screen.blit(b_surf, (bx, by))
                     screen.blit(t_txt, (bx + 10, by + 4))
                     screen.blit(t_sub, (bx + 10, by + 23))
+
+                # Подсветка и прицел точки сбора солдат палатки
+                if rally_targeting_tent and not is_paused and not game_over:
+                    tx, ty = int(rally_targeting_tent.x), int(rally_targeting_tent.y)
+                    tr = int(rally_targeting_tent.range)
+                    pulse = (math.sin(pygame.time.get_ticks() * 0.009) + 1.0) * 0.5
+
+                    # Полупрозрачная зона действия палатки с пульсирующей каймой
+                    r_surf = pygame.Surface((tr * 2 + 10, tr * 2 + 10), pygame.SRCALPHA)
+                    p_alpha = int(22 + 16 * pulse)
+                    pygame.draw.circle(r_surf, (50, 200, 90, p_alpha), (tr + 5, tr + 5), tr)
+                    pygame.draw.circle(r_surf, (80, 255, 130, int(160 + 80 * pulse)), (tr + 5, tr + 5), tr, width=2)
+                    screen.blit(r_surf, (tx - tr - 5, ty - tr - 5))
+
+                    mx, my = mouse_pos
+                    in_range = (math.hypot(mx - tx, my - ty) <= tr)
+                    line_col = (80, 255, 120, 190) if in_range else (255, 90, 90, 180)
+
+                    # Линия связи от центра палатки к курсору
+                    guide_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+                    pygame.draw.line(guide_surf, line_col, (tx, ty), (mx, my), 2)
+                    screen.blit(guide_surf, (0, 0))
+
+                    # Превью флага на курсоре
+                    draw_rally_flag(screen, mx, my, active=True, bg_time=pygame.time.get_ticks())
+
+                    # Подсказка рядом с курсором
+                    if in_range:
+                        t_txt = small_font.render("ТОЧКА СБОРА СОЛДАТ", True, (160, 255, 190))
+                        t_sub = tiny_font.render("[ЛКМ] - Установить  |  [ПКМ / ESC] - Отмена", True, (210, 255, 220))
+                        b_border = (80, 240, 120, 240)
+                    else:
+                        t_txt = small_font.render("ВНЕ ЗОНЫ ДЕЙСТВИЯ!", True, (255, 130, 130))
+                        t_sub = tiny_font.render("Выберите точку внутри зоны палатки", True, (255, 200, 200))
+                        b_border = (255, 90, 90, 240)
+                    bw = max(t_txt.get_width(), t_sub.get_width()) + 20
+                    bh = 42
+                    bx = max(10, min(SCREEN_WIDTH - bw - 10, mx - bw // 2))
+                    by = max(40, my - 65)
+                    b_surf = pygame.Surface((bw, bh), pygame.SRCALPHA)
+                    pygame.draw.rect(b_surf, (20, 38, 26, 230), (0, 0, bw, bh), border_radius=6)
+                    pygame.draw.rect(b_surf, b_border, (0, 0, bw, bh), width=1, border_radius=6)
+                    b_surf.blit(t_txt, (10, 4))
+                    b_surf.blit(t_sub, (10, 23))
+                    screen.blit(b_surf, (bx, by))
 
                 # Применение плавного появления интерфейса на старте катки
                 if saved_field_backdrop is not None:

@@ -3038,6 +3038,10 @@ def _get_tower_inspect_static_surf(tower, upgrade_mode):
         pygame.draw.rect(static_surf, (22, 38, 26), target_btn_local, border_radius=5)
         pygame.draw.rect(static_surf, (60, 150, 80), target_btn_local, width=1, border_radius=5)
         t_lbl = tiny_font.render("ПРОИЗВОДСТВО: АВТО-СБОР УРОЖАЯ", True, (140, 235, 160))
+    elif tower.type == "tent":
+        pygame.draw.rect(static_surf, (22, 54, 34), target_btn_local, border_radius=5)
+        pygame.draw.rect(static_surf, (70, 210, 120), target_btn_local, width=1, border_radius=5)
+        t_lbl = tiny_font.render("[ФЛАГ / R] ТОЧКА СБОРА СОЛДАТ", True, (160, 255, 190))
     else:
         pygame.draw.rect(static_surf, (24, 32, 42), target_btn_local, border_radius=5)
         pygame.draw.rect(static_surf, (55, 75, 95), target_btn_local, width=1, border_radius=5)
@@ -3126,6 +3130,25 @@ def draw_tower_inspect_card(surface, tower, upgrade_mode, cacti, mouse_pos):
     target_btn_local = pygame.Rect(10, target_row_y, card_w - 20, 24)
     if tower.type == "farm":
         target_btn_screen = None
+    elif tower.type == "tent":
+        t_hov = target_btn_screen.collidepoint(mouse_pos)
+        is_rally_active = getattr(tower, '_rally_selecting', False)
+        if is_rally_active:
+            pygame.draw.rect(card_surf, (30, 85, 45), target_btn_local, border_radius=5)
+            pygame.draw.rect(card_surf, (110, 255, 160), target_btn_local, width=2, border_radius=5)
+            k_t = "rally_active_txt"
+            if k_t not in _tower_inspect_btn_cache:
+                _tower_inspect_btn_cache[k_t] = tiny_font.render(">> ВЫБЕРИТЕ ТОЧКУ НА КАРТЕ <<", True, (240, 255, 240))
+            t_lbl = _tower_inspect_btn_cache[k_t]
+            card_surf.blit(t_lbl, (target_btn_local.centerx - t_lbl.get_width() // 2, target_btn_local.centery - t_lbl.get_height() // 2))
+        elif t_hov:
+            pygame.draw.rect(card_surf, (32, 75, 48), target_btn_local, border_radius=5)
+            pygame.draw.rect(card_surf, (90, 240, 140), target_btn_local, width=1, border_radius=5)
+            k_t = "rally_hover_txt"
+            if k_t not in _tower_inspect_btn_cache:
+                _tower_inspect_btn_cache[k_t] = tiny_font.render("[КЛИК / R] СМЕНИТЬ ТОЧКУ СБОРА", True, (215, 255, 225))
+            t_lbl = _tower_inspect_btn_cache[k_t]
+            card_surf.blit(t_lbl, (target_btn_local.centerx - t_lbl.get_width() // 2, target_btn_local.centery - t_lbl.get_height() // 2))
     else:
         t_hov = target_btn_screen.collidepoint(mouse_pos)
         if t_hov:
