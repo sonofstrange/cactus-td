@@ -2747,8 +2747,8 @@ def run_game():
                             effects.append(FloatingText(SCREEN_WIDTH // 2, 150, "ДОСТИЖЕНИЕ РАЗБЛОКИРОВАНО!", GOLD))
                             sfx_achievement.play()
 
-                        # Награда за каждые 10 волн (+1 Звёздный Кактус)
-                        if completed_wave % 10 == 0:
+                        # Награда за каждые 5 волн (+1 Звёздный Кактус)
+                        if completed_wave % 5 == 0:
                             savedata["StellarCactuses"] = savedata.get("StellarCactuses", 0) + 1
                             session_stellar += 1
                             save_data(savedata)
@@ -3056,12 +3056,19 @@ def run_game():
                             effects.append(FloatingText(e.x, e.y - 42, f"+1 САЖЕНЕЦ: {s_name}", (125, 255, 175)))
                             item_drops.append(SproutDrop(e.x, e.y - 15, count=1, cactus_name=s_name))
 
-                        # Шанс дропа Звёздного кактуса со слаймов (сбалансировано против гиперинфляции в эндгейме)
-                        # Базовый шанс: 1.2% с обычных слаймов, 6.5% с элитных
-                        mob_star_base = 0.012 if e.type < 50 else 0.065
+                        # Шанс дропа Звёздного кактуса со слаймов:
+                        # До 20 волны полный базовый шанс (3.5% с обычных, 15% с элитных).
+                        # После 20 волны плавное линейное снижение, чтобы к 100 волне шанс стал ровно в 3 раза меньше.
+                        raw_mob_chance = 0.035 if e.type < 50 else 0.15
+                        if wave <= 20:
+                            wave_decay = 1.0
+                        else:
+                            wave_decay = max(1.0 / 3.0, 1.0 - ((wave - 20) / 80.0) * (2.0 / 3.0))
+
+                        mob_star_base = raw_mob_chance * wave_decay
+
                         map_mob_mult = 1.0 + (map_stellar_mult - 1.0) * 0.5
-                        wave_density_factor = 1.0 if wave <= 35 else max(0.45, (35.0 / wave) ** 0.5)
-                        base_star_chance = mob_star_base * magnet_mult * map_mob_mult * wave_density_factor
+                        base_star_chance = mob_star_base * magnet_mult * map_mob_mult
                         if not getattr(e, "is_golden", False) and e.type < 1000:
                             guar_stars = int(base_star_chance)
                             rem_star_chance = base_star_chance - guar_stars
