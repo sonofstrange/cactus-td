@@ -1992,7 +1992,7 @@ def run_game():
         # =================================================================
         elif current_state == STATE_PLAYING:
             game_dt = (raw_dt * game_speed) if not is_paused else 0.0
-            ui_dt = (raw_dt * (1.0 + 0.20 * max(0.0, game_speed - 1.0))) if not is_paused else 0.0
+            ui_dt = (raw_dt * (1.0 + 0.10 * max(0.0, game_speed - 1.0))) if not is_paused else 0.0
             if not is_paused:
                 pause_frozen_frame = None
 
@@ -2000,8 +2000,11 @@ def run_game():
             if not IS_ANDROID:
                 new_hovered = None
                 if not is_paused:
+                    mx, my = mouse_pos[0], mouse_pos[1]
                     for tower in towers:
-                        if math.hypot(mouse_pos[0] - tower.x, mouse_pos[1] - tower.y) < 32:
+                        dx = mx - tower.x
+                        dy = my - tower.y
+                        if dx * dx + dy * dy < 1024:
                             new_hovered = tower
                             break
 
@@ -3355,7 +3358,7 @@ def run_game():
                         effects.remove(eff)
 
                 for splat in slime_splats[:]:
-                    if splat.update(game_dt):
+                    if splat.update(ui_dt):
                         slime_splats.remove(splat)
                 if len(slime_splats) > 40:
                     slime_splats = slime_splats[-40:]
@@ -3936,7 +3939,7 @@ def run_game():
                 # Интерактивная карточка башни при наведении (в обычном и upgrade режимах)
                 if inspected_tower:
                     last_card_rect, last_btn_rect, last_target_rect, last_sell_rect, last_max_rect = draw_tower_inspect_card(
-                        screen, inspected_tower, upgrade_mode, cacti, mouse_pos
+                        screen, inspected_tower, upgrade_mode, cacti, mouse_pos, savedata=savedata
                     )
                 else:
                     last_card_rect = None

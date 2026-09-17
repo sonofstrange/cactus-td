@@ -863,6 +863,7 @@ DEFAULT_SAVE = {
         "meteor_strike": 0,
         "blizzard": 0,
         "shield_wall": 0,
+        "tent_thorns": 0,
         "superconductor": 0,
         "regeneration": 0,
         "thorn_armor": 0,
@@ -1752,6 +1753,23 @@ UPGRADE_TREE_NODES = {
         ],
         "stat_cur": lambda lvl: f"+{lvl} доп. боец казармы ({2 + lvl} бойца)" if lvl > 0 else "Базовый гарнизон из 2 бойцов",
         "stat_nxt": lambda lvl: f"+{lvl + 1} доп. боец казармы ({3 + lvl} бойца)",
+        "icon_key": "soldier"
+    },
+    "tent_thorns": {
+        "title": "Шипы Кактуса",
+        "branch": "tech",
+        "branch_title": "Вооружение",
+        "x": 230, "y": 545,
+        "max_lvl": 5,
+        "costs": [4, 8, 14, 22, 35],
+        "requires": {"tent_tower": "max"},
+        "desc": [
+            "Острые кактусовые шипы на доспехах гарнизона.",
+            "При атаке на воинов возвращают атакующему слайму",
+            "+30% урона за каждый изученный уровень шипов!"
+        ],
+        "stat_cur": lambda lvl: f"Шипы: возврат +{lvl * 30}% урона атакующему" if lvl > 0 else "Воины без шипов (0% возврата)",
+        "stat_nxt": lambda lvl: f"Шипы: возврат +{(lvl + 1) * 30}% урона атакующему",
         "icon_key": "soldier"
     },
     "tesla_tower": {

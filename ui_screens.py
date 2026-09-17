@@ -3055,10 +3055,11 @@ def _get_tower_inspect_static_surf(tower, upgrade_mode):
     return static_surf, target_row_y
 
 
-def draw_tower_inspect_card(surface, tower, upgrade_mode, cacti, mouse_pos):
+def draw_tower_inspect_card(surface, tower, upgrade_mode, cacti, mouse_pos, savedata=None):
     """
     Отрисовывает информационное / улучшающее меню башни:
-    - Сверхбыстрый рендеринг: статическая часть кэшируется, динамические статы обновляются ~2.5 раза в секунду.
+    - Сверхбыстрый прямой рендеринг: статическая часть кэшируется, 0 промежуточных альфа-буферов.
+    - В режиме оптимизации пропускается тень для идеального 60 FPS.
     """
     card_w = 336
     card_h = 250
@@ -3083,90 +3084,85 @@ def draw_tower_inspect_card(surface, tower, upgrade_mode, cacti, mouse_pos):
     conn_color = (255, 175, 45) if upgrade_mode else (65, 160, 245)
     pygame.draw.line(surface, conn_color, (card_rect.centerx, card_rect.centery), (tower.x, tower.y), 2)
 
-    # Кэшированная тень карточки
-    global _cached_card_shadow_surf, _cached_inspect_card_surf
-    if _cached_card_shadow_surf is None:
-        _cached_card_shadow_surf = pygame.Surface((card_w, card_h), pygame.SRCALPHA)
-        pygame.draw.rect(_cached_card_shadow_surf, (0, 0, 0, 110), (0, 0, card_w, card_h), border_radius=12)
-    surface.blit(_cached_card_shadow_surf, (card_x + 3, card_y + 5))
+    # Кэшированная тень карточки (только в нормальном режиме графики для максимального FPS)
+    global _cached_card_shadow_surf
+    if get_graphics_preset() != "optimized":
+        if _cached_card_shadow_surf is None:
+            _cached_card_shadow_surf = pygame.Surface((card_w, card_h), pygame.SRCALPHA)
+            pygame.draw.rect(_cached_card_shadow_surf, (0, 0, 0, 110), (0, 0, card_w, card_h), border_radius=12)
+        surface.blit(_cached_card_shadow_surf, (card_x + 3, card_y + 5))
 
-    # Статическая пререндеренная карточка
+    # Статическая пререндеренная карточка выводится напрямую
     static_surf, target_row_y = _get_tower_inspect_static_surf(tower, upgrade_mode)
-
-    # Переиспользуемая подложка карточки
-    if _cached_inspect_card_surf is None:
-        _cached_inspect_card_surf = pygame.Surface((card_w, card_h), pygame.SRCALPHA)
-    card_surf = _cached_inspect_card_surf
-    card_surf.fill((0, 0, 0, 0))
-    card_surf.blit(static_surf, (0, 0))
+    surface.blit(static_surf, card_rect.topleft)
 
     # Динамические статы (ограничение до 0.35с для предотвращения сброса шрифтового кэша)
     now = time.time()
     if now - getattr(tower, '_inspect_dyn_time', 0.0) >= 0.35 or not hasattr(tower, '_cached_dyn_dps_surf'):
         tower._inspect_dyn_time = now
-        cur = tower.get_stats_at_level(tower.level)
+        cur_dps = getattr(tower, 'dps', 0.0)
         dyn_dps = tower.get_dynamic_dps() if hasattr(tower, 'get_dynamic_dps') else 0.0
         tot_dmg = getattr(tower, 'total_damage_dealt', 0.0)
         tot_gold = getattr(tower, 'total_gold_earned', 0)
 
-        tower._cached_dyn_dps_surf = small_font.render(f"DPS: {cur['dps']:.1f} (Факт: {dyn_dps:.1f})", True, (255, 215, 90))
+        tower._cached_dyn_dps_surf = small_font.render(f"DPS: {cur_dps:.1f} (Факт: {dyn_dps:.1f})", True, (255, 215, 90))
         tower._cached_tot_dmg_surf = tiny_font.render(f"Урон: {int(tot_dmg):,}", True, (200, 240, 255))
         tower._cached_tot_gold_surf = small_font.render(f"Всего заработано: +{tot_gold} какт.", True, (255, 220, 100))
 
     if not upgrade_mode:
         header_h = 44
-        y_off = header_h + 15
+        y_off = card_y + header_h + 15
         row_step = 20
         if tower.type == "farm":
-            card_surf.blit(tower._cached_tot_gold_surf, (12, y_off + row_step * 2))
+            surface.blit(tower._cached_tot_gold_surf, (card_x + 12, y_off + row_step * 2))
         else:
             dps_s = tower._cached_dyn_dps_surf
-            card_surf.blit(dps_s, (card_w - dps_s.get_width() - 12, y_off))
+            surface.blit(dps_s, (card_x + card_w - dps_s.get_width() - 12, y_off))
             dmg_s = tower._cached_tot_dmg_surf
-            card_surf.blit(dmg_s, (card_w - dmg_s.get_width() - 12, y_off + row_step + 2))
+            surface.blit(dmg_s, (card_x + card_w - dmg_s.get_width() - 12, y_off + row_step + 2))
 
-    # Строка приоритета цели (hover)
+    # Строка приоритета цели / точки сбора
     target_btn_screen = pygame.Rect(card_x + 10, card_y + target_row_y, card_w - 20, 24)
-    target_btn_local = pygame.Rect(10, target_row_y, card_w - 20, 24)
     if tower.type == "farm":
         target_btn_screen = None
     elif tower.type == "tent":
         t_hov = target_btn_screen.collidepoint(mouse_pos)
         is_rally_active = getattr(tower, '_rally_selecting', False)
         if is_rally_active:
-            pygame.draw.rect(card_surf, (30, 85, 45), target_btn_local, border_radius=5)
-            pygame.draw.rect(card_surf, (110, 255, 160), target_btn_local, width=2, border_radius=5)
+            pygame.draw.rect(surface, (30, 85, 45), target_btn_screen, border_radius=5)
+            pygame.draw.rect(surface, (110, 255, 160), target_btn_screen, width=2, border_radius=5)
             k_t = "rally_active_txt"
             if k_t not in _tower_inspect_btn_cache:
                 _tower_inspect_btn_cache[k_t] = tiny_font.render(">> ВЫБЕРИТЕ ТОЧКУ НА КАРТЕ <<", True, (240, 255, 240))
             t_lbl = _tower_inspect_btn_cache[k_t]
-            card_surf.blit(t_lbl, (target_btn_local.centerx - t_lbl.get_width() // 2, target_btn_local.centery - t_lbl.get_height() // 2))
+            surface.blit(t_lbl, (target_btn_screen.centerx - t_lbl.get_width() // 2, target_btn_screen.centery - t_lbl.get_height() // 2))
         elif t_hov:
-            pygame.draw.rect(card_surf, (32, 75, 48), target_btn_local, border_radius=5)
-            pygame.draw.rect(card_surf, (90, 240, 140), target_btn_local, width=1, border_radius=5)
+            pygame.draw.rect(surface, (32, 75, 48), target_btn_screen, border_radius=5)
+            pygame.draw.rect(surface, (90, 240, 140), target_btn_screen, width=1, border_radius=5)
             k_t = "rally_hover_txt"
             if k_t not in _tower_inspect_btn_cache:
                 _tower_inspect_btn_cache[k_t] = tiny_font.render("[КЛИК / R] СМЕНИТЬ ТОЧКУ СБОРА", True, (215, 255, 225))
             t_lbl = _tower_inspect_btn_cache[k_t]
-            card_surf.blit(t_lbl, (target_btn_local.centerx - t_lbl.get_width() // 2, target_btn_local.centery - t_lbl.get_height() // 2))
+            surface.blit(t_lbl, (target_btn_screen.centerx - t_lbl.get_width() // 2, target_btn_screen.centery - t_lbl.get_height() // 2))
     else:
         t_hov = target_btn_screen.collidepoint(mouse_pos)
         if t_hov:
-            pygame.draw.rect(card_surf, (35, 48, 62), target_btn_local, border_radius=5)
-            pygame.draw.rect(card_surf, (90, 180, 255), target_btn_local, width=1, border_radius=5)
+            pygame.draw.rect(surface, (35, 48, 62), target_btn_screen, border_radius=5)
+            pygame.draw.rect(surface, (90, 180, 255), target_btn_screen, width=1, border_radius=5)
             t_mode_names = {"FIRST": "Первый", "LAST": "Последний", "STRONGEST": "Сильный", "WEAKEST": "Слабый", "CLOSEST": "Близкий"}
             cur_t_mode = t_mode_names.get(tower.target_priority, "Первый")
             k_t = ("target_txt", cur_t_mode)
             if k_t not in _tower_inspect_btn_cache:
                 _tower_inspect_btn_cache[k_t] = tiny_font.render(f"[T] ЦЕЛЬ: {cur_t_mode.upper()}", True, (140, 220, 255))
             t_lbl = _tower_inspect_btn_cache[k_t]
-            card_surf.blit(t_lbl, (target_btn_local.centerx - t_lbl.get_width() // 2, target_btn_local.centery - t_lbl.get_height() // 2))
+            surface.blit(t_lbl, (target_btn_screen.centerx - t_lbl.get_width() // 2, target_btn_screen.centery - t_lbl.get_height() // 2))
 
     # Нижние кнопки действия (Апгрейд + Макс + Продажа)
     btn_h = 32
-    btn_y = card_h - btn_h - 9
+    btn_y = card_y + card_h - btn_h - 9
 
-    has_bulk = (savedata.get("Upgrades", {}).get("bulk_upgrade", 0) > 0) if 'savedata' in globals() and isinstance(savedata, dict) else False
+    s_data = savedata if isinstance(savedata, dict) else globals().get('savedata', None)
+    has_bulk = (s_data.get("Upgrades", {}).get("bulk_upgrade", 0) > 0) if s_data and isinstance(s_data, dict) else False
     can_upgrade = (tower.level < tower.max_level)
     max_screen_rect = None
 
@@ -3175,28 +3171,22 @@ def draw_tower_inspect_card(surface, tower, upgrade_mode, cacti, mouse_pos):
         max_w = 64
         upg_w = card_w - 20 - sell_w - max_w - 12
 
-        upg_local_rect = pygame.Rect(10, btn_y, upg_w, btn_h)
-        upg_screen_rect = pygame.Rect(card_x + 10, card_y + btn_y, upg_w, btn_h)
+        upg_screen_rect = pygame.Rect(card_x + 10, btn_y, upg_w, btn_h)
         upg_hovered = upg_screen_rect.collidepoint(mouse_pos)
 
-        max_local_rect = pygame.Rect(10 + upg_w + 6, btn_y, max_w, btn_h)
-        max_screen_rect = pygame.Rect(card_x + 10 + upg_w + 6, card_y + btn_y, max_w, btn_h)
+        max_screen_rect = pygame.Rect(card_x + 10 + upg_w + 6, btn_y, max_w, btn_h)
         max_hovered = max_screen_rect.collidepoint(mouse_pos)
 
-        sell_local_rect = pygame.Rect(10 + upg_w + 6 + max_w + 6, btn_y, sell_w, btn_h)
-        sell_screen_rect = pygame.Rect(card_x + 10 + upg_w + 6 + max_w + 6, card_y + btn_y, sell_w, btn_h)
+        sell_screen_rect = pygame.Rect(card_x + 10 + upg_w + 6 + max_w + 6, btn_y, sell_w, btn_h)
         sell_hovered = sell_screen_rect.collidepoint(mouse_pos)
     else:
         sell_w = 98
         upg_w = card_w - 20 - sell_w - 8
-        max_local_rect = None
 
-        upg_local_rect = pygame.Rect(10, btn_y, upg_w, btn_h)
-        upg_screen_rect = pygame.Rect(card_x + 10, card_y + btn_y, upg_w, btn_h)
+        upg_screen_rect = pygame.Rect(card_x + 10, btn_y, upg_w, btn_h)
         upg_hovered = upg_screen_rect.collidepoint(mouse_pos)
 
-        sell_local_rect = pygame.Rect(10 + upg_w + 8, btn_y, sell_w, btn_h)
-        sell_screen_rect = pygame.Rect(card_x + 10 + upg_w + 8, card_y + btn_y, sell_w, btn_h)
+        sell_screen_rect = pygame.Rect(card_x + 10 + upg_w + 8, btn_y, sell_w, btn_h)
         sell_hovered = sell_screen_rect.collidepoint(mouse_pos)
 
     sell_value = max(20, int(tower.total_invested * 0.70))
@@ -3217,52 +3207,51 @@ def draw_tower_inspect_card(surface, tower, upgrade_mode, cacti, mouse_pos):
             bd_c = RED
             k_u = ("upg_no", tower.upgrade_cost, missing)
             if k_u not in _tower_inspect_btn_cache:
+                if len(_tower_inspect_btn_cache) > 64:
+                    _tower_inspect_btn_cache.clear()
                 _tower_inspect_btn_cache[k_u] = small_font.render(f"{tower.upgrade_cost} (-{missing})", True, (255, 200, 200))
             btn_txt = _tower_inspect_btn_cache[k_u]
 
-        pygame.draw.rect(card_surf, bg_c, upg_local_rect, border_radius=6)
-        pygame.draw.rect(card_surf, bd_c, upg_local_rect, width=2 if upg_hovered else 1, border_radius=6)
+        pygame.draw.rect(surface, bg_c, upg_screen_rect, border_radius=6)
+        pygame.draw.rect(surface, bd_c, upg_screen_rect, width=2 if upg_hovered else 1, border_radius=6)
 
         tot_btn_w = cactus_img_s.get_width() + 4 + btn_txt.get_width()
-        b_x = upg_local_rect.centerx - tot_btn_w // 2
-        card_surf.blit(cactus_img_s, (b_x, upg_local_rect.centery - cactus_img_s.get_height() // 2))
-        card_surf.blit(btn_txt, (b_x + cactus_img_s.get_width() + 4, upg_local_rect.centery - btn_txt.get_height() // 2))
+        b_x = upg_screen_rect.centerx - tot_btn_w // 2
+        surface.blit(cactus_img_s, (b_x, upg_screen_rect.centery - cactus_img_s.get_height() // 2))
+        surface.blit(btn_txt, (b_x + cactus_img_s.get_width() + 4, upg_screen_rect.centery - btn_txt.get_height() // 2))
 
         # Отрисовка кнопки МАКС
-        if max_local_rect is not None:
+        if max_screen_rect is not None:
             can_afford_any = (cacti >= tower.upgrade_cost)
             m_bg = (30, 80, 115) if not max_hovered else (45, 105, 145)
             m_bd = (90, 200, 255) if can_afford_any else (125, 75, 80)
-            pygame.draw.rect(card_surf, m_bg, max_local_rect, border_radius=6)
-            pygame.draw.rect(card_surf, m_bd, max_local_rect, width=2 if max_hovered else 1, border_radius=6)
+            pygame.draw.rect(surface, m_bg, max_screen_rect, border_radius=6)
+            pygame.draw.rect(surface, m_bd, max_screen_rect, width=2 if max_hovered else 1, border_radius=6)
             k_m = ("max_txt", can_afford_any)
             if k_m not in _tower_inspect_btn_cache:
                 _tower_inspect_btn_cache[k_m] = tiny_font.render("МАКС", True, (210, 245, 255) if can_afford_any else (180, 145, 145))
             m_txt = _tower_inspect_btn_cache[k_m]
-            card_surf.blit(m_txt, (max_local_rect.centerx - m_txt.get_width() // 2, max_local_rect.centery - m_txt.get_height() // 2))
+            surface.blit(m_txt, (max_screen_rect.centerx - m_txt.get_width() // 2, max_screen_rect.centery - m_txt.get_height() // 2))
     else:
-        pygame.draw.rect(card_surf, (60, 50, 20), upg_local_rect, border_radius=6)
-        pygame.draw.rect(card_surf, GOLD, upg_local_rect, width=1, border_radius=6)
+        pygame.draw.rect(surface, (60, 50, 20), upg_screen_rect, border_radius=6)
+        pygame.draw.rect(surface, GOLD, upg_screen_rect, width=1, border_radius=6)
         k_ml = "max_lvl_done"
         if k_ml not in _tower_inspect_btn_cache:
             _tower_inspect_btn_cache[k_ml] = tiny_font.render("МАКС. УРОВЕНЬ", True, GOLD)
         max_txt = _tower_inspect_btn_cache[k_ml]
-        card_surf.blit(max_txt, (upg_local_rect.centerx - max_txt.get_width() // 2, upg_local_rect.centery - max_txt.get_height() // 2))
+        surface.blit(max_txt, (upg_screen_rect.centerx - max_txt.get_width() // 2, upg_screen_rect.centery - max_txt.get_height() // 2))
 
     # Отрисовка кнопки продажи
-    pygame.draw.rect(card_surf, (110, 35, 40) if sell_hovered else (75, 25, 30), sell_local_rect, border_radius=6)
-    pygame.draw.rect(card_surf, (240, 80, 85) if sell_hovered else (150, 50, 55), sell_local_rect, width=2 if sell_hovered else 1, border_radius=6)
+    pygame.draw.rect(surface, (110, 35, 40) if sell_hovered else (75, 25, 30), sell_screen_rect, border_radius=6)
+    pygame.draw.rect(surface, (240, 80, 85) if sell_hovered else (150, 50, 55), sell_screen_rect, width=2 if sell_hovered else 1, border_radius=6)
     k_s = ("sell_val", sell_value)
     if k_s not in _tower_inspect_btn_cache:
         _tower_inspect_btn_cache[k_s] = small_font.render(f"[S]+{sell_value}", True, (255, 230, 230))
     s_txt = _tower_inspect_btn_cache[k_s]
     s_tot = cactus_img_s.get_width() + 3 + s_txt.get_width()
-    sx = sell_local_rect.centerx - s_tot // 2
-    card_surf.blit(cactus_img_s, (sx, sell_local_rect.centery - cactus_img_s.get_height() // 2))
-    card_surf.blit(s_txt, (sx + cactus_img_s.get_width() + 3, sell_local_rect.centery - s_txt.get_height() // 2))
-
-    # Выводим на экран
-    surface.blit(card_surf, card_rect.topleft)
+    sx = sell_screen_rect.centerx - s_tot // 2
+    surface.blit(cactus_img_s, (sx, sell_screen_rect.centery - cactus_img_s.get_height() // 2))
+    surface.blit(s_txt, (sx + cactus_img_s.get_width() + 3, sell_screen_rect.centery - s_txt.get_height() // 2))
 
     return card_rect, upg_screen_rect, target_btn_screen, sell_screen_rect, max_screen_rect
 

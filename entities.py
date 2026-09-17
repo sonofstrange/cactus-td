@@ -331,7 +331,7 @@ class Soldier:
             if effects is not None:
                 effects.append(FloatingText(closest_enemy.x, closest_enemy.y - 12, f"-{self.damage:g}", (180, 245, 160)))
 
-    def take_mob_damage(self, enemy_type, effects=None):
+    def take_mob_damage(self, enemy_type, effects=None, attacker=None):
         if enemy_type == 1: dmg = 3        # Зелёный слайм (легкий тычок)
         elif enemy_type == 2: dmg = 6      # Синий слайм
         elif enemy_type == 3: dmg = 12     # Огненный слайм (сильный ожог)
@@ -350,7 +350,8 @@ class Soldier:
         elif enemy_type >= 3000: dmg = 180 # Теневой Исполин (сокрушительный удар)
         elif enemy_type >= 2000: dmg = 120 # Слизнебарон (огромный урон)
         elif enemy_type >= 1000: dmg = 70  # Царь-Слизень (ощутимый урон)
-        knight_lvl = savedata.get("Upgrades", {}).get("knight_training", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
+        s_data = globals().get('savedata', None)
+        knight_lvl = s_data.get("Upgrades", {}).get("knight_training", 0) if isinstance(s_data, dict) else 0
         if knight_lvl > 0:
             dmg = max(1, int(dmg * (1.0 - knight_lvl * 0.06)))
 
@@ -360,6 +361,19 @@ class Soldier:
             effects.append(FloatingText(self.x, self.y - 14, f"-{dmg}", col))
             if enemy_type >= 1000:
                 effects.append(RingEffect(self.x, self.y, 32, (255, 60, 60)))
+
+        # Способность палатки «Кактусовые Шипы» (tent_thorns): возврат +30% урона за ранг атакующему
+        thorns_lvl = s_data.get("Upgrades", {}).get("tent_thorns", 0) if isinstance(s_data, dict) else 0
+        if thorns_lvl > 0 and attacker is not None and getattr(attacker, "active", False):
+            thorns_dmg = round(dmg * (thorns_lvl * 0.30), 1)
+            if thorns_dmg > 0:
+                attacker.take_damage(thorns_dmg, damage_type="soldier", savedata=s_data)
+                if self.tent:
+                    self.tent.record_damage(thorns_dmg)
+                if effects is not None:
+                    effects.append(FloatingText(attacker.x, attacker.y - 16, f"-{thorns_dmg:g} 🌵 ШИПЫ!", (160, 255, 120)))
+                    effects.append(DropSpark(attacker.x, attacker.y, burst=False))
+
         if self.hp <= 0:
             self.active = False
 
@@ -383,6 +397,15 @@ class Soldier:
 # БАШНИ
 # -------------------------------------------------------------------------
 _RANGE_SURF_CACHE = {}
+_ORB_GLOW_CACHE = {}
+
+def get_cached_orb_glow(ocol):
+    surf = _ORB_GLOW_CACHE.get(ocol)
+    if surf is None:
+        surf = pygame.Surface((18, 18), pygame.SRCALPHA)
+        pygame.draw.circle(surf, (*ocol, 75), (9, 9), 8)
+        _ORB_GLOW_CACHE[ocol] = surf
+    return surf
 
 def get_cached_range_surf(radius, col, bcol, width=2):
     """Возвращает кэшированную поверхность с полупрозрачным кругом радиуса атаки.
@@ -1002,9 +1025,9 @@ class Tower:
 
         # Передняя половина орбиты (вращается ПЕРЕД башней, создавая честный 3D-эффект)
         for ox, oy, ocol in front_orbs:
-            glow_surf = pygame.Surface((18, 18), pygame.SRCALPHA)
-            pygame.draw.circle(glow_surf, (*ocol, 75), (9, 9), 8)
-            surface.blit(glow_surf, (ox - 9, oy - 9))
+            if get_graphics_preset() != "optimized":
+                glow_surf = get_cached_orb_glow(ocol)
+                surface.blit(glow_surf, (ox - 9, oy - 9))
             pygame.draw.circle(surface, ocol, (ox, oy), 5)
             pygame.draw.circle(surface, (255, 255, 255), (ox - 1, oy - 1), 2)
 
@@ -1033,22 +1056,34 @@ class Tower:
 
         if hovered and self.range > 0:
             rx, ry, rr = int(self.x), int(self.y), int(self.range)
-            col = (60, 240, 100, 45) if not upgrade_mode else (255, 140, 40, 55)
-            bcol = (40, 180, 70, 170) if not upgrade_mode else (255, 140, 30, 190)
-            r_surf = get_cached_range_surf(rr, col, bcol, 2)
-            if r_surf:
-                surface.blit(r_surf, (rx - rr, ry - rr))
+            if get_graphics_preset() == "optimized":
+                # В режиме оптимизации рисуем чёткий векторный контур (0 тяжелого альфа-блендинга)
+                bcol = (50, 230, 90) if not upgrade_mode else (255, 155, 45)
+                pygame.draw.circle(surface, bcol, (rx, ry), rr, width=2)
+            else:
+                col = (60, 240, 100, 45) if not upgrade_mode else (255, 140, 40, 55)
+                bcol = (40, 180, 70, 170) if not upgrade_mode else (255, 140, 30, 190)
+                r_surf = get_cached_range_surf(rr, col, bcol, 2)
+                if r_surf:
+                    surface.blit(r_surf, (rx - rr, ry - rr))
 
-            # В режиме улучшений показываем полупрозрачный круг будущего радиуса
+            # В режиме улучшений показываем круг будущего радиуса
             if upgrade_mode and self.level < self.max_level:
-                nxt_s = self.get_stats_at_level(self.level + 1)
-                nxt_rng = int(nxt_s.get("range", self.range))
+                nxt_rng = getattr(self, "_cached_nxt_range", None)
+                if nxt_rng is None or getattr(self, "_cached_nxt_range_lvl", None) != self.level:
+                    nxt_s = self.get_stats_at_level(self.level + 1)
+                    nxt_rng = int(nxt_s.get("range", self.range))
+                    self._cached_nxt_range = nxt_rng
+                    self._cached_nxt_range_lvl = self.level
                 if nxt_rng > self.range:
-                    nxt_col = (255, 200, 50, 30)
-                    nxt_bcol = (255, 200, 50, 150)
-                    nxt_surf = get_cached_range_surf(nxt_rng, nxt_col, nxt_bcol, 1)
-                    if nxt_surf:
-                        surface.blit(nxt_surf, (rx - nxt_rng, ry - nxt_rng))
+                    if get_graphics_preset() == "optimized":
+                        pygame.draw.circle(surface, (255, 215, 60), (rx, ry), nxt_rng, width=1)
+                    else:
+                        nxt_col = (255, 200, 50, 30)
+                        nxt_bcol = (255, 200, 50, 150)
+                        nxt_surf = get_cached_range_surf(nxt_rng, nxt_col, nxt_bcol, 1)
+                        if nxt_surf:
+                            surface.blit(nxt_surf, (rx - nxt_rng, ry - nxt_rng))
 
 
 # -------------------------------------------------------------------------
@@ -2009,7 +2044,7 @@ class Enemy:
                             boss_engaged_soldier = soldier
                             if self.soldier_hit_timer >= 0.75:
                                 self.soldier_hit_timer = 0.0
-                                soldier.take_mob_damage(self.type, effects=effects)
+                                soldier.take_mob_damage(self.type, effects=effects, attacker=self)
                             break
                         else:
                             # Обычные и элитные слаймы: каждый воин сдерживает до 4 слаймов
@@ -2018,7 +2053,7 @@ class Enemy:
                                 blocked_by_soldier = True
                                 if self.soldier_hit_timer >= 0.75:
                                     self.soldier_hit_timer = 0.0
-                                    soldier.take_mob_damage(self.type, effects=effects)
+                                    soldier.take_mob_damage(self.type, effects=effects, attacker=self)
                                 break
                 if blocked_by_soldier or boss_engaged_soldier:
                     break
