@@ -3566,29 +3566,21 @@ def play_start_window_animation(bg_time, game_map=0, path=None, tower_slots=None
     start_bg = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
     generate_background(start_bg, bg_time, custom_cols=(menu_col_a, menu_col_b))
 
-    min_w, min_h = 4, 4
-    steps_shrink = 54
-    steps_expand = 54
+    min_w, min_h = 40, 24
+    steps_shrink = 50
+    steps_expand = 50
 
-    # Win32 DWM синхронизация для устранения задержки отрисовки в 1 кадр
+    # Win32 DWM синхронизация для плавной смены кадров
     dwm_flush_fn = None
-    hwnd = None
     try:
         import ctypes
-        from ctypes import wintypes
-        wm_info = pygame.display.get_wm_info()
-        if "window" in wm_info:
-            hwnd = wm_info["window"]
-            dwmapi = ctypes.windll.dwmapi
-            if hasattr(dwmapi, "DwmFlush"):
-                dwm_flush_fn = dwmapi.DwmFlush
-            if hasattr(dwmapi, "DwmSetWindowAttribute"):
-                val_true = wintypes.BOOL(True)
-                dwmapi.DwmSetWindowAttribute(hwnd, 3, ctypes.byref(val_true), ctypes.sizeof(val_true))
+        dwmapi = ctypes.windll.dwmapi
+        if hasattr(dwmapi, "DwmFlush"):
+            dwm_flush_fn = dwmapi.DwmFlush
     except Exception:
         pass
 
-    # Фаза 1: Плавное полное закрытие окна к центру без джиттеринга
+    # Фаза 1: Плавное сжатие окна к центру (картинка масштабируется вместе с окном без смещения за 1 кадр)
     for i in range(steps_shrink + 1):
         for ev in pygame.event.get():
             if ev.type == pygame.QUIT:
@@ -3599,11 +3591,9 @@ def play_start_window_animation(bg_time, game_map=0, path=None, tower_slots=None
         w = max(min_w, (int(raw_w) // 2) * 2)
         h = max(min_h, (int(w * SCREEN_HEIGHT / SCREEN_WIDTH) // 2) * 2)
 
-        scr = pygame.display.set_mode((w, h), pygame.NOFRAME)
-        ox = -((SCREEN_WIDTH - w) // 2)
-        oy = -((SCREEN_HEIGHT - h) // 2)
-        scr.fill((8, 12, 18))
-        scr.blit(start_bg, (ox, oy))
+        scr = pygame.display.set_mode((w, h))
+        scaled = pygame.transform.smoothscale(start_bg, (w, h))
+        scr.blit(scaled, (0, 0))
         pygame.display.flip()
         if dwm_flush_fn:
             dwm_flush_fn()
@@ -3620,23 +3610,13 @@ def play_start_window_animation(bg_time, game_map=0, path=None, tower_slots=None
         w = min(SCREEN_WIDTH, max(min_w, (int(raw_w) // 2) * 2))
         h = min(SCREEN_HEIGHT, max(min_h, (int(w * SCREEN_HEIGHT / SCREEN_WIDTH) // 2) * 2))
 
-        scr = pygame.display.set_mode((w, h), pygame.NOFRAME)
-        ox = -((SCREEN_WIDTH - w) // 2)
-        oy = -((SCREEN_HEIGHT - h) // 2)
-        scr.fill((8, 12, 18))
-        scr.blit(map_full_surf, (ox, oy))
+        scr = pygame.display.set_mode((w, h))
+        scaled = pygame.transform.smoothscale(map_full_surf, (w, h))
+        scr.blit(scaled, (0, 0))
         pygame.display.flip()
         if dwm_flush_fn:
             dwm_flush_fn()
         clock.tick(FPS)
-
-    # Возврат стандартного обрамлённого окна и отключение форсированного режима DWM
-    try:
-        if hwnd and hasattr(ctypes.windll.dwmapi, "DwmSetWindowAttribute"):
-            val_false = wintypes.BOOL(False)
-            ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, 3, ctypes.byref(val_false), ctypes.sizeof(val_false))
-    except Exception:
-        pass
 
     restored_screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
     pygame.display.set_caption("Cactus TD Remastered")
