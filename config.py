@@ -150,7 +150,10 @@ if IS_ANDROID:
     pygame.display.update = _scaled_flip
 else:
     real_screen = None
-    screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+    try:
+        screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SCALED | pygame.FULLSCREEN)
+    except Exception:
+        screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 
     def _get_layout(*args, **kwargs):
         return {
@@ -202,6 +205,12 @@ def _cross_platform_event_get(*args, **kwargs):
     for ev in events:
         if ev.type == pygame.KEYDOWN and hasattr(pygame, 'K_AC_BACK') and ev.key == pygame.K_AC_BACK:
             ev.key = pygame.K_ESCAPE
+
+        if ev.type == pygame.KEYDOWN and ev.key == pygame.K_F11:
+            try:
+                pygame.display.toggle_fullscreen()
+            except Exception:
+                pass
 
         if IS_ANDROID:
             if not USE_NATIVE_SCALED and real_screen is not None and real_screen != screen and layout:

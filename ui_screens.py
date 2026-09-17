@@ -3504,15 +3504,22 @@ def play_start_window_animation(bg_time, game_map=0, path=None, tower_slots=None
     center_x, center_y = SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2
     max_r = int(math.hypot(center_x, center_y))
 
-    # Фаза 1: Сжатие диафрагмы к центру (50 шагов для идеальной плавности)
-    steps = 50
+    # Детерминированные частицы вихря (звёздная пыль и колючки кактуса)
+    stardust = [
+        {'ang': (k / 36.0) * math.pi * 2, 'dist': 0.75 + (k % 5) * 0.12, 'sz': 2 if k % 2 == 0 else 3}
+        for k in range(36)
+    ]
+
+    # Фаза 1: Сжатие диафрагмы к центру с закручивающимся вихрем и лучами (48 шагов)
+    steps = 48
     for i in range(steps + 1):
         for ev in pygame.event.get():
             if ev.type == pygame.QUIT:
                 break
         t = min(1.0, max(0.0, i / float(steps)))
-        progress = t ** 1.3
+        progress = t ** 1.25
         r = max(0, int(max_r * (1.0 - progress)))
+        rot = progress * math.pi * 2.5
 
         # Плавная интерполяция цвета фона меню -> цвет биома карты
         cur_a = (
@@ -3532,18 +3539,58 @@ def play_start_window_animation(bg_time, game_map=0, path=None, tower_slots=None
             mask_surf.fill((8, 12, 18, 255))
             pygame.draw.circle(mask_surf, (0, 0, 0, 0), (center_x, center_y), r)
             screen.blit(mask_surf, (0, 0))
+
+            # Многоуровневые светящиеся кольца
             pygame.draw.circle(screen, target_col_b, (center_x, center_y), r, width=3)
+            if r > 20:
+                pygame.draw.circle(screen, (255, 255, 255), (center_x, center_y), r - 2, width=1)
+                # Вращающиеся лучи диафрагмы / портала
+                for k in range(12):
+                    ra = rot + k * (math.pi / 6)
+                    x1 = center_x + math.cos(ra) * r
+                    y1 = center_y + math.sin(ra) * r
+                    x2 = center_x + math.cos(ra) * (r + 18)
+                    y2 = center_y + math.sin(ra) * (r + 18)
+                    pygame.draw.line(screen, (255, 225, 100), (x1, y1), (x2, y2), 3)
+
+            # Закручивающиеся частицы звёздной пыли
+            for p in stardust:
+                pr = int(r * p['dist'])
+                if pr > 5:
+                    pa = p['ang'] + rot * 1.5
+                    px = int(center_x + math.cos(pa) * pr)
+                    py = int(center_y + math.sin(pa) * pr)
+                    if 0 <= px < SCREEN_WIDTH and 0 <= py < SCREEN_HEIGHT:
+                        pygame.draw.circle(screen, target_col_b, (px, py), p['sz'])
+
         pygame.display.flip()
         clock.tick(FPS)
 
-    # Фаза 2: Максимально сузилось -> появляется сама карта, плавно открывается (50 шагов)
-    steps_exp = 50
+    # Кульминация в центре: яркая вспышка сверхновой и ударная волна (4 кадра)
+    for fi in range(4):
+        for ev in pygame.event.get():
+            if ev.type == pygame.QUIT:
+                break
+        screen.fill((8, 12, 18))
+        fr = (fi + 1) * 28
+        pygame.draw.circle(screen, (255, 255, 255), (center_x, center_y), max(4, 16 - fi * 3))
+        pygame.draw.circle(screen, (255, 220, 100), (center_x, center_y), fr, width=3)
+        span = 140 - fi * 30
+        pygame.draw.line(screen, (255, 255, 255), (center_x - span, center_y), (center_x + span, center_y), 3)
+        pygame.draw.line(screen, (255, 255, 255), (center_x, center_y - span), (center_x, center_y + span), 3)
+        pygame.display.flip()
+        clock.tick(FPS)
+
+    # Фаза 2: Максимально сузилось -> появляется сама карта, плавно открывается с рассеиванием энергии (48 шагов)
+    steps_exp = 48
     for i in range(1, steps_exp + 1):
         for ev in pygame.event.get():
             if ev.type == pygame.QUIT:
                 break
-        progress = (i / float(steps_exp)) ** 1.3
+        progress = (i / float(steps_exp)) ** 1.25
         r = min(max_r, int(max_r * progress))
+        rot = -progress * math.pi * 2.0
+
         screen.fill((8, 12, 18))
         if r > 0:
             screen.blit(map_full_surf, (0, 0))
@@ -3552,7 +3599,18 @@ def play_start_window_animation(bg_time, game_map=0, path=None, tower_slots=None
                 mask_surf.fill((8, 12, 18, 255))
                 pygame.draw.circle(mask_surf, (0, 0, 0, 0), (center_x, center_y), r)
                 screen.blit(mask_surf, (0, 0))
-                pygame.draw.circle(screen, (255, 215, 80), (center_x, center_y), r, width=3)
+
+                pygame.draw.circle(screen, (255, 255, 255), (center_x, center_y), r, width=2)
+                pygame.draw.circle(screen, (255, 215, 80), (center_x, center_y), r + 3, width=3)
+                # Расходящиеся световые лучи
+                for k in range(12):
+                    ra = rot + k * (math.pi / 6)
+                    x1 = center_x + math.cos(ra) * r
+                    y1 = center_y + math.sin(ra) * r
+                    x2 = center_x + math.cos(ra) * (r + 24)
+                    y2 = center_y + math.sin(ra) * (r + 24)
+                    pygame.draw.line(screen, (255, 215, 80), (x1, y1), (x2, y2), 3)
+
         pygame.display.flip()
         clock.tick(FPS)
 
