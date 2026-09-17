@@ -1246,17 +1246,27 @@ def draw_map_selection_screen(surface, game_map, current_offset, savedata, mouse
         for s_idx, (mw, rew, rank) in enumerate(get_map_mastery_milestones(mid)):
             achieved = (rec >= mw)
             star_box = pygame.Rect(x_pos + 72 + s_idx * 63, y_pos + 215, 58, 24)
+            sb_hov = star_box.collidepoint(mouse_pos)
             if achieved:
-                pygame.draw.rect(surface, (46, 36, 14), star_box, border_radius=6)
-                pygame.draw.rect(surface, GOLD, star_box, width=1, border_radius=6)
+                pygame.draw.rect(surface, (60, 48, 20) if sb_hov else (46, 36, 14), star_box, border_radius=6)
+                pygame.draw.rect(surface, (255, 235, 130) if sb_hov else GOLD, star_box, width=2 if sb_hov else 1, border_radius=6)
                 surface.blit(stellar_cactus_img_xs, (star_box.left + 3, star_box.centery - 9))
                 s_txt = tiny_font.render(f"{mw}в", True, (255, 225, 110))
                 surface.blit(s_txt, (star_box.left + 23, star_box.centery - s_txt.get_height() // 2))
             else:
-                pygame.draw.rect(surface, (16, 22, 32), star_box, border_radius=6)
-                pygame.draw.rect(surface, (44, 56, 72), star_box, width=1, border_radius=6)
-                s_txt = tiny_font.render(f"{mw}в", True, (105, 120, 135))
+                pygame.draw.rect(surface, (26, 34, 46) if sb_hov else (16, 22, 32), star_box, border_radius=6)
+                pygame.draw.rect(surface, (70, 95, 125) if sb_hov else (44, 56, 72), star_box, width=1, border_radius=6)
+                s_txt = tiny_font.render(f"{mw}в", True, (160, 185, 205) if sb_hov else (105, 120, 135))
                 surface.blit(s_txt, (star_box.centerx - s_txt.get_width() // 2, star_box.centery - s_txt.get_height() // 2))
+
+            if sb_hov:
+                tt_txt = tiny_font.render(f"{rank}: {mw} волна (+{rew} ⭐)", True, (255, 235, 130) if achieved else (200, 220, 240))
+                tt_w, tt_h = tt_txt.get_width() + 14, 24
+                tt_x = max(10, min(SCREEN_WIDTH - tt_w - 10, star_box.centerx - tt_w // 2))
+                tt_y = star_box.top - 28
+                pygame.draw.rect(surface, (14, 18, 26), (tt_x, tt_y, tt_w, tt_h), border_radius=6)
+                pygame.draw.rect(surface, GOLD if achieved else (60, 90, 130), (tt_x, tt_y, tt_w, tt_h), width=1, border_radius=6)
+                surface.blit(tt_txt, (tt_x + 7, tt_y + 12 - tt_txt.get_height() // 2))
 
         # Нижняя плашка: Рекорд, выбор карты и кнопка анализа волн
         bot_rect = pygame.Rect(x_pos + 14, y_pos + 250, card_w - 28, 104)

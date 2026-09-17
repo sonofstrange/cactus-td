@@ -15,6 +15,7 @@ pygame.init()
 import sys
 
 IS_ANDROID = hasattr(sys, 'getandroidapilevel') or 'ANDROID_ARGUMENT' in os.environ or 'ANDROID_PRIVATE' in os.environ
+GAME_VERSION = "0.1.0"
 
 if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
     BASE_DIR = sys._MEIPASS
@@ -1174,13 +1175,13 @@ def get_map_mastery_milestones(mid):
     biome = MAP_BIOMES_DATA.get(mid, MAP_BIOMES_DATA.get(0, {}))
     s_mult = biome.get("stellar_mult", 1.0)
     waves = [10, 25, 50, 75]
-    base_rews = [3, 6, 12, 25]
+    base_rews = [10, 20, 30, 40]
     ranks = ["Бронза", "Серебро", "Золото", "Алмаз"]
     return [(w, max(1, int(round(base_r * s_mult))), rank) for w, base_r, rank in zip(waves, base_rews, ranks)]
 
 MASTERY_MILESTONES = get_map_mastery_milestones(0)
-OLD_MASTERY_REWARDS = {10: 3, 25: 6, 50: 12, 75: 25}
-NEW_MASTERY_REWARDS = {10: 3, 25: 6, 50: 12, 75: 25}
+OLD_MASTERY_REWARDS = {10: 10, 25: 20, 50: 30, 75: 40}
+NEW_MASTERY_REWARDS = {10: 10, 25: 20, 50: 30, 75: 40}
 
 # -------------------------------------------------------------------------
 # ПРОЦЕДУРНЫЙ ГЕНЕРАТОР КАРТ ДЛЯ КАРТЫ 10 («ОАЗИС СОЗДАТЕЛЯ»)
