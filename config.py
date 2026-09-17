@@ -39,7 +39,7 @@ import pygame
 pygame.init()
 
 IS_ANDROID = hasattr(sys, 'getandroidapilevel') or 'ANDROID_ARGUMENT' in os.environ or 'ANDROID_PRIVATE' in os.environ
-GAME_VERSION = "0.1.0"
+GAME_VERSION = "0.1.1"
 
 if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
     BASE_DIR = sys._MEIPASS
@@ -1246,13 +1246,13 @@ def get_map_mastery_milestones(mid=0):
     Рубежи: 10, 25, 50, 75 волн (фиксированная награда 10, 15, 20 и 30 кактусов независимо от карты).
     """
     waves = [10, 25, 50, 75]
-    rews = [10, 15, 20, 30]
+    rews = [15, 20, 25, 35]
     ranks = ["Бронза", "Серебро", "Золото", "Алмаз"]
     return [(w, rew, rank) for w, rew, rank in zip(waves, rews, ranks)]
 
 MASTERY_MILESTONES = get_map_mastery_milestones(0)
-OLD_MASTERY_REWARDS = {10: 10, 25: 15, 50: 20, 75: 30}
-NEW_MASTERY_REWARDS = {10: 10, 25: 15, 50: 20, 75: 30}
+OLD_MASTERY_REWARDS = {10: 15, 25: 20, 50: 25, 75: 35}
+NEW_MASTERY_REWARDS = {10: 15, 25: 20, 50: 25, 75: 35}
 
 # -------------------------------------------------------------------------
 # ПРОЦЕДУРНЫЙ ГЕНЕРАТОР КАРТ ДЛЯ КАРТЫ 10 («ОАЗИС СОЗДАТЕЛЯ»)

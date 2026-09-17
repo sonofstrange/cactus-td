@@ -1138,6 +1138,14 @@ def draw_map_selection_screen(surface, game_map, current_offset, savedata, mouse
     m_txt = small_font.render("< МЕНЮ [ESC]", True, WHITE)
     surface.blit(m_txt, (menu_btn_rect.centerx - m_txt.get_width() // 2, menu_btn_rect.centery - m_txt.get_height() // 2))
 
+    # Кнопка Справка / Механики
+    guide_btn_rect = pygame.Rect(SCREEN_WIDTH - 298, 20, 138, 48)
+    g_hov = guide_btn_rect.collidepoint(mouse_pos)
+    pygame.draw.rect(surface, (30, 75, 110) if g_hov else (20, 50, 78), guide_btn_rect, border_radius=8)
+    pygame.draw.rect(surface, (90, 200, 255) if g_hov else (50, 140, 190), guide_btn_rect, width=2, border_radius=8)
+    g_txt = small_font.render("? МЕХАНИКИ", True, (220, 245, 255))
+    surface.blit(g_txt, (guide_btn_rect.centerx - g_txt.get_width() // 2, guide_btn_rect.centery - g_txt.get_height() // 2))
+
     # Свободный, гордый центрированный заголовок
     title_shadow = large_font.render("ВЫБОР КАРТЫ", True, (10, 20, 15))
     title = large_font.render("ВЫБОР КАРТЫ", True, (240, 255, 245))
@@ -1541,7 +1549,7 @@ def draw_map_selection_screen(surface, game_map, current_offset, savedata, mouse
     set_txt = nav_font.render("ОПЦИИ [O]", True, WHITE)
     surface.blit(set_txt, (settings_btn_rect.left + 52, settings_btn_rect.centery - set_txt.get_height() // 2))
 
-    return upg_btn_rect, ach_btn_rect, bestiary_btn_rect, settings_btn_rect, map_rects, info_btn_rects, btn_minus, btn_plus, start_btn_rect, l_arr_rect, r_arr_rect, dot_rects, greenhouse_btn_rect, relics_btn_rect, dark_panel, menu_btn_rect
+    return upg_btn_rect, ach_btn_rect, bestiary_btn_rect, settings_btn_rect, map_rects, info_btn_rects, btn_minus, btn_plus, start_btn_rect, l_arr_rect, r_arr_rect, dot_rects, greenhouse_btn_rect, relics_btn_rect, dark_panel, menu_btn_rect, guide_btn_rect
 
 
 
@@ -2727,8 +2735,10 @@ def _get_tower_inspect_static_surf(tower, upgrade_mode):
 
     card_w = 336
     card_h = 250
-    static_surf = pygame.Surface((card_w, card_h), pygame.SRCALPHA)
-    pygame.draw.rect(static_surf, (18, 24, 32, 242), (0, 0, card_w, card_h), border_radius=12)
+    static_surf = pygame.Surface((card_w, card_h))
+    static_surf.fill((0, 0, 0))
+    pygame.draw.rect(static_surf, (18, 24, 32), (0, 0, card_w, card_h), border_radius=12)
+    static_surf.set_colorkey((0, 0, 0))
 
     # Шапка карточки
     header_h = 44
@@ -3086,7 +3096,7 @@ def draw_tower_inspect_card(surface, tower, upgrade_mode, cacti, mouse_pos, save
 
     # Кэшированная тень карточки (только в нормальном режиме графики для максимального FPS)
     global _cached_card_shadow_surf
-    if get_graphics_preset() != "optimized":
+    if not IS_ANDROID and get_graphics_preset() != "optimized":
         if _cached_card_shadow_surf is None:
             _cached_card_shadow_surf = pygame.Surface((card_w, card_h), pygame.SRCALPHA)
             pygame.draw.rect(_cached_card_shadow_surf, (0, 0, 0, 110), (0, 0, card_w, card_h), border_radius=12)
@@ -3489,7 +3499,205 @@ def draw_custom_map_setup_modal(surface, savedata, mouse_pos):
 
 
 
+def draw_mechanics_guide_modal(surface, mouse_pos, current_tab=0):
+    """
+    Интерактивное окно «Справочник и Механики боя»:
+    Подробные пояснения ключевых тактических механик игры:
+    - Элементальные синергии (Огонь + Лёд = Термошок +75% урона)
+    - Броня мобов и пробитие (Магия и Тесла игнорируют броню)
+    - Палатка, Точка сбора воинов и Шипы (+30%/ур. возврата урона)
+    - Кактусовая ферма и Аура орошения
+    - Башня Тесла (цепная молния)
+    - Орбитальный залп (клавиша F)
+    - Звёздные и Тёмные кактусы (Древо талантов)
+    """
+    # 1. Затемняющий оверлей
+    overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+    overlay.fill((0, 0, 0, 195))
+    surface.blit(overlay, (0, 0))
+
+    box_w = 880
+    box_h = 580
+    box_x = (SCREEN_WIDTH - box_w) // 2
+    box_y = (SCREEN_HEIGHT - box_h) // 2
+    modal_rect = pygame.Rect(box_x, box_y, box_w, box_h)
+
+    pygame.draw.rect(surface, (18, 24, 34), modal_rect, border_radius=14)
+    pygame.draw.rect(surface, (65, 170, 240), modal_rect, width=2, border_radius=14)
+
+    # 2. Шапка
+    hdr_h = 52
+    header_rect = pygame.Rect(box_x, box_y, box_w, hdr_h)
+    pygame.draw.rect(surface, (24, 36, 52), header_rect, border_top_left_radius=14, border_top_right_radius=14)
+    pygame.draw.line(surface, (55, 80, 115), (box_x, box_y + hdr_h), (box_x + box_w, box_y + hdr_h), 2)
+
+    title_txt = font.render("СПРАВОЧНИК МЕХАНИК И ТАКТИКИ БОЯ", True, (240, 255, 250))
+    surface.blit(title_txt, (box_x + 24, box_y + 14))
+
+    # Кнопка закрытия [X]
+    close_btn = pygame.Rect(box_x + box_w - 44, box_y + 10, 32, 32)
+    cl_hov = close_btn.collidepoint(mouse_pos)
+    pygame.draw.rect(surface, (160, 40, 60) if cl_hov else (90, 25, 40), close_btn, border_radius=6)
+    pygame.draw.rect(surface, (255, 100, 120) if cl_hov else (180, 50, 75), close_btn, width=1, border_radius=6)
+    x_txt = font.render("X", True, WHITE)
+    surface.blit(x_txt, (close_btn.centerx - x_txt.get_width() // 2, close_btn.centery - x_txt.get_height() // 2 - 1))
+
+    # 3. Вкладки (Tabs)
+    tabs = [
+        ("БОЕВЫЕ СИНЕРГИИ", (255, 160, 50)),
+        ("ТАКТИКА БАШЕН", (80, 220, 130)),
+        ("ПРОКАЧКА И КАКТУСЫ", (255, 215, 60))
+    ]
+    tab_w = 270
+    tab_h = 36
+    tab_gap = 10
+    total_tabs_w = len(tabs) * tab_w + (len(tabs) - 1) * tab_gap
+    start_tab_x = box_x + (box_w - total_tabs_w) // 2
+    tab_y = box_y + hdr_h + 12
+    tab_rects = []
+
+    for t_idx, (t_name, t_accent) in enumerate(tabs):
+        t_rect = pygame.Rect(start_tab_x + t_idx * (tab_w + tab_gap), tab_y, tab_w, tab_h)
+        tab_rects.append(t_rect)
+        is_cur = (current_tab == t_idx)
+        t_hov = t_rect.collidepoint(mouse_pos)
+
+        if is_cur:
+            bg_c = (32, 48, 70)
+            bd_c = t_accent
+            txt_c = (255, 255, 255)
+        elif t_hov:
+            bg_c = (26, 38, 54)
+            bd_c = (100, 140, 180)
+            txt_c = (220, 235, 250)
+        else:
+            bg_c = (18, 26, 38)
+            bd_c = (42, 60, 84)
+            txt_c = (150, 175, 200)
+
+        pygame.draw.rect(surface, bg_c, t_rect, border_radius=8)
+        pygame.draw.rect(surface, bd_c, t_rect, width=2 if is_cur else 1, border_radius=8)
+        tab_lbl = small_font.render(t_name, True, txt_c)
+        surface.blit(tab_lbl, (t_rect.centerx - tab_lbl.get_width() // 2, t_rect.centery - tab_lbl.get_height() // 2))
+
+    # 4. Содержимое вкладок
+    content_y = tab_y + tab_h + 14
+    content_rect = pygame.Rect(box_x + 18, content_y, box_w - 36, box_h - (content_y - box_y) - 16)
+    pygame.draw.rect(surface, (14, 18, 26), content_rect, border_radius=10)
+    pygame.draw.rect(surface, (36, 48, 68), content_rect, width=1, border_radius=10)
+
+    cy = content_rect.top + 16
+    cx = content_rect.left + 20
+    cw = content_rect.width - 40
+
+    def draw_guide_card(title, title_col, lines, badge_text=""):
+        nonlocal cy
+        card_h = 28 + len(lines) * 22 + 10
+        c_rect = pygame.Rect(cx, cy, cw, card_h)
+        pygame.draw.rect(surface, (20, 28, 40), c_rect, border_radius=8)
+        pygame.draw.rect(surface, (45, 65, 90), c_rect, width=1, border_radius=8)
+
+        # Левая цветовая полоска
+        pygame.draw.rect(surface, title_col, (cx, cy, 5, card_h), border_top_left_radius=8, border_bottom_left_radius=8)
+
+        # Заголовок
+        t_surf = font.render(title, True, title_col)
+        surface.blit(t_surf, (cx + 16, cy + 8))
+
+        if badge_text:
+            b_surf = tiny_font.render(badge_text, True, (255, 240, 180))
+            bw = b_surf.get_width() + 16
+            bh = 20
+            b_rect = pygame.Rect(cx + cw - bw - 12, cy + 8, bw, bh)
+            pygame.draw.rect(surface, (55, 45, 20), b_rect, border_radius=4)
+            pygame.draw.rect(surface, (200, 160, 40), b_rect, width=1, border_radius=4)
+            surface.blit(b_surf, (b_rect.centerx - b_surf.get_width() // 2, b_rect.centery - b_surf.get_height() // 2))
+
+        for li, (label, val, val_col) in enumerate(lines):
+            ly = cy + 34 + li * 22
+            l_surf = small_font.render(label, True, (180, 200, 220))
+            surface.blit(l_surf, (cx + 18, ly))
+            if val:
+                v_surf = small_font.render(val, True, val_col)
+                surface.blit(v_surf, (cx + 18 + l_surf.get_width(), ly))
+
+        cy += card_h + 12
+
+    if current_tab == 0:
+        # Вкладка 0: БОЕВЫЕ СИНЕРГИИ
+        draw_guide_card(
+            "ЭЛЕМЕНТАРНОЕ КОМБО: ОГОНЬ + ЛЁД (ТЕРМОШОК)",
+            (255, 140, 40),
+            [
+                ("Механика: ", "Замороженные или замедленные враги получают +75% комбо-урона от огня!", (255, 215, 80)),
+                ("Тактика: ", "Ставьте Ледяную башню на повороте, а Огненную башню сразу за ней по тропе.", (130, 230, 150)),
+                ("Эффект: ", "Снаряды разлетаются брызгами пара со звуком комбо и фиолетовыми искрами.", (180, 220, 255))
+            ],
+            badge_text="+75% УРОНА"
+        )
+        draw_guide_card(
+            "БРОНЯ ВРАГОВ (ARMOR) И ЧИСТЫЙ УРОН",
+            (100, 200, 255),
+            [
+                ("Бронированные враги: ", "Серые и тяжелые слаймы срезают от 30% до 60% физического урона.", (255, 130, 130)),
+                ("Магическая башня: ", "Её стрелы на 100% игнорируют броню и наносят полный урон!", (140, 240, 160)),
+                ("Башня Тесла: ", "Цепная молния бьёт чистой энергией сквозь любую броню по цепочке целей.", (120, 230, 255))
+            ],
+            badge_text="ПРОБИТИЕ БРОНИ"
+        )
+    elif current_tab == 1:
+        # Вкладка 1: ТАКТИКА БАШЕН
+        draw_guide_card(
+            "ПАЛАТКА СОЛДАТ: ТОЧКА СБОРА И ШИПЫ",
+            (80, 220, 130),
+            [
+                ("Удержание: ", "Храбрые кактусовые воины блокируют мобов на тропе, давая башням время стрелять.", (220, 240, 230)),
+                ("Точка сбора [R]: ", "Нажмите [Флаг / R] в меню палатки и кликните на дорогу в её радиусе!", (255, 215, 80)),
+                ("Талант «Шипы»: ", "При атаке врагов воины возвращают атакующему +30% урона за каждый уровень!", (255, 140, 100))
+            ],
+            badge_text="ШИПЫ +30%/УР"
+        )
+        draw_guide_card(
+            "КАКТУСОВАЯ ФЕРМА: ДОХОД И ОРОШЕНИЕ",
+            (255, 215, 60),
+            [
+                ("Экономика: ", "Ферма приносит гарантированные кактусы в конце каждой отбитой волны.", (240, 240, 200)),
+                ("Талант «Орошение»: ", "Активирует полив! Ферма раз в 15-20 сек поливает башни в радиусе ауры.", (130, 240, 160)),
+                ("Бонус темпа: ", "Орошенные башни стреляют на 10-35% быстрее, круша волны за секунды.", (100, 230, 255))
+            ],
+            badge_text="АУРА УСКОРЕНИЯ"
+        )
+    else:
+        # Вкладка 2: ПРОКАЧКА И КАКТУСЫ
+        draw_guide_card(
+            "ЗВЁЗДНЫЕ И ТЁМНЫЕ КАКТУСЫ (МЕТА-ПРОКАЧКА)",
+            (255, 215, 80),
+            [
+                ("Звёздные кактусы: ", "Выпадают со слаймов, боссов, золотых мобов и за рубежи волн (10, 25, 50, 75).", (255, 235, 140)),
+                ("Древо талантов: ", "Открывает новые башни, авто-сбор, шипы, орошение и стартовые бонусы.", (140, 220, 255)),
+                ("Тёмные кактусы: ", "Выпадают в Теневом Космосе. Открывают Орбитальный залп, Дрона и Сверхновую!", (220, 130, 255))
+            ],
+            badge_text="ПОСТОЯННЫЙ ПРОГРЕСС"
+        )
+        draw_guide_card(
+            "СУПЕР-СПОСОБНОСТИ И БЫСТРАЯ ИГРА",
+            (180, 130, 255),
+            [
+                ("Орбитальный залп [F]: ", "Клавиша F или кнопка на экране наносит катастрофический урон по площади.", (255, 140, 200)),
+                ("Кнопка [МАКС]: ", "В меню любой башни мгновенно прокачивает её на все деньги одним кликом.", (140, 255, 170)),
+                ("Авто-старт волн: ", "Рубежи мастерства позволяют начинать забег сразу с 6, 11, 26 или 101 волны!", (255, 215, 90))
+            ],
+            badge_text="ГОРЯЧИЕ КЛАВИШИ"
+        )
+
+    return close_btn, tab_rects
+
+
+
 def play_start_window_animation(bg_time, game_map=0, path=None, tower_slots=None):
+    if IS_ANDROID or get_graphics_preset() == "optimized":
+        return screen
+
     # 1. Цвета меню и биома целевой карты
     biome = MAP_BIOMES_DATA.get(game_map, MAP_BIOMES_DATA[0])
     target_col_a = biome.get("bg_col_a", (155, 195, 155))
@@ -3522,8 +3730,8 @@ def play_start_window_animation(bg_time, game_map=0, path=None, tower_slots=None
         for k in range(36)
     ]
 
-    # Фаза 1: Сжатие диафрагмы к центру с закручивающимся вихрем и лучами (48 шагов)
-    steps = 48
+    # Фаза 1: Сжатие диафрагмы к центру с закручивающимся вихрем и лучами (быстрый переход)
+    steps = 16
     for i in range(steps + 1):
         for ev in pygame.event.get():
             if ev.type == pygame.QUIT:
@@ -3593,8 +3801,8 @@ def play_start_window_animation(bg_time, game_map=0, path=None, tower_slots=None
         pygame.display.flip()
         clock.tick(FPS)
 
-    # Фаза 2: Максимально сузилось -> появляется сама карта, плавно открывается с рассеиванием энергии (48 шагов)
-    steps_exp = 48
+    # Фаза 2: Максимально сузилось -> появляется сама карта, плавно открывается с рассеиванием энергии (быстрый переход)
+    steps_exp = 16
     for i in range(1, steps_exp + 1):
         for ev in pygame.event.get():
             if ev.type == pygame.QUIT:
@@ -3686,14 +3894,9 @@ def draw_credits_screen(surface, scroll_y, savedata, mouse_pos, source="game"):
         ("ALERT", "Все твои башни, кактусы и прокачка остаются в строю (Бесконечный режим)."),
         ("ALERT", "Или выходи в меню - весь прогресс и звёзды уже надёжно сохранены!"),
         ("SPACE", 20),
-        ("HEADER", "ОТКУДА ВООБЩЕ ЭТИ СЛАЙМЫ?"),
-        ("TEXT", "Игра вдохновлена атмосферой Stardew Valley от ConcernedApe и классическими TD."),
-        ("TEXT", "Спрайты слаймов взяты с официальной Stardew Valley Wiki:"),
-        ("HIGHLIGHT", "- Тигровый Слайм: делает резкий спринт перед базой"),
-        ("HIGHLIGHT", "- Морозное Желе: иммунитет к заморозке, но горит от огня (+60% урона)"),
-        ("HIGHLIGHT", "- Стек-Слаймы: пирамида из слизи, распадается на двух мелких при гибели"),
-        ("HIGHLIGHT", "- Теневой Слайм: маскировка (-50% урона) и защита от магии"),
-        ("HIGHLIGHT", "- Король Всех Слаймов: 180 000 HP чистой желеобразной ярости"),
+        ("HEADER", "БЛАГОДАРНОСТИ"),
+        ("TEXT", "Игра вдохновлена классическими TD и Pixel-Art проектами."),
+        ("TEXT", "Спрайты слаймов: Stardew Valley Wiki (ConcernedApe)."),
         ("SPACE", 20),
         ("HEADER", "ТЁМНЫЕ КАКТУСЫ И ПРОКАЧКА"),
         ("TEXT", "Если обычных кактусов уже в достатке, в дело вступают Тёмные:"),
@@ -5529,8 +5732,8 @@ def draw_main_menu_screen(surface, mouse_pos, demo_sim, bg_time=None):
     e_txt = font.render("ВЫХОД", True, WHITE)
     surface.blit(e_txt, (exit_btn.centerx - e_txt.get_width() // 2, exit_btn.centery - e_txt.get_height() // 2))
 
-    # 5. Нижняя панель информации (Версия 0.1.0 • Автор: sonofstrange)
-    foot_str = "Версия 0.1.0 • Автор: sonofstrange"
+    # 5. Нижняя панель информации (Версия 0.1.1 • Автор: sonofstrange)
+    foot_str = "Версия 0.1.1 • Автор: sonofstrange"
     foot_txt = tiny_font.render(foot_str, True, (160, 190, 225))
     fp_w = foot_txt.get_width() + 36
     fp_h = 26

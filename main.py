@@ -216,7 +216,10 @@ def run_game():
     _pause_btn_res_txt = font.render('ПРОДОЛЖИТЬ  [P / ESC]', True, WHITE)
     _pause_btn_rst_txt = font.render('ЗАНОВО  [R]', True, WHITE)
     _pause_btn_bst_txt = font.render('БЕСТИАРИЙ  [B]', True, WHITE)
+    _pause_btn_gui_txt = font.render('СПРАВКА / МЕХАНИКИ  [?]', True, (140, 230, 255))
     _pause_btn_mnu_txt = font.render('ВЫБОР КАРТЫ  [ВЫХОД]', True, WHITE)
+    active_guide_modal = False
+    guide_modal_tab = 0
 
     def get_wave_cacti_multiplier(wave_num):
         """С 40 по 60 волну выручка обычных кактусов плавно падает в 2 раза (с 1.0 до 0.5)."""
@@ -237,9 +240,12 @@ def run_game():
         nonlocal current_wave_queue, upcoming_wave_preview, shake_amount, ambient_particles, map_decor, slime_splats
         nonlocal active_meteorite, next_meteor_wave, cactus_drone, orbital_strike_cd, orbital_targeting, rally_targeting_tent, dark_aegis_charges, flawless_streak, lives_at_wave_start, session_start_wave
         nonlocal active_dig_site, dig_window, dig_session, dig_window_close_timer, battle_ui_fade_alpha
+        nonlocal active_guide_modal, guide_modal_tab
 
         pause_frozen_frame = None
-        battle_ui_fade_alpha = 0.0
+        battle_ui_fade_alpha = 255.0 if (IS_ANDROID or get_graphics_preset() == "optimized") else 0.0
+        active_guide_modal = False
+        guide_modal_tab = 0
         if active_dig_site:
             active_dig_site = None
         if dig_window:
@@ -478,7 +484,7 @@ def run_game():
             generate_background(bg_surface, bg_time)
             screen.blit(bg_surface, (0, 0))
 
-            upg_btn, ach_btn, bestiary_btn, settings_btn, map_rects, info_btn_rects, btn_minus, btn_plus, start_btn, l_arr_rect, r_arr_rect, dot_rects, greenhouse_btn, relics_btn, dark_panel_btn, menu_btn = draw_map_selection_screen(
+            upg_btn, ach_btn, bestiary_btn, settings_btn, map_rects, info_btn_rects, btn_minus, btn_plus, start_btn, l_arr_rect, r_arr_rect, dot_rects, greenhouse_btn, relics_btn, dark_panel_btn, menu_btn, guide_btn = draw_map_selection_screen(
                 screen, game_map, map_scroll_offset, savedata, mouse_pos
             )
 
@@ -486,7 +492,11 @@ def run_game():
             modal_nav_buttons = []
             custom_close_btn = None
             custom_action_btns = []
-            if active_custom_map_modal:
+            guide_close_btn = None
+            guide_tab_rects = []
+            if active_guide_modal:
+                guide_close_btn, guide_tab_rects = draw_mechanics_guide_modal(screen, mouse_pos, current_tab=guide_modal_tab)
+            elif active_custom_map_modal:
                 custom_close_btn, _, custom_action_btns = draw_custom_map_setup_modal(screen, savedata, mouse_pos)
             elif active_map_info_modal is not None:
                 modal_close_btn, modal_nav_buttons = draw_map_info_modal(
@@ -500,6 +510,18 @@ def run_game():
                     running = False
 
                 if event.type == pygame.KEYDOWN:
+                    if active_guide_modal:
+                        if event.key in [pygame.K_ESCAPE, pygame.K_SPACE, pygame.K_F1]:
+                            active_guide_modal = False
+                            sfx_click.play()
+                        elif event.key in [pygame.K_LEFT, pygame.K_a]:
+                            guide_modal_tab = (guide_modal_tab - 1) % 3
+                            sfx_click.play()
+                        elif event.key in [pygame.K_RIGHT, pygame.K_d]:
+                            guide_modal_tab = (guide_modal_tab + 1) % 3
+                            sfx_click.play()
+                        continue
+
                     if active_custom_map_modal:
                         if event.key in [pygame.K_ESCAPE, pygame.K_SPACE]:
                             active_custom_map_modal = False
@@ -640,6 +662,18 @@ def run_game():
                                     break
                         continue
 
+                    if active_guide_modal:
+                        if guide_close_btn and guide_close_btn.collidepoint(mouse_pos):
+                            active_guide_modal = False
+                            sfx_click.play()
+                        else:
+                            for t_i, tr in enumerate(guide_tab_rects):
+                                if tr.collidepoint(mouse_pos):
+                                    guide_modal_tab = t_i
+                                    sfx_click.play()
+                                    break
+                        continue
+
                     if active_map_info_modal is not None:
                         mw, mh = 980, 610
                         mx, my = (SCREEN_WIDTH - mw) // 2, (SCREEN_HEIGHT - mh) // 2
@@ -709,6 +743,9 @@ def run_game():
                         sfx_click.play()
                     elif menu_btn and menu_btn.collidepoint(mouse_pos):
                         current_state = STATE_MAIN_MENU
+                        sfx_click.play()
+                    elif guide_btn and guide_btn.collidepoint(mouse_pos):
+                        active_guide_modal = True
                         sfx_click.play()
 
                     # Клик по инфо-кнопкам [i]
@@ -2301,7 +2338,10 @@ def run_game():
                                 pause_frozen_frame = None
                             sfx_click.play()
                     elif event.key in [pygame.K_ESCAPE, getattr(pygame, 'K_AC_BACK', -999)]:
-                        if rally_targeting_tent:
+                        if active_guide_modal:
+                            active_guide_modal = False
+                            sfx_click.play()
+                        elif rally_targeting_tent:
                             rally_targeting_tent._rally_selecting = False
                             rally_targeting_tent = None
                             sfx_click.play()
@@ -2466,6 +2506,18 @@ def run_game():
 
                         # Клик в меню паузы
                         if is_paused and not game_over:
+                            if active_guide_modal:
+                                if guide_close_btn and guide_close_btn.collidepoint(mouse_pos):
+                                    active_guide_modal = False
+                                    sfx_click.play()
+                                else:
+                                    for t_i, tr in enumerate(guide_tab_rects):
+                                        if tr.collidepoint(mouse_pos):
+                                            guide_modal_tab = t_i
+                                            sfx_click.play()
+                                            break
+                                continue
+
                             for b_id, brect in pause_click_rects.items():
                                 if brect.collidepoint(mouse_pos):
                                     if b_id == "resume":
@@ -2481,6 +2533,9 @@ def run_game():
                                         bestiary_return_state = STATE_PLAYING
                                         current_state = STATE_BESTIARY
                                         bestiary_scroll_y = 0
+                                        sfx_click.play()
+                                    elif b_id == "guide":
+                                        active_guide_modal = True
                                         sfx_click.play()
                                     elif b_id == "menu":
                                         shake_amount = 0.0
@@ -3296,12 +3351,17 @@ def run_game():
                             item_drops.append(SproutDrop(e.x, e.y - 15, count=1, cactus_name=s_name))
 
                         # Шанс дропа Звёздного кактуса со слаймов:
-                        # До 20 волны полный базовый шанс (3.5% с обычных, 15% с элитных).
-                        # После 20 волны плавное линейное снижение, чтобы к 100 волне шанс стал ровно в 3 раза меньше.
-                        raw_mob_chance = 0.035 if e.type < 50 else 0.15
-                        if wave <= 20:
+                        # На ранних волнах (до 10) повышенный шанс (8.0% с обычных, 25% с элитных) для комфортного старта.
+                        # С 10 по 20 волну базовый шанс (3.5% с обычных, 15% с элитных).
+                        # После 20 волны плавное линейное снижение к 100 волне.
+                        if wave <= 10:
+                            raw_mob_chance = 0.080 if e.type < 50 else 0.25
+                            wave_decay = 1.0
+                        elif wave <= 20:
+                            raw_mob_chance = 0.035 if e.type < 50 else 0.15
                             wave_decay = 1.0
                         else:
+                            raw_mob_chance = 0.035 if e.type < 50 else 0.15
                             wave_decay = max(1.0 / 3.0, 1.0 - ((wave - 20) / 80.0) * (2.0 / 3.0))
 
                         mob_star_base = raw_mob_chance * wave_decay
@@ -3470,7 +3530,7 @@ def run_game():
                 screen.blit(field_surf, (ox, oy))
 
                 saved_field_backdrop = None
-                if battle_ui_fade_alpha < 255.0:
+                if not IS_ANDROID and get_graphics_preset() != "optimized" and battle_ui_fade_alpha < 255.0:
                     battle_ui_fade_alpha = min(255.0, battle_ui_fade_alpha + game_dt * 300.0)
                     saved_field_backdrop = screen.copy()
 
@@ -3930,7 +3990,7 @@ def run_game():
                     screen.blit(b_surf, (bx, by))
 
                 # Применение плавного появления интерфейса на старте катки
-                if saved_field_backdrop is not None:
+                if saved_field_backdrop is not None and not IS_ANDROID and get_graphics_preset() != "optimized":
                     hud_overlay = screen.copy()
                     screen.blit(saved_field_backdrop, (0, 0))
                     hud_overlay.set_alpha(int(battle_ui_fade_alpha))
@@ -3955,7 +4015,7 @@ def run_game():
             if is_paused and not game_over:
                 screen.blit(pause_overlay_surf, (0, 0))
 
-                pw, ph = 380, 340
+                pw, ph = 380, 390
                 px = (SCREEN_WIDTH - pw) // 2
                 py = (SCREEN_HEIGHT - ph) // 2
                 p_box = pygame.Rect(px, py, pw, ph)
@@ -3963,20 +4023,22 @@ def run_game():
                 pygame.draw.rect(screen, (22, 28, 38), p_box, border_radius=14)
                 pygame.draw.rect(screen, (65, 160, 245), p_box, width=2, border_radius=14)
 
-                screen.blit(_pause_title_surf, (p_box.centerx - _pause_title_surf.get_width() // 2, py + 18))
+                screen.blit(_pause_title_surf, (p_box.centerx - _pause_title_surf.get_width() // 2, py + 16))
 
-                btn_w, btn_h = 300, 42
+                btn_w, btn_h = 300, 38
                 bx = p_box.centerx - btn_w // 2
 
-                btn_resume = pygame.Rect(bx, py + 74, btn_w, btn_h)
-                btn_restart = pygame.Rect(bx, py + 126, btn_w, btn_h)
-                btn_bestiary = pygame.Rect(bx, py + 178, btn_w, btn_h)
-                btn_menu = pygame.Rect(bx, py + 230, btn_w, btn_h)
+                btn_resume = pygame.Rect(bx, py + 66, btn_w, btn_h)
+                btn_restart = pygame.Rect(bx, py + 112, btn_w, btn_h)
+                btn_bestiary = pygame.Rect(bx, py + 158, btn_w, btn_h)
+                btn_guide = pygame.Rect(bx, py + 204, btn_w, btn_h)
+                btn_menu = pygame.Rect(bx, py + 250, btn_w, btn_h)
 
                 pause_click_rects = {
                     "resume": btn_resume,
                     "restart": btn_restart,
                     "bestiary": btn_bestiary,
+                    "guide": btn_guide,
                     "menu": btn_menu
                 }
 
@@ -3984,19 +4046,23 @@ def run_game():
                     (btn_resume, _pause_btn_res_txt, (40, 140, 70), (55, 175, 90)),
                     (btn_restart, _pause_btn_rst_txt, (50, 70, 95), (65, 95, 130)),
                     (btn_bestiary, _pause_btn_bst_txt, (45, 80, 120), (60, 110, 165)),
+                    (btn_guide, _pause_btn_gui_txt, (35, 75, 115), (50, 105, 155)),
                     (btn_menu, _pause_btn_mnu_txt, (110, 35, 40), (145, 45, 52))
                 ]
 
                 # Инфо-строка биома внизу меню паузы
                 biome = MAP_BIOMES_DATA.get(game_map, MAP_BIOMES_DATA[0])
                 p_sub_txt = tiny_font.render(f"{biome['name']}  •  Волна {wave}  •  {biome['mutator_badge']}", True, (150, 175, 205))
-                screen.blit(p_sub_txt, (p_box.centerx - p_sub_txt.get_width() // 2, py + 292))
+                screen.blit(p_sub_txt, (p_box.centerx - p_sub_txt.get_width() // 2, py + 304))
 
                 for brect, bt_surf, col_normal, col_hov in p_btns:
                     b_hovered = brect.collidepoint(mouse_pos)
                     pygame.draw.rect(screen, col_hov if b_hovered else col_normal, brect, border_radius=8)
                     pygame.draw.rect(screen, YELLOW if b_hovered else WHITE, brect, width=1, border_radius=8)
                     screen.blit(bt_surf, (brect.centerx - bt_surf.get_width() // 2, brect.centery - bt_surf.get_height() // 2))
+
+                if active_guide_modal:
+                    guide_close_btn, guide_tab_rects = draw_mechanics_guide_modal(screen, mouse_pos, current_tab=guide_modal_tab)
 
             # Экран конца игры (Подробная статистика сессии)
             if game_over:

@@ -1056,8 +1056,8 @@ class Tower:
 
         if hovered and self.range > 0:
             rx, ry, rr = int(self.x), int(self.y), int(self.range)
-            if get_graphics_preset() == "optimized":
-                # В режиме оптимизации рисуем чёткий векторный контур (0 тяжелого альфа-блендинга)
+            if IS_ANDROID or get_graphics_preset() == "optimized":
+                # В режиме оптимизации и на мобильных устройствах рисуем чёткий векторный контур (0 тяжелого альфа-блендинга)
                 bcol = (50, 230, 90) if not upgrade_mode else (255, 155, 45)
                 pygame.draw.circle(surface, bcol, (rx, ry), rr, width=2)
             else:
@@ -1076,7 +1076,7 @@ class Tower:
                     self._cached_nxt_range = nxt_rng
                     self._cached_nxt_range_lvl = self.level
                 if nxt_rng > self.range:
-                    if get_graphics_preset() == "optimized":
+                    if IS_ANDROID or get_graphics_preset() == "optimized":
                         pygame.draw.circle(surface, (255, 215, 60), (rx, ry), nxt_rng, width=1)
                     else:
                         nxt_col = (255, 200, 50, 30)

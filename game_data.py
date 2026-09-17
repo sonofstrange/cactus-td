@@ -829,7 +829,8 @@ DEFAULT_SAVE = {
         "biome_style": 0,
         "endless": True
     },
-    "StellarCactuses": 0,
+    "StellarCactuses": 15,
+    "StarterStellarBonus": True,
     "DarkCactuses": 0,
     "MasteryClaimed": {},
     "BestiaryDiscovered": [1],
@@ -1474,7 +1475,11 @@ def load_data(save_id=None):
             old_recs = data.get("LevelsRecords", [])
             data["LevelsRecords"] = old_recs + [0] * (len(MAP_NAMES_LIST) - len(old_recs))
         if "StellarCactuses" not in data:
-            data["StellarCactuses"] = 0
+            data["StellarCactuses"] = 15
+            data["StarterStellarBonus"] = True
+        elif not data.get("StarterStellarBonus", False):
+            data["StarterStellarBonus"] = True
+            data["StellarCactuses"] = data.get("StellarCactuses", 0) + 15
         if "DarkCactuses" not in data:
             data["DarkCactuses"] = 0
         if "MasteryClaimed" not in data:
