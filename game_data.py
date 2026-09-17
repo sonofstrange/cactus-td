@@ -1421,7 +1421,7 @@ UPGRADE_TREE_NODES = {
         "branch_title": "Вооружение",
         "x": 230, "y": 250,
         "max_lvl": 4,
-        "costs": [4, 9, 16, 26],
+        "costs": [8, 18, 35, 60],
         "requires": {"start_tower_level": 1},
         "desc": [
             "Усиливает магический урон за уровень.",
