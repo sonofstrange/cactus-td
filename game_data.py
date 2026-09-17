@@ -853,6 +853,7 @@ DEFAULT_SAVE = {
         "fertile_soil": 0,
         "overcharge": 0,
         "magic_focus": 0,
+        "magic_power": 0,
         "inferno_mastery": 0,
         "frost_nova": 0,
         "knight_training": 0,
@@ -1412,6 +1413,23 @@ UPGRADE_TREE_NODES = {
         ],
         "stat_cur": lambda lvl: f"+{lvl * 8}px к радиусу башен" if lvl > 0 else "Базовый радиус атаки башен",
         "stat_nxt": lambda lvl: f"+{(lvl + 1) * 8}px к радиусу башен",
+        "icon_key": "magic_tower"
+    },
+    "magic_power": {
+        "title": "Магический Резонанс",
+        "branch": "tech",
+        "branch_title": "Вооружение",
+        "x": 230, "y": 250,
+        "max_lvl": 4,
+        "costs": [4, 9, 16, 26],
+        "requires": {"start_tower_level": 1},
+        "desc": [
+            "Усиливает магический урон за уровень.",
+            "Увеличивает прирост урона Магической",
+            "Башни: +0.1 / +0.2 / +0.3 / +0.4 за ур.!"
+        ],
+        "stat_cur": lambda lvl: f"+{round(lvl * 0.1, 1)} к урону за ур. башни ({round(0.75 + lvl * 0.1, 2)}/ур.)" if lvl > 0 else "Базовый прирост (+0.75 урона/ур.)",
+        "stat_nxt": lambda lvl: f"+{round((lvl + 1) * 0.1, 1)} к урону за ур. башни ({round(0.85 + lvl * 0.1, 2)}/ур.)",
         "icon_key": "magic_tower"
     },
     "freeze_tower": {

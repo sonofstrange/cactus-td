@@ -474,8 +474,10 @@ class Tower:
 
         if self.type == "magic":
             magic_focus_lvl = savedata.get("Upgrades", {}).get("magic_focus", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
+            magic_power_lvl = savedata.get("Upgrades", {}).get("magic_power", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
             rng = int((145 + min(lvl, 5) * 8 + max(0, lvl - 5) * 4 + sniper_lvl * 8) * rng_relic_mult)
-            dmg = round((1.0 + 0.75 * lvl) * mult * (1.0 + magic_focus_lvl * 0.12 + gh_buffs.get("void_dmg_mult", 0.0)), 1)
+            dmg_per_lvl = 0.75 + magic_power_lvl * 0.10
+            dmg = round((1.0 + dmg_per_lvl * lvl) * mult * (1.0 + magic_focus_lvl * 0.12 + gh_buffs.get("void_dmg_mult", 0.0)), 1)
             raw_cd = max(0.35, 0.95 - lvl * 0.038)
             cd = max(0.20, round(raw_cd / (1.0 + atk_spd_lvl * 0.04 + relic_atk_spd), 2))
             cost = int((75 * (1.18 ** lvl) + 25 * lvl) * (1.0 - upg_discount))

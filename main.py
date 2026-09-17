@@ -3056,8 +3056,12 @@ def run_game():
                             effects.append(FloatingText(e.x, e.y - 42, f"+1 САЖЕНЕЦ: {s_name}", (125, 255, 175)))
                             item_drops.append(SproutDrop(e.x, e.y - 15, count=1, cactus_name=s_name))
 
-                        # Шанс дропа Звёздного кактуса: 3.5% с обычных слаймов, 18% с элитных * магнит * map_stellar_mult
-                        base_star_chance = (0.035 if e.type < 50 else 0.18) * magnet_mult * map_stellar_mult
+                        # Шанс дропа Звёздного кактуса со слаймов (сбалансировано против гиперинфляции в эндгейме)
+                        # Базовый шанс: 1.2% с обычных слаймов, 6.5% с элитных
+                        mob_star_base = 0.012 if e.type < 50 else 0.065
+                        map_mob_mult = 1.0 + (map_stellar_mult - 1.0) * 0.5
+                        wave_density_factor = 1.0 if wave <= 35 else max(0.45, (35.0 / wave) ** 0.5)
+                        base_star_chance = mob_star_base * magnet_mult * map_mob_mult * wave_density_factor
                         if not getattr(e, "is_golden", False) and e.type < 1000:
                             guar_stars = int(base_star_chance)
                             rem_star_chance = base_star_chance - guar_stars

@@ -1180,21 +1180,19 @@ MAP_UNLOCK_REQS = {
     9: (8, 100),
 }
 
-def get_map_mastery_milestones(mid):
+def get_map_mastery_milestones(mid=0):
     """
     Возвращает список рубежей мастерства (волна, награда звёздных кактусов, ранг) для карты.
-    Рубежи: 10, 25, 50, 75 волн (награды умножаются на stellar_mult карты).
+    Рубежи: 10, 25, 50, 75 волн (фиксированная награда 10, 15, 20 и 30 кактусов независимо от карты).
     """
-    biome = MAP_BIOMES_DATA.get(mid, MAP_BIOMES_DATA.get(0, {}))
-    s_mult = biome.get("stellar_mult", 1.0)
     waves = [10, 25, 50, 75]
-    base_rews = [10, 20, 30, 40]
+    rews = [10, 15, 20, 30]
     ranks = ["Бронза", "Серебро", "Золото", "Алмаз"]
-    return [(w, max(1, int(round(base_r * s_mult))), rank) for w, base_r, rank in zip(waves, base_rews, ranks)]
+    return [(w, rew, rank) for w, rew, rank in zip(waves, rews, ranks)]
 
 MASTERY_MILESTONES = get_map_mastery_milestones(0)
-OLD_MASTERY_REWARDS = {10: 10, 25: 20, 50: 30, 75: 40}
-NEW_MASTERY_REWARDS = {10: 10, 25: 20, 50: 30, 75: 40}
+OLD_MASTERY_REWARDS = {10: 10, 25: 15, 50: 20, 75: 30}
+NEW_MASTERY_REWARDS = {10: 10, 25: 15, 50: 20, 75: 30}
 
 # -------------------------------------------------------------------------
 # ПРОЦЕДУРНЫЙ ГЕНЕРАТОР КАРТ ДЛЯ КАРТЫ 10 («ОАЗИС СОЗДАТЕЛЯ»)
