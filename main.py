@@ -353,11 +353,24 @@ def run_game():
         current_state = STATE_PLAYING
 
     play_soundtrack(MAP_SOUNDTRACKS[0][1])
+    playtime_check_timer = 0.0
 
     while running:
         raw_dt = clock.tick(FPS) / 1000.0
         raw_dt = min(raw_dt, 0.1)
         bg_time += raw_dt * 1000.0
+
+        # Учёт проведённого времени в текущем сохранении и периодическая проверка достижений
+        stats_data = savedata.setdefault("Stats", {})
+        stats_data["play_time_seconds"] = stats_data.get("play_time_seconds", 0.0) + raw_dt
+        playtime_check_timer += raw_dt
+        if playtime_check_timer >= 5.0:
+            playtime_check_timer = 0.0
+            if check_achievements(savedata):
+                save_data(savedata)
+                if current_state == STATE_PLAYING:
+                    effects.append(FloatingText(SCREEN_WIDTH // 2, 150, "ДОСТИЖЕНИЕ РАЗБЛОКИРОВАНО!", GOLD))
+                    sfx_achievement.play()
 
         mouse_pos = pygame.mouse.get_pos()
 
@@ -1538,6 +1551,10 @@ def run_game():
                         cur_txt = save_modal_state.get("text", "")
                         if len(cur_txt) < 24:
                             save_modal_state["text"] = cur_txt + event.text
+                    elif save_modal_state and save_modal_state.get("type") == "import":
+                        cur_txt = save_modal_state.get("text", "")
+                        save_modal_state["text"] = cur_txt + event.text
+                        save_modal_state.pop("error", None)
 
                 elif event.type == pygame.KEYDOWN:
                     # 1. Если активно модальное окно управления слотом
@@ -1549,6 +1566,10 @@ def run_game():
                             except Exception:
                                 pass
                             sfx_click.play()
+                        elif save_modal_state.get("type") == "export":
+                            if event.key in [pygame.K_c, pygame.K_RETURN, pygame.K_KP_ENTER]:
+                                set_clipboard_text(save_modal_state.get("code", ""))
+                                sfx_click.play()
                         elif save_modal_state.get("type") == "input":
                             if event.key == pygame.K_BACKSPACE:
                                 cur_t = save_modal_state.get("text", "")
@@ -1575,6 +1596,40 @@ def run_game():
                                     pygame.key.stop_text_input()
                                 except Exception:
                                     pass
+                        elif save_modal_state.get("type") == "import":
+                            if event.key == pygame.K_BACKSPACE:
+                                cur_t = save_modal_state.get("text", "")
+                                if cur_t:
+                                    save_modal_state["text"] = cur_t[:-1]
+                                    save_modal_state.pop("error", None)
+                                    sfx_click.play()
+                            elif event.key == pygame.K_v and (pygame.key.get_mods() & pygame.KMOD_CTRL):
+                                clip = get_clipboard_text()
+                                if clip:
+                                    save_modal_state["text"] = clip
+                                    save_modal_state.pop("error", None)
+                                    sfx_click.play()
+                            elif event.key in [pygame.K_RETURN, pygame.K_KP_ENTER]:
+                                val = save_modal_state.get("text", "").strip()
+                                if val:
+                                    try:
+                                        sid, new_data = import_save_profile(val, as_new_slot=True, make_active=True)
+                                        savedata.clear()
+                                        savedata.update(new_data)
+                                        apply_audio_settings(savedata)
+                                        set_graphics_preset(savedata.get("Settings", {}).get("graphics_preset", "normal"))
+                                        sfx_sprout_collect.play()
+                                        save_modal_state = None
+                                        try:
+                                            pygame.key.stop_text_input()
+                                        except Exception:
+                                            pass
+                                    except Exception as e:
+                                        save_modal_state["error"] = f"Ошибка импорта: {str(e)}"
+                                        laser.play()
+                                else:
+                                    save_modal_state["error"] = "Ключ сохранения пуст!"
+                                    laser.play()
                         elif save_modal_state.get("type") == "delete_confirm":
                             if event.key in [pygame.K_RETURN, pygame.K_y, pygame.K_KP_ENTER]:
                                 tid = save_modal_state.get("target_id")
@@ -1630,6 +1685,15 @@ def run_game():
                                 except Exception:
                                     pass
                                 sfx_click.play()
+                            elif ui_rects.get("modal_copy_code") and ui_rects["modal_copy_code"].collidepoint(mouse_pos):
+                                set_clipboard_text(save_modal_state.get("code", ""))
+                                sfx_click.play()
+                            elif ui_rects.get("modal_paste_code") and ui_rects["modal_paste_code"].collidepoint(mouse_pos):
+                                clip = get_clipboard_text()
+                                if clip:
+                                    save_modal_state["text"] = clip
+                                    save_modal_state.pop("error", None)
+                                    sfx_click.play()
                             elif ui_rects.get("modal_ok") and ui_rects["modal_ok"].collidepoint(mouse_pos):
                                 if save_modal_state.get("type") == "input":
                                     mode = save_modal_state.get("mode")
@@ -1652,6 +1716,27 @@ def run_game():
                                         pygame.key.stop_text_input()
                                     except Exception:
                                         pass
+                                elif save_modal_state.get("type") == "import":
+                                    val = save_modal_state.get("text", "").strip()
+                                    if val:
+                                        try:
+                                            sid, new_data = import_save_profile(val, as_new_slot=True, make_active=True)
+                                            savedata.clear()
+                                            savedata.update(new_data)
+                                            apply_audio_settings(savedata)
+                                            set_graphics_preset(savedata.get("Settings", {}).get("graphics_preset", "normal"))
+                                            sfx_sprout_collect.play()
+                                            save_modal_state = None
+                                            try:
+                                                pygame.key.stop_text_input()
+                                            except Exception:
+                                                pass
+                                        except Exception as e:
+                                            save_modal_state["error"] = f"Ошибка импорта: {str(e)}"
+                                            laser.play()
+                                    else:
+                                        save_modal_state["error"] = "Ключ сохранения пуст!"
+                                        laser.play()
                                 elif save_modal_state.get("type") == "delete_confirm":
                                     tid = save_modal_state.get("target_id")
                                     res = delete_save_profile(tid)
@@ -1798,6 +1883,29 @@ def run_game():
                             elif ui_rects.get("credits_locked") and ui_rects["credits_locked"].collidepoint(mouse_pos):
                                 laser.play()
 
+                            elif ui_rects.get("export_active") and ui_rects["export_active"].collidepoint(mouse_pos):
+                                code, fpath = export_save_profile()
+                                set_clipboard_text(code)
+                                save_modal_state = {
+                                    "type": "export",
+                                    "code": code,
+                                    "file": fpath
+                                }
+                                sfx_sprout_collect.play()
+
+                            elif ui_rects.get("import_active") and ui_rects["import_active"].collidepoint(mouse_pos):
+                                clip = get_clipboard_text()
+                                pref_text = clip if (clip.startswith("CTD1_") or clip.startswith("{")) else ""
+                                save_modal_state = {
+                                    "type": "import",
+                                    "text": pref_text
+                                }
+                                try:
+                                    pygame.key.start_text_input()
+                                except Exception:
+                                    pass
+                                sfx_click.play()
+
                             elif ui_rects.get("reset") and ui_rects["reset"].collidepoint(mouse_pos):
                                 confirming_reset = True
                                 sfx_click.play()
@@ -1809,6 +1917,18 @@ def run_game():
                                     "type": "input",
                                     "mode": "create",
                                     "text": f"Слот #{len(list_save_profiles()) + 1}"
+                                }
+                                try:
+                                    pygame.key.start_text_input()
+                                except Exception:
+                                    pass
+                                sfx_click.play()
+                            elif ui_rects.get("import_clipboard") and ui_rects["import_clipboard"].collidepoint(mouse_pos):
+                                clip = get_clipboard_text()
+                                pref_text = clip if (clip.startswith("CTD1_") or clip.startswith("{")) else ""
+                                save_modal_state = {
+                                    "type": "import",
+                                    "text": pref_text
                                 }
                                 try:
                                     pygame.key.start_text_input()
@@ -1842,6 +1962,16 @@ def run_game():
                                         new_id = duplicate_save_profile(sa["id"])
                                         if new_id:
                                             sfx_sprout_collect.play()
+                                        break
+                                    elif sa.get("export") and sa["export"].collidepoint(mouse_pos):
+                                        code, fpath = export_save_profile(sa["id"])
+                                        set_clipboard_text(code)
+                                        save_modal_state = {
+                                            "type": "export",
+                                            "code": code,
+                                            "file": fpath
+                                        }
+                                        sfx_sprout_collect.play()
                                         break
                                     elif sa.get("delete") and sa["delete"].collidepoint(mouse_pos):
                                         save_modal_state = {

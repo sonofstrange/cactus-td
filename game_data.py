@@ -937,7 +937,8 @@ DEFAULT_SAVE = {
         "max_farms_built": 0,
         "tesla_built": 0,
         "max_session_cacti": 0,
-        "relics_excavated": 0
+        "relics_excavated": 0,
+        "play_time_seconds": 0.0
     },
     "Greenhouse": {
         "saguaro": {"level": 1, "sprouts": 1},
@@ -957,6 +958,9 @@ DEFAULT_SAVE = {
 }
 
 import sys
+import zlib
+import base64
+
 if IS_ANDROID:
     try:
         from android.storage import app_storage_path
@@ -972,6 +976,78 @@ SAVES_DIR = os.path.join(SAVE_BASE_DIR, "saves")
 ACTIVE_PROFILE_FILE = os.path.join(SAVES_DIR, "active_profile.json")
 LEGACY_SAVE_PATH = os.path.join(SAVE_BASE_DIR, "savedata.json")
 SAVE_PATH = LEGACY_SAVE_PATH
+
+SAVE_CIPHER_KEY = b"CactusTD_Remastered_Key_2026"
+
+def format_play_time(total_seconds):
+    """Форматирует секунды в читаемую строку времени (часы, минуты, секунды)."""
+    total_seconds = int(total_seconds or 0)
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+    secs = total_seconds % 60
+    if hours > 0:
+        return f"{hours} ч. {minutes} мин."
+    elif minutes > 0:
+        return f"{minutes} мин. {secs} сек."
+    else:
+        return f"{secs} сек."
+
+def xor_crypt(data: bytes, key: bytes) -> bytes:
+    k_len = len(key)
+    return bytes([b ^ key[i % k_len] for i, b in enumerate(data)])
+
+def export_save_string(data: dict) -> str:
+    """Шифрует данные сохранения (zlib + XOR + Base64 с префиксом CTD1_)."""
+    try:
+        raw_json = json.dumps(data, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
+        compressed = zlib.compress(raw_json, level=9)
+        encrypted = xor_crypt(compressed, SAVE_CIPHER_KEY)
+        b64 = base64.b64encode(encrypted).decode('ascii')
+        return f"CTD1_{b64}"
+    except Exception as e:
+        print(f"Export error: {e}")
+        return ""
+
+def import_save_string(cipher_str: str) -> dict:
+    """Расшифровывает строку сохранения (CTD1_... или JSON) и возвращает словарь данных."""
+    if not cipher_str or not isinstance(cipher_str, str):
+        raise ValueError("Строка сохранения пуста")
+    cipher_str = cipher_str.strip()
+    if cipher_str.startswith("CTD1_"):
+        b64 = cipher_str[5:].strip()
+        encrypted = base64.b64decode(b64.encode('ascii'))
+        compressed = xor_crypt(encrypted, SAVE_CIPHER_KEY)
+        raw_json = zlib.decompress(compressed)
+        data = json.loads(raw_json.decode('utf-8'))
+    elif cipher_str.startswith("{") and cipher_str.endswith("}"):
+        data = json.loads(cipher_str)
+    else:
+        raise ValueError("Неверный формат ключа сохранения (требуется CTD1_...)")
+
+    if not isinstance(data, dict):
+        raise ValueError("Формат данных сохранения повреждён")
+    return data
+
+def set_clipboard_text(text: str) -> bool:
+    """Копирует строку в буфер обмена операционной системы."""
+    try:
+        import pygame.scrap
+        pygame.scrap.put_text(str(text))
+        return True
+    except Exception as e:
+        print(f"Clipboard put error: {e}")
+        return False
+
+def get_clipboard_text() -> str:
+    """Извлекает строку из буфера обмена операционной системы."""
+    try:
+        import pygame.scrap
+        res = pygame.scrap.get_text()
+        if res:
+            return res.strip()
+    except Exception as e:
+        print(f"Clipboard get error: {e}")
+    return ""
 
 def is_map_unlocked(mid, sdata):
     records = sdata.get("LevelsRecords", [0] * len(MAP_NAMES_LIST))
@@ -1144,6 +1220,7 @@ def list_save_profiles():
                 "bought_upgrades": bought_upgrades,
                 "total_nodes": total_nodes,
                 "total_upgrades": total_upgrades,
+                "play_time": data.get("Stats", {}).get("play_time_seconds", 0.0),
                 "game_completed": data.get("GameCompleted", False)
             })
         except Exception as e:
@@ -1212,6 +1289,57 @@ def duplicate_save_profile(save_id):
     except Exception as e:
         print(f"Error duplicating profile: {e}")
         return None
+
+def export_save_profile(save_id=None):
+    """Экспортирует профиль сохранения в зашифрованную строку CTD1_... и в файл."""
+    if not save_id:
+        save_id = get_active_save_id()
+    slot_path = os.path.join(SAVES_DIR, f"{save_id}.json")
+    data = None
+    if os.path.exists(slot_path):
+        try:
+            with open(slot_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except Exception:
+            pass
+    if data is None:
+        data = load_data(save_id)
+
+    cipher_str = export_save_string(data)
+    out_file = os.path.join(SAVES_DIR, f"export_{save_id}.cactussave")
+    try:
+        with open(out_file, 'w', encoding='utf-8') as f:
+            f.write(cipher_str)
+    except Exception as e:
+        print(f"Error writing export file: {e}")
+    return cipher_str, out_file
+
+def import_save_profile(cipher_or_json_str, as_new_slot=True, make_active=True):
+    """Импортирует зашифрованную строку CTD1_... или JSON в профиль сохранения."""
+    _init_saves_system()
+    data = import_save_string(cipher_or_json_str)
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    if as_new_slot:
+        sid = f"slot_{int(time.time())}_{random.randint(100, 999)}"
+        data["SaveId"] = sid
+        old_name = data.get("SaveName", "Сохранение")
+        data["SaveName"] = f"[Импорт] {old_name}"
+        data["CreatedAt"] = now_str
+    else:
+        sid = get_active_save_id()
+        data["SaveId"] = sid
+
+    data["UpdatedAt"] = now_str
+
+    slot_path = os.path.join(SAVES_DIR, f"{sid}.json")
+    with open(slot_path, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=4)
+
+    if make_active:
+        set_active_save_id(sid)
+        save_data(data)
+    return sid, data
 
 def delete_save_profile(save_id):
     slot_path = os.path.join(SAVES_DIR, f"{save_id}.json")
@@ -3399,6 +3527,39 @@ ACHIEVEMENTS_DATA = [
         "icon": trophy_icon,
         "check": lambda s: len(list_save_profiles()) >= 2,
         "progress": lambda s: (min(2, len(list_save_profiles())), 2)
+    },
+    {
+        "id": "playtime_30m",
+        "category": "talents",
+        "cat_name": "Таланты",
+        "title": "Первые Ростки",
+        "desc": "Проведите 30 минут в игре",
+        "reward": 3,
+        "icon": sprout_icon,
+        "check": lambda s: s.get("Stats", {}).get("play_time_seconds", 0) >= 1800,
+        "progress": lambda s: (min(30, int(s.get("Stats", {}).get("play_time_seconds", 0) // 60)), 30)
+    },
+    {
+        "id": "playtime_1h",
+        "category": "talents",
+        "cat_name": "Таланты",
+        "title": "Закалённый Садовод",
+        "desc": "Проведите 1 час в игре",
+        "reward": 5,
+        "icon": trophy_icon,
+        "check": lambda s: s.get("Stats", {}).get("play_time_seconds", 0) >= 3600,
+        "progress": lambda s: (min(60, int(s.get("Stats", {}).get("play_time_seconds", 0) // 60)), 60)
+    },
+    {
+        "id": "playtime_5h",
+        "category": "talents",
+        "cat_name": "Таланты",
+        "title": "Легенда Оазиса",
+        "desc": "Проведите 5 часов в игре",
+        "reward": 10,
+        "icon": crown_upg_icon,
+        "check": lambda s: s.get("Stats", {}).get("play_time_seconds", 0) >= 18000,
+        "progress": lambda s: (min(300, int(s.get("Stats", {}).get("play_time_seconds", 0) // 60)), 300)
     }
 ]
 
