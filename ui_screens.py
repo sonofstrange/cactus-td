@@ -1851,8 +1851,13 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
             border_col = (50, 210, 100)
             border_w = max(1, int(3 * eff_scale if scale > 1.2 else 2 * eff_scale))
         elif unlocked:
-            bg_col = (20, 32, 46) if scale <= 1.2 else (20, 42, 34)
-            border_col = (80, 200, 255) if scale <= 1.2 else (90, 240, 170)
+            is_dark_node = (node.get("currency") in ("dark", "hybrid")) or (node.get("branch") == "astral")
+            if is_dark_node:
+                bg_col = (28, 16, 40)
+                border_col = (195, 120, 255)
+            else:
+                bg_col = (20, 32, 46) if scale <= 1.2 else (20, 42, 34)
+                border_col = (80, 200, 255) if scale <= 1.2 else (90, 240, 170)
             border_w = max(1, int(3 * eff_scale if scale > 1.2 else 2 * eff_scale))
         else:
             bg_col = (22, 26, 32)
@@ -3680,6 +3685,16 @@ def draw_mechanics_guide_modal(surface, mouse_pos, current_tab=0):
             badge_text="ПОСТОЯННЫЙ ПРОГРЕСС"
         )
         draw_guide_card(
+            "АРХЕОЛОГИЯ И ТЁМНЫЙ РЕЗОНАНС",
+            (110, 205, 255),
+            [
+                ("Зоны раскопок: ", "Случайно появляются на картах. Пройдите мини-игру 5х5, чтобы откопать артефакт!", (160, 220, 255)),
+                ("Музей реликвий [R]: ", "Устанавливайте до 5 реликвий на пьедесталы для мощных глобальных эффектов.", (255, 220, 130)),
+                ("Тёмный Резонанс: ", "Тёмная нода даёт до +20% силы ВСЕМ реликвиям вне пьедесталов пассивно!", (220, 140, 255))
+            ],
+            badge_text="МУЗЕЙ И РЕЛИКВИИ"
+        )
+        draw_guide_card(
             "СУПЕР-СПОСОБНОСТИ И БЫСТРАЯ ИГРА",
             (180, 130, 255),
             [
@@ -5203,9 +5218,11 @@ def draw_relics_screen(surface, savedata, mouse_pos, bg_time=None):
     max_cap = get_relic_max_level(savedata)
     max_pedestals = get_max_relic_pedestals(savedata)
     equipped = get_equipped_relics(savedata)
+    dark_res_lvl = savedata.get("Upgrades", {}).get("dark_relic_resonance", 0)
+    extra_res = f"  |  Тёмный Резонанс: +{dark_res_lvl * 5}% пассивно" if dark_res_lvl > 0 else ""
 
     sub_txt = tiny_font.render(
-        f"Найдено: {unlocked_count}/20  |  Экипировано: {len(equipped)}/{max_pedestals}  |  Всего раскопано: {tot_excavated}  |  Предел: {max_cap} ур.",
+        f"Найдено: {unlocked_count}/20  |  Экипировано: {len(equipped)}/{max_pedestals}  |  Всего раскопано: {tot_excavated}  |  Предел: {max_cap} ур.{extra_res}",
         True, (170, 205, 235)
     )
     surface.blit(sub_txt, (head_panel.left + 46, head_panel.top + 28))
@@ -5351,9 +5368,15 @@ def draw_relics_screen(surface, savedata, mouse_pos, bg_time=None):
         if is_equipped:
             lvl_lbl = tiny_font.render("[В БОЮ]", True, (120, 255, 160))
         elif is_maxed:
-            lvl_lbl = tiny_font.render("МАКС", True, (255, 220, 90))
+            if dark_res_lvl > 0:
+                lvl_lbl = tiny_font.render(f"МАКС ({dark_res_lvl * 5}%)", True, (215, 165, 255))
+            else:
+                lvl_lbl = tiny_font.render("МАКС", True, (255, 220, 90))
         elif is_unlocked:
-            lvl_lbl = tiny_font.render(f"Ур. {cur_lvl}/{max_cap}", True, (110, 245, 150))
+            if dark_res_lvl > 0:
+                lvl_lbl = tiny_font.render(f"Ур. {cur_lvl}/{max_cap} ({dark_res_lvl * 5}%)", True, (200, 160, 255))
+            else:
+                lvl_lbl = tiny_font.render(f"Ур. {cur_lvl}/{max_cap}", True, (110, 245, 150))
         else:
             lvl_lbl = tiny_font.render("СКРЫТО", True, (110, 120, 130))
         surface.blit(lvl_lbl, (sx + col_w - lvl_lbl.get_width() - 8, sy + 4))
@@ -5413,8 +5436,15 @@ def draw_relics_screen(surface, savedata, mouse_pos, bg_time=None):
 
         # Описание баффа / Актуальный бонус
         if is_unlocked:
-            b_txt = f"Бонус: {get_relic_bonus_summary(rid, cur_lvl)}"
-            b_col = (255, 230, 120) if is_equipped else ((130, 255, 160) if is_maxed else (140, 235, 180))
+            if is_equipped:
+                b_txt = f"Бонус: {get_relic_bonus_summary(rid, cur_lvl)}"
+                b_col = (255, 230, 120)
+            elif dark_res_lvl > 0:
+                b_txt = f"Пассивно ({dark_res_lvl * 5}%): {get_relic_bonus_summary(rid, cur_lvl)}"
+                b_col = (215, 175, 255)
+            else:
+                b_txt = f"Бонус: {get_relic_bonus_summary(rid, cur_lvl)}"
+                b_col = (130, 255, 160) if is_maxed else (140, 235, 180)
             b_surf = tiny_font.render(b_txt, True, b_col)
             surface.blit(b_surf, (cx - b_surf.get_width() // 2, sy + 93))
 

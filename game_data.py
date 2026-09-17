@@ -903,7 +903,9 @@ DEFAULT_SAVE = {
         "dig_site_duration": 0,
         "dig_minigame_buff": 0,
         "relic_max_level": 0,
-        "relic_double_drop": 0
+        "relic_double_drop": 0,
+        "relic_pedestals": 0,
+        "dark_relic_resonance": 0
     },
     "Toggles": {
         "wave_rush": True,
@@ -2738,6 +2740,26 @@ UPGRADE_TREE_NODES = {
         "stat_cur": lambda lvl: f"Пьедесталов в Музее: {2 + lvl}/5" if lvl > 0 else "Базовые 2 пьедестала",
         "stat_nxt": lambda lvl: f"Пьедесталов в Музее: {2 + lvl + 1}/5",
         "icon_key": "relic"
+    },
+    "dark_relic_resonance": {
+        "title": "Тёмный Резонанс",
+        "branch": "econ",
+        "branch_title": "Археология",
+        "currency": "hybrid",
+        "x": 1780, "y": 245,
+        "scale": 1.2,
+        "max_lvl": 4,
+        "costs": [65, 110, 165, 230],
+        "dark_costs": [5, 9, 15, 24],
+        "requires": {"relic_pedestals": 2, "relic_max_level": 2},
+        "desc": [
+            "Тёмная энергия Бездны связывает все залы Музея.",
+            "Неэкипированные реликвии действуют пассивно",
+            "на +5% силы за уровень прокачки (до 20% на 4 ур.)!"
+        ],
+        "stat_cur": lambda lvl: f"Пассивная сила реликвий вне пьедесталов: +{lvl * 5}%" if lvl > 0 else "Неэкипированные реликвии не активны",
+        "stat_nxt": lambda lvl: f"Пассивная сила реликвий вне пьедесталов: +{(lvl + 1) * 5}%",
+        "icon_key": "relic"
     }
 }
 
@@ -4095,6 +4117,9 @@ def get_all_relic_buffs(savedata):
     }
     relics_dict = savedata.get("Relics", {})
     active_relic_ids = get_equipped_relics(savedata)
+    active_set = set(active_relic_ids)
+
+    # 1. Экипированные реликвии (100% мощности на пьедесталах)
     for rid in active_relic_ids:
         rdata = RELICS_DATA.get(rid)
         if not rdata:
@@ -4107,5 +4132,32 @@ def get_all_relic_buffs(savedata):
                     buffs[k] += v
                 else:
                     buffs[k] = v
+
+    # 2. Тёмный Резонанс: пассивное действие неэкипированных реликвий (+5% за ранг, до 20%)
+    dark_res_lvl = savedata.get("Upgrades", {}).get("dark_relic_resonance", 0)
+    if dark_res_lvl > 0:
+        passive_ratio = dark_res_lvl * 0.05
+        for rid, rentry in relics_dict.items():
+            if rid in active_set:
+                continue
+            rdata = RELICS_DATA.get(rid)
+            if not rdata:
+                continue
+            lvl = rentry.get("level", 0) if isinstance(rentry, dict) else 0
+            if lvl > 0 and "formula" in rdata:
+                bonuses = rdata["formula"](lvl)
+                for k, v in bonuses.items():
+                    val = v * passive_ratio
+                    if k in buffs:
+                        buffs[k] += val
+                    else:
+                        buffs[k] = val
+
+    # Округление целочисленных характеристик
+    if "base_hp_bonus" in buffs:
+        buffs["base_hp_bonus"] = int(round(buffs["base_hp_bonus"]))
+    if "tesla_extra_targets" in buffs:
+        buffs["tesla_extra_targets"] = int(round(buffs["tesla_extra_targets"]))
+
     return buffs
 
