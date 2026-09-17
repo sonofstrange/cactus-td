@@ -3566,41 +3566,43 @@ def play_start_window_animation(bg_time, game_map=0, path=None, tower_slots=None
     start_bg = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
     generate_background(start_bg, bg_time, custom_cols=(menu_col_a, menu_col_b))
 
-    min_w, min_h = 160, 90
-    steps_shrink = 38
-    steps_expand = 38
+    min_w, min_h = 4, 4
+    steps_shrink = 54
+    steps_expand = 54
 
-    # Фаза 1: Плавное сужение окна к центру без лагов и без черного экрана
+    # Фаза 1: Плавное полное закрытие окна к центру без джиттеринга
     for i in range(steps_shrink + 1):
         for ev in pygame.event.get():
             if ev.type == pygame.QUIT:
                 break
         t = i / float(steps_shrink)
         ease = 0.5 * (1.0 - math.cos(math.pi * t))
-        w = max(min_w, int(SCREEN_WIDTH - (SCREEN_WIDTH - min_w) * ease))
-        h = max(min_h, int(SCREEN_HEIGHT - (SCREEN_HEIGHT - min_h) * ease))
+        raw_w = SCREEN_WIDTH - (SCREEN_WIDTH - min_w) * ease
+        w = max(min_w, (int(raw_w) // 2) * 2)
+        h = max(min_h, (int(w * SCREEN_HEIGHT / SCREEN_WIDTH) // 2) * 2)
 
         scr = pygame.display.set_mode((w, h))
-        ox = (w - SCREEN_WIDTH) // 2
-        oy = (h - SCREEN_HEIGHT) // 2
+        ox = -((SCREEN_WIDTH - w) // 2)
+        oy = -((SCREEN_HEIGHT - h) // 2)
         scr.fill((8, 12, 18))
         scr.blit(start_bg, (ox, oy))
         pygame.display.flip()
         clock.tick(FPS)
 
-    # Фаза 2: Плавное расширение окна из центра с открытием боевой карты
+    # Фаза 2: Плавное расширение окна из центра до полного экрана с открытием боевой карты
     for i in range(1, steps_expand + 1):
         for ev in pygame.event.get():
             if ev.type == pygame.QUIT:
                 break
         t = i / float(steps_expand)
         ease = 0.5 * (1.0 - math.cos(math.pi * t))
-        w = min(SCREEN_WIDTH, max(min_w, int(min_w + (SCREEN_WIDTH - min_w) * ease)))
-        h = min(SCREEN_HEIGHT, max(min_h, int(min_h + (SCREEN_HEIGHT - min_h) * ease)))
+        raw_w = min_w + (SCREEN_WIDTH - min_w) * ease
+        w = min(SCREEN_WIDTH, max(min_w, (int(raw_w) // 2) * 2))
+        h = min(SCREEN_HEIGHT, max(min_h, (int(w * SCREEN_HEIGHT / SCREEN_WIDTH) // 2) * 2))
 
         scr = pygame.display.set_mode((w, h))
-        ox = (w - SCREEN_WIDTH) // 2
-        oy = (h - SCREEN_HEIGHT) // 2
+        ox = -((SCREEN_WIDTH - w) // 2)
+        oy = -((SCREEN_HEIGHT - h) // 2)
         scr.fill((8, 12, 18))
         scr.blit(map_full_surf, (ox, oy))
         pygame.display.flip()
