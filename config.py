@@ -191,7 +191,9 @@ else:
         os.environ["SDL_RENDER_SCALE_QUALITY"] = val
         if not IS_ANDROID and screen is not None:
             try:
-                flags = screen.get_flags()
+                flags = pygame.SCALED | pygame.RESIZABLE
+                if pygame.display.is_fullscreen():
+                    flags |= pygame.FULLSCREEN
                 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), flags)
             except Exception as e:
                 print(f"[DISPLAY] Failed to reapply scale quality: {e}", flush=True)
