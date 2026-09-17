@@ -2911,10 +2911,6 @@ def run_game():
                         else:
                             spawn_delay = base_spawn_delay
 
-                        if wave > savedata["LevelsRecords"][game_map]:
-                            savedata["LevelsRecords"][game_map] = wave
-                            save_data(savedata)
-
                 else:
                     spawn_timer += game_dt
                     if spawn_timer >= spawn_delay and enemies_spawned < enemies_to_spawn:
@@ -2931,6 +2927,12 @@ def run_game():
                         wave_in_progress = False
                         completed_wave = wave
                         wave += 1
+
+                        # Рекорд карты обновляется только при успешном завершении волны
+                        if completed_wave > savedata["LevelsRecords"][game_map]:
+                            savedata["LevelsRecords"][game_map] = completed_wave
+                            save_data(savedata)
+
                         wave_rush_lvl = savedata.get("Upgrades", {}).get("wave_rush", 0)
                         wave_rush_active = savedata.get("Toggles", {}).get("wave_rush", True)
                         if wave_rush_lvl > 0 and wave_rush_active:

@@ -3375,7 +3375,7 @@ ACHIEVEMENTS_DATA = [
         "category": "greenhouse",
         "cat_name": "Оранжерея и Карты",
         "title": "Спаситель Вселенной",
-        "desc": "Одолейте 100 волну на финальной карте 8",
+        "desc": "Одолейте 100 волну на финальной карте 9 («Разлом Бездны»)",
         "reward": 25,
         "icon": void_lord_boss_img,
         "check": lambda s: s.get("GameCompleted", False) or (len(s.get("LevelsRecords", [])) > 8 and s.get("LevelsRecords", [])[8] >= 100),
