@@ -3501,126 +3501,62 @@ def play_start_window_animation(bg_time, game_map=0, path=None, tower_slots=None
         for slot in tower_slots:
             map_full_surf.blit(slot_img, (slot[0] - 22, slot[1] - 22))
 
-    if IS_ANDROID:
-        center_x, center_y = SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2
-        max_r = int(math.hypot(center_x, center_y))
+    center_x, center_y = SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2
+    max_r = int(math.hypot(center_x, center_y))
 
-        # Фаза 1: Сжатие диафрагмы к центру (52 шага для плавности)
-        steps = 52
-        for i in range(steps + 1):
-            for ev in pygame.event.get():
-                if ev.type == pygame.QUIT:
-                    break
-            t = min(1.0, max(0.0, i / float(steps)))
-            progress = t ** 1.3
-            r = max(0, int(max_r * (1.0 - progress)))
+    # Фаза 1: Сжатие диафрагмы к центру (50 шагов для идеальной плавности)
+    steps = 50
+    for i in range(steps + 1):
+        for ev in pygame.event.get():
+            if ev.type == pygame.QUIT:
+                break
+        t = min(1.0, max(0.0, i / float(steps)))
+        progress = t ** 1.3
+        r = max(0, int(max_r * (1.0 - progress)))
 
-            # Плавная интерполяция цвета фона меню -> цвет биома карты
-            cur_a = (
-                int(menu_col_a[0] + (target_col_a[0] - menu_col_a[0]) * t),
-                int(menu_col_a[1] + (target_col_a[1] - menu_col_a[1]) * t),
-                int(menu_col_a[2] + (target_col_a[2] - menu_col_a[2]) * t),
-            )
-            cur_b = (
-                int(menu_col_b[0] + (target_col_b[0] - menu_col_b[0]) * t),
-                int(menu_col_b[1] + (target_col_b[1] - menu_col_b[1]) * t),
-                int(menu_col_b[2] + (target_col_b[2] - menu_col_b[2]) * t),
-            )
-            screen.fill((8, 12, 18))
-            if r > 0:
-                generate_background(screen, bg_time + i * 20, custom_cols=(cur_a, cur_b))
+        # Плавная интерполяция цвета фона меню -> цвет биома карты
+        cur_a = (
+            int(menu_col_a[0] + (target_col_a[0] - menu_col_a[0]) * t),
+            int(menu_col_a[1] + (target_col_a[1] - menu_col_a[1]) * t),
+            int(menu_col_a[2] + (target_col_a[2] - menu_col_a[2]) * t),
+        )
+        cur_b = (
+            int(menu_col_b[0] + (target_col_b[0] - menu_col_b[0]) * t),
+            int(menu_col_b[1] + (target_col_b[1] - menu_col_b[1]) * t),
+            int(menu_col_b[2] + (target_col_b[2] - menu_col_b[2]) * t),
+        )
+        screen.fill((8, 12, 18))
+        if r > 0:
+            generate_background(screen, bg_time + i * 20, custom_cols=(cur_a, cur_b))
+            mask_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+            mask_surf.fill((8, 12, 18, 255))
+            pygame.draw.circle(mask_surf, (0, 0, 0, 0), (center_x, center_y), r)
+            screen.blit(mask_surf, (0, 0))
+            pygame.draw.circle(screen, target_col_b, (center_x, center_y), r, width=3)
+        pygame.display.flip()
+        clock.tick(FPS)
+
+    # Фаза 2: Максимально сузилось -> появляется сама карта, плавно открывается (50 шагов)
+    steps_exp = 50
+    for i in range(1, steps_exp + 1):
+        for ev in pygame.event.get():
+            if ev.type == pygame.QUIT:
+                break
+        progress = (i / float(steps_exp)) ** 1.3
+        r = min(max_r, int(max_r * progress))
+        screen.fill((8, 12, 18))
+        if r > 0:
+            screen.blit(map_full_surf, (0, 0))
+            if r < max_r:
                 mask_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
                 mask_surf.fill((8, 12, 18, 255))
                 pygame.draw.circle(mask_surf, (0, 0, 0, 0), (center_x, center_y), r)
                 screen.blit(mask_surf, (0, 0))
-                pygame.draw.circle(screen, target_col_b, (center_x, center_y), r, width=3)
-            pygame.display.flip()
-            clock.tick(FPS)
-
-        # Фаза 2: Максимально сузилось -> появляется сама карта, плавно открывается (54 шага)
-        steps_exp = 54
-        for i in range(1, steps_exp + 1):
-            for ev in pygame.event.get():
-                if ev.type == pygame.QUIT:
-                    break
-            progress = (i / float(steps_exp)) ** 1.3
-            r = min(max_r, int(max_r * progress))
-            screen.fill((8, 12, 18))
-            if r > 0:
-                screen.blit(map_full_surf, (0, 0))
-                if r < max_r:
-                    mask_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-                    mask_surf.fill((8, 12, 18, 255))
-                    pygame.draw.circle(mask_surf, (0, 0, 0, 0), (center_x, center_y), r)
-                    screen.blit(mask_surf, (0, 0))
-                    pygame.draw.circle(screen, (255, 215, 80), (center_x, center_y), r, width=3)
-            pygame.display.flip()
-            clock.tick(FPS)
-
-        return screen
-
-    # --- ПК ВЕРСИЯ: Плавная кинематографичная анимация окна ОС ---
-    os.environ['SDL_VIDEO_CENTERED'] = '1'
-
-    # Предварительный рендер фона меню (без тяжелых вычислений внутри цикла)
-    start_bg = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
-    generate_background(start_bg, bg_time, custom_cols=(menu_col_a, menu_col_b))
-
-    min_w, min_h = 40, 24
-    steps_shrink = 50
-    steps_expand = 50
-
-    # Win32 DWM синхронизация для плавной смены кадров
-    dwm_flush_fn = None
-    try:
-        import ctypes
-        dwmapi = ctypes.windll.dwmapi
-        if hasattr(dwmapi, "DwmFlush"):
-            dwm_flush_fn = dwmapi.DwmFlush
-    except Exception:
-        pass
-
-    # Фаза 1: Плавное сжатие окна к центру (картинка масштабируется вместе с окном без смещения за 1 кадр)
-    for i in range(steps_shrink + 1):
-        for ev in pygame.event.get():
-            if ev.type == pygame.QUIT:
-                break
-        t = i / float(steps_shrink)
-        ease = 0.5 * (1.0 - math.cos(math.pi * t))
-        raw_w = SCREEN_WIDTH - (SCREEN_WIDTH - min_w) * ease
-        w = max(min_w, (int(raw_w) // 2) * 2)
-        h = max(min_h, (int(w * SCREEN_HEIGHT / SCREEN_WIDTH) // 2) * 2)
-
-        scr = pygame.display.set_mode((w, h))
-        scaled = pygame.transform.smoothscale(start_bg, (w, h))
-        scr.blit(scaled, (0, 0))
+                pygame.draw.circle(screen, (255, 215, 80), (center_x, center_y), r, width=3)
         pygame.display.flip()
-        if dwm_flush_fn:
-            dwm_flush_fn()
         clock.tick(FPS)
 
-    # Фаза 2: Плавное расширение окна из центра до полного экрана с открытием боевой карты
-    for i in range(1, steps_expand + 1):
-        for ev in pygame.event.get():
-            if ev.type == pygame.QUIT:
-                break
-        t = i / float(steps_expand)
-        ease = 0.5 * (1.0 - math.cos(math.pi * t))
-        raw_w = min_w + (SCREEN_WIDTH - min_w) * ease
-        w = min(SCREEN_WIDTH, max(min_w, (int(raw_w) // 2) * 2))
-        h = min(SCREEN_HEIGHT, max(min_h, (int(w * SCREEN_HEIGHT / SCREEN_WIDTH) // 2) * 2))
-
-        scr = pygame.display.set_mode((w, h))
-        scaled = pygame.transform.smoothscale(map_full_surf, (w, h))
-        scr.blit(scaled, (0, 0))
-        pygame.display.flip()
-        if dwm_flush_fn:
-            dwm_flush_fn()
-        clock.tick(FPS)
-
-    restored_screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-    pygame.display.set_caption("Cactus TD Remastered")
-    return restored_screen
+    return screen
 
 
 # -------------------------------------------------------------------------
