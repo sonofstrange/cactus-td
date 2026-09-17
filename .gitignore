@@ -1,4 +1,4 @@
-﻿# Byte-compiled / optimized / DLL files
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *.class
@@ -9,6 +9,7 @@ dist/
 bin/
 *.spec
 !buildozer.spec
+!CactusTD_Windows_v0.1.0.spec
 .buildozer/
 
 # Binaries / Packages

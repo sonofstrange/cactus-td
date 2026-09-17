@@ -175,12 +175,75 @@ if IS_ANDROID:
 
     def set_scale_quality(mode_name):
         return screen
+def apply_app_icon():
+    """Устанавливает иконку приложения (кактус) в Pygame и нативно в Win32."""
+    try:
+        for _sub in ["assets/textures", "assets", "_internal/assets/textures", "_internal/assets", "."]:
+            _app_ico = os.path.join(BASE_DIR, _sub, "app_icon.png")
+            _ico = os.path.join(BASE_DIR, _sub, "icon.ico")
+            _png = os.path.join(BASE_DIR, _sub, "Cactus.png")
+            if os.path.exists(_app_ico):
+                pygame.display.set_icon(pygame.image.load(_app_ico))
+                break
+            elif os.path.exists(_ico):
+                try:
+                    pygame.display.set_icon(pygame.image.load(_ico))
+                    break
+                except Exception:
+                    pass
+            elif os.path.exists(_png):
+                pygame.display.set_icon(pygame.image.load(_png))
+                break
+    except Exception:
+        pass
+
+    if sys.platform == 'win32' and not IS_ANDROID:
+        try:
+            _hwnd = pygame.display.get_wm_info().get("window")
+            if _hwnd:
+                _WM_SETICON = 0x0080
+                _ICON_SMALL = 0
+                _ICON_BIG = 1
+                _IMAGE_ICON = 1
+                _LR_LOADFROMFILE = 0x0010
+                _LR_DEFAULTCOLOR = 0x0000
+
+                _ico_p = None
+                for _sub in ["assets", "_internal/assets", "."]:
+                    _cand = os.path.join(BASE_DIR, _sub, "icon.ico")
+                    if os.path.exists(_cand):
+                        _ico_p = _cand
+                        break
+
+                _h_sm = None
+                _h_bg = None
+                if _ico_p:
+                    _h_sm = ctypes.windll.user32.LoadImageW(0, _ico_p, _IMAGE_ICON, 16, 16, _LR_LOADFROMFILE)
+                    _h_bg = ctypes.windll.user32.LoadImageW(0, _ico_p, _IMAGE_ICON, 32, 32, _LR_LOADFROMFILE)
+
+                if not _h_sm or not _h_bg:
+                    _h_mod = ctypes.windll.kernel32.GetModuleHandleW(None)
+                    if not _h_sm:
+                        _h_sm = ctypes.windll.user32.LoadImageW(_h_mod, 1, _IMAGE_ICON, 16, 16, _LR_DEFAULTCOLOR)
+                    if not _h_bg:
+                        _h_bg = ctypes.windll.user32.LoadImageW(_h_mod, 1, _IMAGE_ICON, 32, 32, _LR_DEFAULTCOLOR)
+
+                if _h_sm:
+                    ctypes.windll.user32.SendMessageW(_hwnd, _WM_SETICON, _ICON_SMALL, _h_sm)
+                if _h_bg:
+                    ctypes.windll.user32.SendMessageW(_hwnd, _WM_SETICON, _ICON_BIG, _h_bg)
+        except Exception:
+            pass
+
+if IS_ANDROID:
+    pass
 else:
     real_screen = None
     try:
         screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SCALED | pygame.RESIZABLE)
     except Exception:
         screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+    apply_app_icon()
 
     def set_scale_quality(mode_name):
         """
@@ -195,6 +258,7 @@ else:
                 if pygame.display.is_fullscreen():
                     flags |= pygame.FULLSCREEN
                 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), flags)
+                apply_app_icon()
             except Exception as e:
                 print(f"[DISPLAY] Failed to reapply scale quality: {e}", flush=True)
         return screen
@@ -317,58 +381,13 @@ if sys.platform == 'win32' and not IS_ANDROID:
         pass
 
 # Иконка окна приложения (кактус)
-try:
-    for _sub in ["assets/textures", "assets", "_internal/assets/textures", "_internal/assets", "."]:
-        _app_ico = os.path.join(BASE_DIR, _sub, "app_icon.png")
-        _png = os.path.join(BASE_DIR, _sub, "Cactus.png")
-        if os.path.exists(_app_ico):
-            pygame.display.set_icon(pygame.image.load(_app_ico))
-            break
-        elif os.path.exists(_png):
-            pygame.display.set_icon(pygame.image.load(_png))
-            break
-except Exception:
-    pass
+apply_app_icon()
 
 pygame.display.set_caption("Cactus Tower Defense: Remastered")
 
-# Установка нативных чётких иконок Win32 без интерполяционного мыла (заголовок + панель задач)
 try:
     _hwnd = pygame.display.get_wm_info().get("window") if (sys.platform == 'win32' and not IS_ANDROID) else None
     if _hwnd:
-        import ctypes
-        _WM_SETICON = 0x0080
-        _ICON_SMALL = 0
-        _ICON_BIG = 1
-        _IMAGE_ICON = 1
-        _LR_LOADFROMFILE = 0x0010
-        _LR_DEFAULTCOLOR = 0x0000
-
-        _ico_p = None
-        for _sub in ["assets", "_internal/assets", "."]:
-            _cand = os.path.join(BASE_DIR, _sub, "icon.ico")
-            if os.path.exists(_cand):
-                _ico_p = _cand
-                break
-
-        _h_sm = None
-        _h_bg = None
-        if _ico_p:
-            _h_sm = ctypes.windll.user32.LoadImageW(0, _ico_p, _IMAGE_ICON, 16, 16, _LR_LOADFROMFILE)
-            _h_bg = ctypes.windll.user32.LoadImageW(0, _ico_p, _IMAGE_ICON, 32, 32, _LR_LOADFROMFILE)
-
-        if not _h_sm or not _h_bg:
-            _h_mod = ctypes.windll.kernel32.GetModuleHandleW(None)
-            if not _h_sm:
-                _h_sm = ctypes.windll.user32.LoadImageW(_h_mod, 1, _IMAGE_ICON, 16, 16, _LR_DEFAULTCOLOR)
-            if not _h_bg:
-                _h_bg = ctypes.windll.user32.LoadImageW(_h_mod, 1, _IMAGE_ICON, 32, 32, _LR_DEFAULTCOLOR)
-
-        if _h_sm:
-            ctypes.windll.user32.SendMessageW(_hwnd, _WM_SETICON, _ICON_SMALL, _h_sm)
-        if _h_bg:
-            ctypes.windll.user32.SendMessageW(_hwnd, _WM_SETICON, _ICON_BIG, _h_bg)
-
         # Неблокирующее перемещение окна за заголовок (игра не замирает при перетаскивании)
         from ctypes import wintypes
         _user32 = ctypes.windll.user32
@@ -1241,48 +1260,97 @@ NEW_MASTERY_REWARDS = {10: 10, 25: 15, 50: 20, 75: 30}
 def generate_custom_map_path_and_slots(seed_val):
     """
     Генерирует сбалансированный проходимый путь и слоты под башни по числовому сиду.
+    Включает 6 уникальных органичных архетипов и тактическое распределение слотов.
     """
     try:
         s_int = int(seed_val)
     except Exception:
         s_int = sum(ord(c) for c in str(seed_val)) if seed_val else 777
     rng = random.Random(s_int)
-    style = rng.choice(['snake', 'zigzag', 'sine', 'corners'])
-    waypoints = [(0, rng.randint(220, 480))]
 
-    if style == 'snake':
-        cols = [rng.randint(180, 250), rng.randint(430, 500), rng.randint(680, 750), rng.randint(930, 990)]
-        cur_y = waypoints[0][1]
-        for idx, cx in enumerate(cols):
-            target_y = 150 if (idx % 2 == 0) else 550
-            waypoints.append((cx, cur_y))
-            waypoints.append((cx, target_y))
-            cur_y = target_y
+    archetypes = ['serpentine', 'sine_river', 'horseshoe_loop', 'canyon_switchback', 'spiral_flow', 'zigzag_crest']
+    style = rng.choice(archetypes)
+    waypoints = []
+
+    if style == 'serpentine':
+        cur_y = rng.randint(220, 480)
+        waypoints.append((0, cur_y))
+        turns = rng.choice([3, 4])
+        xs = [int(1280 * (i + 1) / (turns + 1)) + rng.randint(-30, 30) for i in range(turns)]
+        top_y = rng.randint(150, 210)
+        bot_y = rng.randint(510, 580)
+        curr_dir = 1 if cur_y < 360 else -1
+        for cx in xs:
+            ty = bot_y if curr_dir == 1 else top_y
+            curr_dir *= -1
+            waypoints.append((cx - 40, cur_y))
+            waypoints.append((cx + 40, ty))
+            cur_y = ty
         waypoints.append((1280, cur_y))
-    elif style == 'sine':
-        freq = rng.uniform(0.007, 0.012)
-        amp = rng.uniform(110, 190)
-        mid_y = rng.randint(330, 390)
-        phase = rng.uniform(0, 3.14)
-        for x in range(0, 1281, 40):
-            y = int(mid_y + amp * math.sin(x * freq + phase))
-            y = max(140, min(580, y))
-            waypoints.append((x, y))
-    elif style == 'zigzag':
+
+    elif style == 'sine_river':
+        freq1 = rng.uniform(0.005, 0.009)
+        freq2 = freq1 * rng.uniform(1.8, 2.4)
+        amp1 = rng.uniform(110, 180)
+        amp2 = rng.uniform(30, 60)
+        mid_y = rng.randint(320, 400)
+        p1, p2 = rng.uniform(0, 6.28), rng.uniform(0, 6.28)
+        waypoints.append((0, int(mid_y + amp1 * math.sin(p1) + amp2 * math.sin(p2))))
+        for x in range(35, 1281, 45):
+            y = int(mid_y + amp1 * math.sin(x * freq1 + p1) + amp2 * math.sin(x * freq2 + p2))
+            waypoints.append((x, max(140, min(585, y))))
+
+    elif style == 'horseshoe_loop':
+        entry_y = rng.randint(160, 240) if rng.random() < 0.5 else rng.randint(480, 560)
+        exit_y = 700 - entry_y
+        mid_x = rng.randint(560, 720)
+        loop_dir = 1 if entry_y < 360 else -1
         waypoints = [
-            (0, 200), (rng.randint(240, 380), 200), (rng.randint(240, 380), 540),
-            (rng.randint(560, 690), 540), (rng.randint(560, 690), 190),
-            (rng.randint(860, 990), 190), (rng.randint(860, 990), 510), (1280, 510)
-        ]
-    else:
-        waypoints = [
-            (0, 360), (rng.randint(200, 300), 360), (rng.randint(200, 300), 150),
-            (rng.randint(540, 660), 150), (rng.randint(540, 660), 560),
-            (rng.randint(890, 1000), 560), (rng.randint(890, 1000), 360), (1280, 360)
+            (0, entry_y),
+            (rng.randint(240, 320), entry_y),
+            (mid_x - 180, entry_y + loop_dir * 180),
+            (mid_x, entry_y + loop_dir * 280),
+            (mid_x + 180, entry_y + loop_dir * 180),
+            (rng.randint(900, 1000), exit_y),
+            (1280, exit_y)
         ]
 
-    # Генерация слотов вокруг дороги
-    slots = []
+    elif style == 'canyon_switchback':
+        start_y = rng.randint(160, 260)
+        waypoints.append((0, start_y))
+        y1, y2, y3 = 540, 180, 520
+        c1 = rng.randint(280, 380)
+        c2 = rng.randint(580, 700)
+        c3 = rng.randint(880, 1000)
+        waypoints.extend([
+            (c1, start_y), (c1, y1),
+            (c2, y1), (c2, y2),
+            (c3, y2), (c3, y3),
+            (1280, y3)
+        ])
+
+    elif style == 'spiral_flow':
+        waypoints = [
+            (0, 480), (rng.randint(250, 320), 480),
+            (rng.randint(250, 320), 180), (rng.randint(750, 850), 180),
+            (rng.randint(750, 850), 420), (rng.randint(460, 540), 420),
+            (rng.randint(460, 540), 570), (1280, 570)
+        ]
+
+    else: # zigzag_crest
+        waypoints = [
+            (0, 360), (rng.randint(200, 280), 170),
+            (rng.randint(440, 520), 550), (rng.randint(680, 760), 170),
+            (rng.randint(920, 1020), 550), (1280, 360)
+        ]
+
+    clamped_wp = []
+    for i, (wx, wy) in enumerate(waypoints):
+        wx_cl = 0 if i == 0 else (1280 if i == len(waypoints)-1 else max(10, min(1270, wx)))
+        wy_cl = max(140, min(590, wy))
+        clamped_wp.append((wx_cl, wy_cl))
+    waypoints = clamped_wp
+
     def dist_to_segment(p, a, b):
         px, py = p; ax, ay = a; bx, by = b
         dx = bx - ax; dy = by - ay
@@ -1305,29 +1373,45 @@ def generate_custom_map_path_and_slots(seed_val):
         leng = math.hypot(dx, dy)
         if leng > 1e-4:
             nx, ny = -dy / leng, dx / leng
-            for offset in [80, -80]:
+            for offset in [72, -72, 95, -95]:
                 sx = int(mx + nx * offset)
                 sy = int(my + ny * offset)
                 candidates.append((sx, sy))
 
-    for gx in range(120, 1030, 85):
-        for gy in range(130, 600, 85):
-            candidates.append((gx + rng.randint(-12, 12), gy + rng.randint(-12, 12)))
+    for gx in range(110, 1050, 70):
+        for gy in range(140, 600, 70):
+            candidates.append((gx + rng.randint(-10, 10), gy + rng.randint(-10, 10)))
 
-    rng.shuffle(candidates)
+    scored = []
     for cx, cy in candidates:
-        if 80 <= cx <= 1020 and 110 <= cy <= 610:
-            if 60 <= min_dist_to_path((cx, cy)) <= 150:
-                if all(math.hypot(cx - sx, cy - sy) >= 80 for sx, sy in slots):
-                    slots.append((cx, cy))
-                    if len(slots) >= 14:
-                        break
+        if not (80 <= cx <= 1020 and 130 <= cy <= 600):
+            continue
+        d = min_dist_to_path((cx, cy))
+        if 58 <= d <= 145:
+            coverage = sum(1 for wx, wy in waypoints if math.hypot(cx - wx, cy - wy) <= 220)
+            scored.append(((cx, cy), coverage + rng.uniform(0, 2.0)))
 
-    if len(slots) < 10:
-        # Резервные слоты, если сид плотный
-        for rx, ry in [(180, 140), (320, 480), (520, 220), (680, 480), (840, 200), (980, 480), (450, 360), (750, 360), (220, 320), (920, 320)]:
-            if all(math.hypot(rx - sx, ry - sy) >= 70 for sx, sy in slots):
-                slots.append((rx, ry))
+    scored.sort(key=lambda item: item[1], reverse=True)
+
+    slots = []
+    zones = {'left': 0, 'mid': 0, 'right': 0}
+    for (cx, cy), sc in scored:
+        if any(math.hypot(cx - sx, cy - sy) < 78 for sx, sy in slots):
+            continue
+        z = 'left' if cx < 420 else ('mid' if cx < 760 else 'right')
+        if zones[z] >= 5 and len(slots) < 12:
+            continue
+        slots.append((cx, cy))
+        zones[z] += 1
+        if len(slots) >= 14:
+            break
+
+    if len(slots) < 11:
+        for (cx, cy), sc in scored:
+            if all(math.hypot(cx - sx, cy - sy) >= 72 for sx, sy in slots):
+                slots.append((cx, cy))
+                if len(slots) >= 12:
+                    break
 
     return waypoints, slots
 
