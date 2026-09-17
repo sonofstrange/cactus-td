@@ -5,6 +5,9 @@ config.py - Конфигурация, ресурсы, шрифты, звуки �
 import io
 import math
 import os
+# Качественное билинейное сглаживание при масштабировании GPU (устраняет пикселизацию)
+os.environ["SDL_RENDER_SCALE_QUALITY"] = "1"
+
 import random
 import struct
 import wave
@@ -151,7 +154,7 @@ if IS_ANDROID:
 else:
     real_screen = None
     try:
-        screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SCALED | pygame.FULLSCREEN)
+        screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SCALED | pygame.RESIZABLE)
     except Exception:
         screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 

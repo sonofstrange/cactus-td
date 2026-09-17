@@ -4086,24 +4086,11 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
         t_opt = nav_font.render("ОПТИМИЗАЦИЯ", True, WHITE if is_opt else (160, 185, 210))
         surface.blit(t_opt, (preset_opt_rect.centerx - t_opt.get_width() // 2, preset_opt_rect.centery - t_opt.get_height() // 2))
 
-        # 3.1 Тряска физического окна ОС (Window Shake)
+        # 3.1 Тряска физического окна ОС (отключена по запросу пользователя)
         row1_y = 204
-        if IS_ANDROID:
-            win_shake_toggle_rect = None
-            lbl_wsh = small_font.render("Тряска окна ОС: Заменена на тряску экрана", True, (140, 160, 185))
-            surface.blit(lbl_wsh, (col2_x + 18, row1_y + 3))
-        else:
-            win_shake_toggle_rect = pygame.Rect(col2_x + 440, row1_y, 115, 26)
-            wst_hov = win_shake_toggle_rect.collidepoint(mouse_pos)
-            t_wshake_col = (40, 140, 75) if win_shake_val else (48, 55, 68)
-            wsh_border = GOLD if wst_hov else (((120, 220, 150) if win_shake_val else (80, 90, 105)))
-            pygame.draw.rect(surface, (55, 175, 95) if (wst_hov and win_shake_val) else t_wshake_col, win_shake_toggle_rect, border_radius=6)
-            pygame.draw.rect(surface, wsh_border, win_shake_toggle_rect, width=1, border_radius=6)
-            w_btn_lbl = font.render("ВКЛ" if win_shake_val else "ВЫКЛ", True, WHITE)
-            surface.blit(w_btn_lbl, (win_shake_toggle_rect.centerx - w_btn_lbl.get_width() // 2, win_shake_toggle_rect.centery - w_btn_lbl.get_height() // 2))
-
-            lbl_wsh = small_font.render("Тряска окна Windows (Window Shake):", True, (255, 220, 130) if win_shake_val else WHITE)
-            surface.blit(lbl_wsh, (col2_x + 18, row1_y + 3))
+        win_shake_toggle_rect = None
+        lbl_wsh = small_font.render("Тряска окна ОС: Отключена (вместо неё тряска экрана)", True, (140, 160, 185))
+        surface.blit(lbl_wsh, (col2_x + 18, row1_y + 3))
 
         # 3.2 Тряска экрана (Screen Shake)
         row2_y = 234

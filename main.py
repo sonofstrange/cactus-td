@@ -27,48 +27,10 @@ class WindowManager:
             self.win = None
 
     def update_shake(self, shake_amount, raw_dt, enabled=True):
-        if not self.win:
-            return
-        if not enabled or shake_amount <= 0.05:
-            if self.is_shaking:
-                if self.base_pos:
-                    try:
-                        self.win.position = self.base_pos
-                    except Exception:
-                        pass
-                self.is_shaking = False
-            else:
-                # Обновляем базовую позицию, если игрок переместил окно мышью
-                try:
-                    self.base_pos = self.win.position
-                except Exception:
-                    pass
-            return
-
-        # Начинаем или продолжаем тряску окна
-        if not self.is_shaking:
-            try:
-                self.base_pos = self.win.position
-            except Exception:
-                pass
-            self.is_shaking = True
-
-        amp = min(28, max(2, int(shake_amount * 1.1)))
-        dx = random.randint(-amp, amp)
-        dy = random.randint(-amp, amp)
-        try:
-            if self.base_pos:
-                self.win.position = (self.base_pos[0] + dx, self.base_pos[1] + dy)
-        except Exception:
-            pass
+        pass  # Тряска физического окна ОС полностью отключена
 
     def reset_position(self):
-        if self.win and self.base_pos:
-            try:
-                self.win.position = self.base_pos
-            except Exception:
-                pass
-        self.is_shaking = False
+        pass
 
     def set_title(self, title):
         if self.win and title != self.last_title:
@@ -86,23 +48,7 @@ class WindowManager:
                 pass
 
     def victory_bounce(self):
-        if self.win and self.base_pos:
-            try:
-                bx, by = self.base_pos
-                for dy in [-16, -26, -18, -8, 2, 0]:
-                    self.win.position = (bx, by + dy)
-                    pygame.time.delay(20)
-                    pygame.event.pump()
-                self.win.position = (bx, by)
-            except Exception:
-                pass
-
-    def reset_position(self):
-        if self.win and self.base_pos:
-            try:
-                self.win.position = self.base_pos
-            except Exception:
-                pass
+        pass  # Физическое подпрыгивание окна ОС отключено
 
 def run_game():
     global savedata, screen
@@ -2266,17 +2212,58 @@ def run_game():
                                 sfx_click.play()
                                 active_dig_site = None
 
-                                # На ПК пробуем создать отдельное окно ОС; на Android используем встроенное фейковое окно
+                                # На ПК пробуем создать отдельное окно ОС (всегда поверх игры); на Android используем встроенное фейковое окно
                                 if not IS_ANDROID:
                                     try:
-                                        main_x, main_y = win_mgr.win.position if win_mgr and win_mgr.win else (100, 100)
-                                        dw_x = main_x + SCREEN_WIDTH + 10
-                                        dw_y = main_y + 40
-                                        disp_w = pygame.display.get_desktop_sizes()[0][0] if hasattr(pygame.display, "get_desktop_sizes") and pygame.display.get_desktop_sizes() else 1920
-                                        if dw_x + 360 > disp_w:
-                                            dw_x = max(10, main_x - 370)
-                                        dig_window = pygame.Window("Археологические Раскопки 5х5", (360, 460), position=(dw_x, dw_y))
+                                        disp_sizes = pygame.display.get_desktop_sizes() if hasattr(pygame.display, "get_desktop_sizes") else []
+                                        disp_w = disp_sizes[0][0] if disp_sizes else 1920
+                                        disp_h = disp_sizes[0][1] if disp_sizes else 1080
+
+                                        cur_win = win_mgr.win if win_mgr and win_mgr.win else None
+                                        if cur_win:
+                                            try:
+                                                cur_pos = cur_win.position
+                                                cur_sz = cur_win.size
+                                            except Exception:
+                                                cur_pos = (100, 100)
+                                                cur_sz = (SCREEN_WIDTH, SCREEN_HEIGHT)
+                                        else:
+                                            cur_pos = (100, 100)
+                                            cur_sz = (SCREEN_WIDTH, SCREEN_HEIGHT)
+
+                                        # Вычисляем умную позицию: если справа от окна есть место — пристыковываем справа,
+                                        # иначе если игра развёрнута на весь экран или места мало — размещаем поверх в правом верхнем углу игрового поля
+                                        if cur_pos[0] + cur_sz[0] + 375 <= disp_w:
+                                            dw_x = cur_pos[0] + cur_sz[0] + 10
+                                            dw_y = cur_pos[1] + 40
+                                        elif cur_pos[0] >= 375:
+                                            dw_x = cur_pos[0] - 375
+                                            dw_y = cur_pos[1] + 40
+                                        else:
+                                            dw_x = max(20, cur_pos[0] + cur_sz[0] - 380)
+                                            dw_y = max(40, cur_pos[1] + 60)
+
+                                        dw_x = max(10, min(disp_w - 370, dw_x))
+                                        dw_y = max(30, min(disp_h - 480, dw_y))
+
+                                        dig_window = pygame.Window("Археологические Раскопки 5х5", (360, 460), position=(dw_x, dw_y), always_on_top=True)
+                                        dig_window.always_on_top = True
+
+                                        if sys.platform == "win32":
+                                            try:
+                                                import ctypes
+                                                hwnd = dig_window.handle
+                                                ctypes.windll.user32.SetWindowPos(
+                                                    ctypes.c_void_p(hwnd),
+                                                    ctypes.c_void_p(-1),  # HWND_TOPMOST
+                                                    0, 0, 0, 0,
+                                                    0x0001 | 0x0002 | 0x0040  # SWP_NOSIZE | SWP_NOMOVE | SWP_SHOWWINDOW
+                                                )
+                                            except Exception:
+                                                pass
+                                        dig_window.focus()
                                     except Exception as err:
+                                        print(f"[DIG] Native window creation failed: {err}")
                                         dig_window = None
                                 else:
                                     dig_window = None
@@ -3778,6 +3765,8 @@ def run_game():
             if dig_session:
                 if dig_window:
                     try:
+                        if not dig_window.always_on_top:
+                            dig_window.always_on_top = True
                         dig_surf = dig_window.get_surface()
                         draw_dig_window(dig_surf, dig_session, dig_mouse_pos)
                         dig_window.flip()
