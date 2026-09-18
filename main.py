@@ -521,10 +521,12 @@ def run_game():
                             active_guide_modal = False
                             sfx_click.play()
                         elif event.key in [pygame.K_LEFT, pygame.K_a]:
-                            guide_modal_tab = (guide_modal_tab - 1) % 3
+                            _n_tabs = 2 if guide_modal_context in ["tree", "greenhouse", "relics"] else 3
+                            guide_modal_tab = (guide_modal_tab - 1) % _n_tabs
                             sfx_click.play()
                         elif event.key in [pygame.K_RIGHT, pygame.K_d]:
-                            guide_modal_tab = (guide_modal_tab + 1) % 3
+                            _n_tabs = 2 if guide_modal_context in ["tree", "greenhouse", "relics"] else 3
+                            guide_modal_tab = (guide_modal_tab + 1) % _n_tabs
                             sfx_click.play()
                         continue
 
@@ -845,10 +847,12 @@ def run_game():
                             active_guide_modal = False
                             sfx_click.play()
                         elif event.key in [pygame.K_LEFT, pygame.K_a]:
-                            guide_modal_tab = (guide_modal_tab - 1) % 3
+                            _n_tabs = 2 if guide_modal_context in ["tree", "greenhouse", "relics"] else 3
+                            guide_modal_tab = (guide_modal_tab - 1) % _n_tabs
                             sfx_click.play()
                         elif event.key in [pygame.K_RIGHT, pygame.K_d, pygame.K_TAB]:
-                            guide_modal_tab = (guide_modal_tab + 1) % 3
+                            _n_tabs = 2 if guide_modal_context in ["tree", "greenhouse", "relics"] else 3
+                            guide_modal_tab = (guide_modal_tab + 1) % _n_tabs
                             sfx_click.play()
                         continue
 
@@ -1313,10 +1317,12 @@ def run_game():
                             active_guide_modal = False
                             sfx_click.play()
                         elif event.key in [pygame.K_LEFT, pygame.K_a]:
-                            guide_modal_tab = (guide_modal_tab - 1) % 3
+                            _n_tabs = 2 if guide_modal_context in ["tree", "greenhouse", "relics"] else 3
+                            guide_modal_tab = (guide_modal_tab - 1) % _n_tabs
                             sfx_click.play()
                         elif event.key in [pygame.K_RIGHT, pygame.K_d, pygame.K_TAB]:
-                            guide_modal_tab = (guide_modal_tab + 1) % 3
+                            _n_tabs = 2 if guide_modal_context in ["tree", "greenhouse", "relics"] else 3
+                            guide_modal_tab = (guide_modal_tab + 1) % _n_tabs
                             sfx_click.play()
                         continue
 
@@ -1441,10 +1447,12 @@ def run_game():
                             active_guide_modal = False
                             sfx_click.play()
                         elif event.key in [pygame.K_LEFT, pygame.K_a]:
-                            guide_modal_tab = (guide_modal_tab - 1) % 3
+                            _n_tabs = 2 if guide_modal_context in ["tree", "greenhouse", "relics"] else 3
+                            guide_modal_tab = (guide_modal_tab - 1) % _n_tabs
                             sfx_click.play()
                         elif event.key in [pygame.K_RIGHT, pygame.K_d, pygame.K_TAB]:
-                            guide_modal_tab = (guide_modal_tab + 1) % 3
+                            _n_tabs = 2 if guide_modal_context in ["tree", "greenhouse", "relics"] else 3
+                            guide_modal_tab = (guide_modal_tab + 1) % _n_tabs
                             sfx_click.play()
                         continue
 
@@ -2516,10 +2524,12 @@ def run_game():
                             is_paused = True
                             sfx_click.play()
                     elif active_guide_modal and event.key in (pygame.K_TAB, pygame.K_RIGHT):
-                        guide_modal_tab = (guide_modal_tab + 1) % 3
+                        _n_tabs = 2 if guide_modal_context in ["tree", "greenhouse", "relics"] else 3
+                        guide_modal_tab = (guide_modal_tab + 1) % _n_tabs
                         sfx_click.play()
                     elif active_guide_modal and event.key == pygame.K_LEFT:
-                        guide_modal_tab = (guide_modal_tab - 1) % 3
+                        _n_tabs = 2 if guide_modal_context in ["tree", "greenhouse", "relics"] else 3
+                        guide_modal_tab = (guide_modal_tab - 1) % _n_tabs
                         sfx_click.play()
                     elif event.key in (pygame.K_F1, pygame.K_SLASH, pygame.K_h):
                         if not game_over:
