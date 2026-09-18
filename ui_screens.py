@@ -4565,8 +4565,6 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
     preset_opt_rect = None
     scale_sharp_rect = None
     scale_smooth_rect = None
-    scale_restart_rect = None
-    needs_restart = False
     win_shake_toggle_rect = None
     shake_toggle_rect = None
     dmg_toggle_rect = None
@@ -4775,22 +4773,15 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
 
         # 3.1 Масштабирование экрана (Чёткость / Сглаживание)
         row1_y = 204
+        lbl_scale = small_font.render("Чёткость экрана (Масштаб):", True, WHITE)
+        surface.blit(lbl_scale, (col2_x + 18, row1_y + 4))
+
         scale_mode = savedata.get("Settings", {}).get("scale_quality", "sharp")
         is_sharp = (scale_mode != "smooth")
         is_smooth = (scale_mode == "smooth")
-        cur_active_mode = getattr(config, "ACTIVE_SCALE_MODE", ACTIVE_SCALE_MODE) if "config" in globals() else ACTIVE_SCALE_MODE
-        needs_restart = (not IS_ANDROID) and (scale_mode != cur_active_mode)
 
-        if needs_restart:
-            lbl_scale = small_font.render("Чёткость:* (нужен рестарт)", True, (255, 215, 110))
-        else:
-            lbl_scale = small_font.render("Чёткость (масштаб):", True, WHITE)
-        surface.blit(lbl_scale, (col2_x + 18, row1_y + 4))
-
-        scale_sharp_rect = pygame.Rect(col2_x + 236, row1_y, 114, 26)
-        scale_smooth_rect = pygame.Rect(col2_x + 356, row1_y, 126, 26)
-        scale_restart_rect = pygame.Rect(col2_x + 488, row1_y, 86, 26) if needs_restart else None
-
+        scale_sharp_rect = pygame.Rect(col2_x + 276, row1_y, 134, 26)
+        scale_smooth_rect = pygame.Rect(col2_x + 418, row1_y, 144, 26)
         ssh_hov = scale_sharp_rect.collidepoint(mouse_pos)
         ssm_hov = scale_smooth_rect.collidepoint(mouse_pos)
 
@@ -4798,7 +4789,7 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
         p_sharp_bd = (110, 215, 255) if is_sharp else ((70, 105, 140) if ssh_hov else (45, 60, 80))
         pygame.draw.rect(surface, p_sharp_bg, scale_sharp_rect, border_radius=6)
         pygame.draw.rect(surface, p_sharp_bd, scale_sharp_rect, width=2 if is_sharp else 1, border_radius=6)
-        t_sharp = nav_font.render("ПИКСЕЛЬ", True, WHITE if is_sharp else (160, 185, 210))
+        t_sharp = nav_font.render("ПИКСЕЛЬНЫЙ", True, WHITE if is_sharp else (160, 185, 210))
         surface.blit(t_sharp, (scale_sharp_rect.centerx - t_sharp.get_width() // 2, scale_sharp_rect.centery - t_sharp.get_height() // 2))
 
         p_smooth_bg = (35, 125, 65) if is_smooth else ((28, 40, 56) if ssm_hov else (20, 26, 36))
@@ -4807,15 +4798,6 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
         pygame.draw.rect(surface, p_smooth_bd, scale_smooth_rect, width=2 if is_smooth else 1, border_radius=6)
         t_smooth = nav_font.render("СГЛАЖИВАНИЕ", True, WHITE if is_smooth else (160, 185, 210))
         surface.blit(t_smooth, (scale_smooth_rect.centerx - t_smooth.get_width() // 2, scale_smooth_rect.centery - t_smooth.get_height() // 2))
-
-        if needs_restart and scale_restart_rect:
-            srst_hov = scale_restart_rect.collidepoint(mouse_pos)
-            rst_pulse = int(180 + 40 * math.sin(bg_time * 6.0))
-            rst_bg = (rst_pulse, 115, 20) if srst_hov else (max(0, rst_pulse - 35), 85, 15)
-            pygame.draw.rect(surface, rst_bg, scale_restart_rect, border_radius=6)
-            pygame.draw.rect(surface, (255, 235, 130) if srst_hov else (230, 175, 45), scale_restart_rect, width=2 if srst_hov else 1, border_radius=6)
-            t_rst = nav_font.render("РЕСТАРТ", True, WHITE)
-            surface.blit(t_rst, (scale_restart_rect.centerx - t_rst.get_width() // 2, scale_restart_rect.centery - t_rst.get_height() // 2))
 
         # 3.2 Тряска экрана (Screen Shake)
         row2_y = 234
@@ -5408,7 +5390,6 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
         "preset_opt": preset_opt_rect,
         "scale_sharp": scale_sharp_rect,
         "scale_smooth": scale_smooth_rect,
-        "scale_restart": scale_restart_rect,
         "window_shake_toggle": None,
         "shake_toggle": shake_toggle_rect,
         "dmg_toggle": dmg_toggle_rect,

@@ -2015,10 +2015,6 @@ def run_game():
                                 save_data(savedata)
                                 sfx_click.play()
 
-                            elif ui_rects.get("scale_restart") and ui_rects["scale_restart"].collidepoint(mouse_pos):
-                                sfx_click.play()
-                                restart_game(savedata)
-
                             elif ui_rects.get("window_shake_toggle") and ui_rects["window_shake_toggle"].collidepoint(mouse_pos):
                                 cur_wsh = savedata.setdefault("Settings", {}).get("window_shake", True)
                                 savedata["Settings"]["window_shake"] = not cur_wsh

@@ -220,9 +220,6 @@ if IS_ANDROID:
 
     def set_scale_quality(mode_name):
         return screen
-
-    def restart_game(data=None):
-        pass
 def apply_app_icon():
     """Устанавливает иконку приложения (кактус) в Pygame и нативно в Win32."""
     try:
@@ -295,52 +292,19 @@ else:
 
     def set_scale_quality(mode_name):
         """
-        mode_name: 'sharp' (0 - nearest, pixel-art) or 'smooth' (1 - bilinear).
-        Безопасное сохранение режима масштабирования без краша Direct3D11 / SDL2.
+        mode_name: 'sharp' (0 - nearest, pixel-perfect 100% clarity) or 'smooth' (1 - bilinear).
+        Мгновенное переключение масштабирования на лету без краша и без необходимости перезапуска.
         """
+        global screen
         val = "1" if mode_name == "smooth" else "0"
         os.environ["SDL_RENDER_SCALE_QUALITY"] = val
-        try:
-            import ctypes
-            _sdl = None
-            if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
-                _sdl_path = os.path.join(sys._MEIPASS, "pygame", "SDL2.dll")
-                if os.path.exists(_sdl_path):
-                    _sdl = ctypes.CDLL(_sdl_path)
-            if not _sdl:
-                for _root, _dirs, _files in os.walk(sys.prefix):
-                    if "SDL2.dll" in _files:
-                        _sdl = ctypes.CDLL(os.path.join(_root, "SDL2.dll"))
-                        break
-            if _sdl and hasattr(_sdl, "SDL_SetHint"):
-                _sdl.SDL_SetHint(b"SDL_RENDER_SCALE_QUALITY", val.encode("ascii"))
-        except Exception:
-            pass
-        return screen
-
-    def restart_game(data=None):
-        """
-        Безопасный перезапуск игры для немедленного применения нового графического пайплайна SDL2.
-        Сохраняет текущие данные и запускает новый экземпляр приложения.
-        """
-        if data is not None:
+        if not IS_ANDROID and screen is not None:
             try:
-                import game_data
-                game_data.save_data(data)
-            except Exception:
-                pass
-        if IS_ANDROID:
-            return
-        try:
-            import subprocess
-            pygame.quit()
-            if getattr(sys, 'frozen', False):
-                subprocess.Popen([sys.executable] + sys.argv[1:])
-            else:
-                subprocess.Popen([sys.executable] + sys.argv)
-            sys.exit(0)
-        except Exception as e:
-            print(f"[RESTART] Failed to restart process: {e}", flush=True)
+                flags = screen.get_flags()
+                screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), flags)
+            except Exception as e:
+                print(f"[DISPLAY] Failed to reapply scale quality: {e}", flush=True)
+        return screen
 
     def _get_layout(*args, **kwargs):
         return {
