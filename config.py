@@ -220,6 +220,9 @@ if IS_ANDROID:
 
     def set_scale_quality(mode_name):
         return screen
+
+    def check_and_apply_pending_scale():
+        return screen
 def apply_app_icon():
     """Устанавливает иконку приложения (кактус) в Pygame и нативно в Win32."""
     try:
@@ -290,88 +293,67 @@ else:
         screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
     apply_app_icon()
 
-    def set_scale_quality(mode_name):
+    PENDING_SCALE_QUALITY = None
+
+    def apply_scale_quality(mode_name):
         """
-        mode_name: 'sharp' (0 - nearest, pixel-perfect 100% clarity) or 'smooth' (1 - bilinear).
-        Мгновенное аппаратное переключение фильтрации текстуры SDL2 на лету на уровне GPU.
-        Никогда не сбрасывает окно, не смещает координаты и полностью исключает краши Direct3D11.
+        Безопасное пересоздание контекста масштабирования между кадрами (вне цикла событий).
+        Обеспечивает 100% реальное переключение сэмплера Direct3D11 / OpenGL между
+        пиксельной чёткостью (nearest) и сглаживанием (bilinear) без крашей SDL2 и с сохранением
+        развёрнутого/полноэкранного окна без искажения масштаба.
         """
         global screen, ACTIVE_SCALE_MODE
         val = "1" if mode_name == "smooth" else "0"
-        mode_int = 1 if mode_name == "smooth" else 0
         os.environ["SDL_RENDER_SCALE_QUALITY"] = val
         ACTIVE_SCALE_MODE = mode_name
-
-        if not IS_ANDROID:
+        if not IS_ANDROID and screen is not None:
             try:
-                import ctypes
-                from ctypes import wintypes
-                import pygame._sdl2.video as s2v
-
-                _sdl = None
-                if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
-                    _sdl_p = os.path.join(sys._MEIPASS, "pygame", "SDL2.dll")
-                    if os.path.exists(_sdl_p):
-                        _sdl = ctypes.CDLL(_sdl_p)
-                    else:
-                        _sdl_p2 = os.path.join(sys._MEIPASS, "SDL2.dll")
-                        if os.path.exists(_sdl_p2):
-                            _sdl = ctypes.CDLL(_sdl_p2)
-                if not _sdl:
-                    _local_sdl = os.path.join(os.path.dirname(pygame.__file__), "SDL2.dll")
-                    if os.path.exists(_local_sdl):
-                        _sdl = ctypes.CDLL(_local_sdl)
-
-                if _sdl and hasattr(_sdl, "SDL_SetTextureScaleMode"):
-                    if hasattr(_sdl, "SDL_SetHint"):
-                        _sdl.SDL_SetHint(b"SDL_RENDER_SCALE_QUALITY", val.encode("ascii"))
-
-                    w = s2v.Window.from_display_module()
-                    _sdl.SDL_GetWindowFromID.argtypes = [ctypes.c_uint32]
-                    _sdl.SDL_GetWindowFromID.restype = ctypes.c_void_p
-                    win_ptr = _sdl.SDL_GetWindowFromID(w.id)
-
-                    _sdl.SDL_GetRenderer.argtypes = [ctypes.c_void_p]
-                    _sdl.SDL_GetRenderer.restype = ctypes.c_void_p
-                    ren = _sdl.SDL_GetRenderer(win_ptr)
-
-                    if ren:
-                        k32 = ctypes.windll.kernel32
-                        class MEMORY_BASIC_INFORMATION(ctypes.Structure):
-                            _fields_ = [
-                                ("BaseAddress", ctypes.c_void_p),
-                                ("AllocationBase", ctypes.c_void_p),
-                                ("AllocationProtect", wintypes.DWORD),
-                                ("PartitionId", wintypes.WORD),
-                                ("RegionSize", ctypes.c_size_t),
-                                ("State", wintypes.DWORD),
-                                ("Protect", wintypes.DWORD),
-                                ("Type", wintypes.DWORD)
-                            ]
-
-                        def is_readable(addr):
-                            if not addr or addr < 0x10000:
-                                return False
-                            mbi = MEMORY_BASIC_INFORMATION()
-                            if k32.VirtualQuery(ctypes.c_void_p(addr), ctypes.byref(mbi), ctypes.sizeof(mbi)):
-                                return mbi.State == 0x1000 and (mbi.Protect & 0xEE) != 0
-                            return False
-
-                        _sdl.SDL_SetTextureScaleMode.argtypes = [ctypes.c_void_p, ctypes.c_int]
-                        _sdl.SDL_SetTextureScaleMode.restype = ctypes.c_int
-
-                        for off in range(0, 1500, 8):
-                            try:
-                                t_ptr = ctypes.c_void_p.from_address(ren + off).value
-                                if is_readable(t_ptr) and is_readable(t_ptr + 32):
-                                    tw = ctypes.c_int.from_address(t_ptr + 16).value
-                                    th = ctypes.c_int.from_address(t_ptr + 20).value
-                                    if tw == SCREEN_WIDTH and th == SCREEN_HEIGHT:
-                                        _sdl.SDL_SetTextureScaleMode(t_ptr, mode_int)
-                            except Exception:
-                                pass
+                is_max = False
+                if sys.platform == 'win32':
+                    try:
+                        import ctypes
+                        _hwnd = pygame.display.get_wm_info().get("window")
+                        if _hwnd:
+                            is_max = (ctypes.windll.user32.IsZoomed(_hwnd) != 0)
+                    except Exception:
+                        pass
+                flags = pygame.SCALED | pygame.RESIZABLE
+                if pygame.display.is_fullscreen():
+                    flags |= pygame.FULLSCREEN
+                screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), flags)
+                if sys.platform == 'win32' and is_max:
+                    try:
+                        _new_hwnd = pygame.display.get_wm_info().get("window")
+                        if _new_hwnd:
+                            ctypes.windll.user32.ShowWindow(_new_hwnd, 3)  # SW_MAXIMIZE
+                    except Exception:
+                        pass
+                pygame.event.pump()
             except Exception as e:
-                pass
+                print(f"[DISPLAY] Failed to reapply scale quality: {e}", flush=True)
+        return screen
+
+    def set_scale_quality(mode_name):
+        """
+        Запрос на переключение чёткости масштаба.
+        Откладывается до безопасной точки между кадрами (до опроса событий),
+        чтобы исключить краши SDL2 / Direct3D11 при обработке кликов мыши.
+        """
+        global PENDING_SCALE_QUALITY, ACTIVE_SCALE_MODE
+        ACTIVE_SCALE_MODE = mode_name
+        PENDING_SCALE_QUALITY = mode_name
+        return screen
+
+    def check_and_apply_pending_scale():
+        """
+        Вызывается в начале каждого кадра основного игрового цикла.
+        При наличии отложенного переключения безопасно применяет новый режим.
+        """
+        global PENDING_SCALE_QUALITY, screen
+        if PENDING_SCALE_QUALITY is not None:
+            mode = PENDING_SCALE_QUALITY
+            PENDING_SCALE_QUALITY = None
+            return apply_scale_quality(mode)
         return screen
 
     def _get_layout(*args, **kwargs):

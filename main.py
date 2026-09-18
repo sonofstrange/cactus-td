@@ -363,6 +363,11 @@ def run_game():
     playtime_check_timer = 0.0
 
     while running:
+        # Безопасное отложенное применение масштабирования между кадрами (вне цикла событий)
+        _new_screen = check_and_apply_pending_scale()
+        if _new_screen is not None:
+            screen = _new_screen
+
         raw_dt = clock.tick(FPS) / 1000.0
         raw_dt = min(raw_dt, 0.1)
         bg_time += raw_dt * 1000.0
