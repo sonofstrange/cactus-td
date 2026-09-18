@@ -53,9 +53,9 @@ class WindowManager:
         pass
 
     def set_title(self, title):
-        if self.win and title != self.last_title:
+        if title != self.last_title:
             try:
-                self.win.title = title
+                pygame.display.set_caption(title)
                 self.last_title = title
             except Exception:
                 pass

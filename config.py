@@ -25,9 +25,24 @@ if sys.platform == "win32":
             except Exception:
                 pass
 
-# По умолчанию на ПК ставим nearest neighbor ("0") — 100% кристальная чёткость (пиксель-в-пиксель)
+# Читаем сохранённую настройку чёткости масштаба до инициализации окна Pygame/SDL2
+_init_scale_val = "0"
+try:
+    _base_dir_check = sys._MEIPASS if (getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS')) else os.path.dirname(os.path.abspath(__file__))
+    _s_path = os.path.join(_base_dir_check, "savedata.json")
+    if not os.path.exists(_s_path):
+        _s_path = "savedata.json"
+    if os.path.exists(_s_path):
+        import json
+        with open(_s_path, "r", encoding="utf-8") as _f:
+            _s_data = json.load(_f)
+            if _s_data.get("Settings", {}).get("scale_quality") == "smooth":
+                _init_scale_val = "1"
+except Exception:
+    pass
+
 if "SDL_RENDER_SCALE_QUALITY" not in os.environ:
-    os.environ["SDL_RENDER_SCALE_QUALITY"] = "0"
+    os.environ["SDL_RENDER_SCALE_QUALITY"] = _init_scale_val
 
 import io
 import math
@@ -248,19 +263,27 @@ else:
     def set_scale_quality(mode_name):
         """
         mode_name: 'sharp' (0 - nearest, pixel-perfect 100% clarity) or 'smooth' (1 - bilinear).
+        Безопасное переключение без краша SDL2 / D3D11.
         """
         global screen
         val = "1" if mode_name == "smooth" else "0"
         os.environ["SDL_RENDER_SCALE_QUALITY"] = val
-        if not IS_ANDROID and screen is not None:
-            try:
-                flags = pygame.SCALED | pygame.RESIZABLE
-                if pygame.display.is_fullscreen():
-                    flags |= pygame.FULLSCREEN
-                screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), flags)
-                apply_app_icon()
-            except Exception as e:
-                print(f"[DISPLAY] Failed to reapply scale quality: {e}", flush=True)
+        try:
+            import ctypes
+            _sdl = None
+            if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+                _sdl_path = os.path.join(sys._MEIPASS, "pygame", "SDL2.dll")
+                if os.path.exists(_sdl_path):
+                    _sdl = ctypes.CDLL(_sdl_path)
+            if not _sdl:
+                for _root, _dirs, _files in os.walk(sys.prefix):
+                    if "SDL2.dll" in _files:
+                        _sdl = ctypes.CDLL(os.path.join(_root, "SDL2.dll"))
+                        break
+            if _sdl and hasattr(_sdl, "SDL_SetHint"):
+                _sdl.SDL_SetHint(b"SDL_RENDER_SCALE_QUALITY", val.encode("ascii"))
+        except Exception as e:
+            pass
         return screen
 
     def _get_layout(*args, **kwargs):
