@@ -217,6 +217,7 @@ def run_game():
     _pause_btn_mnu_txt = font.render('ВЫБОР КАРТЫ  [ВЫХОД]', True, WHITE)
     active_guide_modal = False
     guide_modal_tab = 0
+    guide_modal_context = "combat"
 
     def get_wave_cacti_multiplier(wave_num):
         """С 40 по 60 волну выручка обычных кактусов плавно падает в 2 раза (с 1.0 до 0.5)."""
@@ -237,12 +238,13 @@ def run_game():
         nonlocal current_wave_queue, upcoming_wave_preview, shake_amount, ambient_particles, map_decor, slime_splats
         nonlocal active_meteorite, next_meteor_wave, cactus_drone, orbital_strike_cd, orbital_targeting, rally_targeting_tent, dark_aegis_charges, flawless_streak, lives_at_wave_start, session_start_wave
         nonlocal active_dig_site, dig_window, dig_session, dig_window_close_timer, battle_ui_fade_alpha
-        nonlocal active_guide_modal, guide_modal_tab
+        nonlocal active_guide_modal, guide_modal_tab, guide_modal_context
 
         pause_frozen_frame = None
         battle_ui_fade_alpha = 255.0 if (IS_ANDROID or get_graphics_preset() == "optimized") else 0.0
         active_guide_modal = False
         guide_modal_tab = 0
+        guide_modal_context = "combat"
         if active_dig_site:
             active_dig_site = None
         if dig_window:
@@ -419,7 +421,14 @@ def run_game():
         # =================================================================
         if current_state == STATE_MAIN_MENU:
             demo_sim.update(raw_dt)
-            play_btn, set_btn, exit_btn = draw_main_menu_screen(screen, mouse_pos, demo_sim, bg_time=bg_time)
+            play_btn, set_btn, exit_btn, info_btn = draw_main_menu_screen(screen, mouse_pos, demo_sim, bg_time=bg_time)
+
+            guide_close_btn = None
+            guide_tab_rects = []
+            if active_guide_modal:
+                guide_close_btn, guide_tab_rects = draw_mechanics_guide_modal(
+                    screen, mouse_pos, current_tab=guide_modal_tab, context=guide_modal_context
+                )
 
             for event in pygame.event.get():
                 if hasattr(event, "pos"):
@@ -428,6 +437,18 @@ def run_game():
                     running = False
 
                 if event.type == pygame.KEYDOWN:
+                    if active_guide_modal:
+                        if event.key in [pygame.K_ESCAPE, pygame.K_SPACE, pygame.K_F1]:
+                            active_guide_modal = False
+                            sfx_click.play()
+                        elif event.key in [pygame.K_LEFT, pygame.K_a]:
+                            guide_modal_tab = (guide_modal_tab - 1) % 3
+                            sfx_click.play()
+                        elif event.key in [pygame.K_RIGHT, pygame.K_d, pygame.K_TAB]:
+                            guide_modal_tab = (guide_modal_tab + 1) % 3
+                            sfx_click.play()
+                        continue
+
                     if event.key in [pygame.K_SPACE, pygame.K_RETURN]:
                         current_state = STATE_MAP_SELECT
                         sfx_click.play()
@@ -439,7 +460,33 @@ def run_game():
                         running = False
 
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    if play_btn and play_btn.collidepoint(mouse_pos):
+                    if active_guide_modal:
+                        if guide_close_btn and guide_close_btn.collidepoint(mouse_pos):
+                            active_guide_modal = False
+                            sfx_click.play()
+                        else:
+                            tab_clicked = False
+                            for t_i, t_r in enumerate(guide_tab_rects):
+                                if t_r.collidepoint(mouse_pos):
+                                    guide_modal_tab = t_i
+                                    sfx_click.play()
+                                    tab_clicked = True
+                                    break
+                            if not tab_clicked:
+                                mw, mh = 980, 610
+                                mx, my = (SCREEN_WIDTH - mw) // 2, (SCREEN_HEIGHT - mh) // 2
+                                if not pygame.Rect(mx, my, mw, mh).collidepoint(mouse_pos):
+                                    active_guide_modal = False
+                                    sfx_click.play()
+                        continue
+
+                    if info_btn and info_btn.collidepoint(mouse_pos):
+                        active_guide_modal = True
+                        guide_modal_context = "combat"
+                        guide_modal_tab = 0
+                        sfx_click.play()
+                        continue
+                    elif play_btn and play_btn.collidepoint(mouse_pos):
                         current_state = STATE_MAP_SELECT
                         sfx_click.play()
                     elif set_btn and set_btn.collidepoint(mouse_pos):
@@ -492,7 +539,9 @@ def run_game():
             guide_close_btn = None
             guide_tab_rects = []
             if active_guide_modal:
-                guide_close_btn, guide_tab_rects = draw_mechanics_guide_modal(screen, mouse_pos, current_tab=guide_modal_tab)
+                guide_close_btn, guide_tab_rects = draw_mechanics_guide_modal(
+                    screen, mouse_pos, current_tab=guide_modal_tab, context=guide_modal_context
+                )
             elif active_custom_map_modal:
                 custom_close_btn, _, custom_action_btns = draw_custom_map_setup_modal(screen, savedata, mouse_pos)
             elif active_map_info_modal is not None:
@@ -743,6 +792,8 @@ def run_game():
                         sfx_click.play()
                     elif guide_btn and guide_btn.collidepoint(mouse_pos):
                         active_guide_modal = True
+                        guide_modal_context = "combat"
+                        guide_modal_tab = 0
                         sfx_click.play()
 
                     # Клик по инфо-кнопкам [i]
@@ -811,9 +862,16 @@ def run_game():
         # ЭКРАН 2: ДРЕВО УЛУЧШЕНИЙ
         # =================================================================
         elif current_state == STATE_UPGRADES:
-            back_rect, center_rect, buy_btn_rect, toggle_btn_rect, node_rects, dark_bal_rect, zoom_in_rect, zoom_out_rect, zoom_reset_rect = draw_upgrade_tree_screen(
+            back_rect, center_rect, buy_btn_rect, toggle_btn_rect, node_rects, dark_bal_rect, zoom_in_rect, zoom_out_rect, zoom_reset_rect, info_btn_rect = draw_upgrade_tree_screen(
                 screen, savedata, mouse_pos, tree_cam_x, tree_cam_y, selected_tree_node, is_dragging_tree, tree_zoom, bg_time=bg_time
             )
+
+            guide_close_btn = None
+            guide_tab_rects = []
+            if active_guide_modal:
+                guide_close_btn, guide_tab_rects = draw_mechanics_guide_modal(
+                    screen, mouse_pos, current_tab=guide_modal_tab, context=guide_modal_context
+                )
 
             for event in pygame.event.get():
                 if hasattr(event, "pos"):
@@ -822,6 +880,18 @@ def run_game():
                     running = False
 
                 if event.type == pygame.KEYDOWN:
+                    if active_guide_modal:
+                        if event.key in [pygame.K_ESCAPE, pygame.K_SPACE, pygame.K_F1]:
+                            active_guide_modal = False
+                            sfx_click.play()
+                        elif event.key in [pygame.K_LEFT, pygame.K_a]:
+                            guide_modal_tab = (guide_modal_tab - 1) % 3
+                            sfx_click.play()
+                        elif event.key in [pygame.K_RIGHT, pygame.K_d, pygame.K_TAB]:
+                            guide_modal_tab = (guide_modal_tab + 1) % 3
+                            sfx_click.play()
+                        continue
+
                     if event.key in [pygame.K_ESCAPE, pygame.K_u]:
                         current_state = STATE_MAP_SELECT
                         sfx_click.play()
@@ -917,7 +987,33 @@ def run_game():
                         tree_zoom = new_zoom
 
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button in (1, 3):
-                    if back_rect.collidepoint(mouse_pos):
+                    if active_guide_modal:
+                        if guide_close_btn and guide_close_btn.collidepoint(mouse_pos):
+                            active_guide_modal = False
+                            sfx_click.play()
+                        else:
+                            tab_clicked = False
+                            for t_i, t_r in enumerate(guide_tab_rects):
+                                if t_r.collidepoint(mouse_pos):
+                                    guide_modal_tab = t_i
+                                    sfx_click.play()
+                                    tab_clicked = True
+                                    break
+                            if not tab_clicked:
+                                mw, mh = 980, 610
+                                mx, my = (SCREEN_WIDTH - mw) // 2, (SCREEN_HEIGHT - mh) // 2
+                                if not pygame.Rect(mx, my, mw, mh).collidepoint(mouse_pos):
+                                    active_guide_modal = False
+                                    sfx_click.play()
+                        continue
+
+                    if info_btn_rect and info_btn_rect.collidepoint(mouse_pos):
+                        active_guide_modal = True
+                        guide_modal_context = "tree"
+                        guide_modal_tab = 0
+                        sfx_click.play()
+                        continue
+                    elif back_rect.collidepoint(mouse_pos):
                         current_state = STATE_MAP_SELECT
                         sfx_click.play()
                         continue
@@ -1234,9 +1330,16 @@ def run_game():
             generate_background(bg_surface, bg_time)
             screen.blit(bg_surface, (0, 0))
 
-            back_btn, upgrade_buttons, card_rects, modal_close_btn, modal_upg_btn = draw_greenhouse_screen(
+            back_btn, upgrade_buttons, card_rects, modal_close_btn, modal_upg_btn, info_btn = draw_greenhouse_screen(
                 screen, savedata, mouse_pos, inspected_greenhouse_cactus, bg_time=bg_time
             )
+
+            guide_close_btn = None
+            guide_tab_rects = []
+            if active_guide_modal:
+                guide_close_btn, guide_tab_rects = draw_mechanics_guide_modal(
+                    screen, mouse_pos, current_tab=guide_modal_tab, context=guide_modal_context
+                )
 
             for event in pygame.event.get():
                 if hasattr(event, "pos"):
@@ -1245,6 +1348,18 @@ def run_game():
                     running = False
 
                 if event.type == pygame.KEYDOWN:
+                    if active_guide_modal:
+                        if event.key in [pygame.K_ESCAPE, pygame.K_SPACE, pygame.K_F1]:
+                            active_guide_modal = False
+                            sfx_click.play()
+                        elif event.key in [pygame.K_LEFT, pygame.K_a]:
+                            guide_modal_tab = (guide_modal_tab - 1) % 3
+                            sfx_click.play()
+                        elif event.key in [pygame.K_RIGHT, pygame.K_d, pygame.K_TAB]:
+                            guide_modal_tab = (guide_modal_tab + 1) % 3
+                            sfx_click.play()
+                        continue
+
                     if inspected_greenhouse_cactus is not None:
                         if event.key in [pygame.K_ESCAPE, pygame.K_SPACE, pygame.K_g]:
                             inspected_greenhouse_cactus = None
@@ -1263,6 +1378,33 @@ def run_game():
                         sfx_click.play()
 
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    if active_guide_modal:
+                        if guide_close_btn and guide_close_btn.collidepoint(mouse_pos):
+                            active_guide_modal = False
+                            sfx_click.play()
+                        else:
+                            tab_clicked = False
+                            for t_i, t_r in enumerate(guide_tab_rects):
+                                if t_r.collidepoint(mouse_pos):
+                                    guide_modal_tab = t_i
+                                    sfx_click.play()
+                                    tab_clicked = True
+                                    break
+                            if not tab_clicked:
+                                mw, mh = 980, 610
+                                mx, my = (SCREEN_WIDTH - mw) // 2, (SCREEN_HEIGHT - mh) // 2
+                                if not pygame.Rect(mx, my, mw, mh).collidepoint(mouse_pos):
+                                    active_guide_modal = False
+                                    sfx_click.play()
+                        continue
+
+                    if info_btn and info_btn.collidepoint(mouse_pos):
+                        active_guide_modal = True
+                        guide_modal_context = "greenhouse"
+                        guide_modal_tab = 0
+                        sfx_click.play()
+                        continue
+
                     # Если открыто модальное окно подробного осмотра
                     if inspected_greenhouse_cactus is not None:
                         mw, mh = 940, 580
@@ -1318,7 +1460,14 @@ def run_game():
         # ЭКРАН 2.4: МУЗЕЙ РЕЛИКВИЙ (ARCHAEOLOGY MUSEUM)
         # =================================================================
         elif current_state == STATE_RELICS:
-            back_btn, relic_click_rects, pedestal_click_rects = draw_relics_screen(screen, savedata, mouse_pos, bg_time=bg_time)
+            back_btn, relic_click_rects, pedestal_click_rects, info_btn = draw_relics_screen(screen, savedata, mouse_pos, bg_time=bg_time)
+
+            guide_close_btn = None
+            guide_tab_rects = []
+            if active_guide_modal:
+                guide_close_btn, guide_tab_rects = draw_mechanics_guide_modal(
+                    screen, mouse_pos, current_tab=guide_modal_tab, context=guide_modal_context
+                )
 
             for event in pygame.event.get():
                 if hasattr(event, "pos"):
@@ -1327,11 +1476,50 @@ def run_game():
                     running = False
 
                 if event.type == pygame.KEYDOWN:
+                    if active_guide_modal:
+                        if event.key in [pygame.K_ESCAPE, pygame.K_SPACE, pygame.K_F1]:
+                            active_guide_modal = False
+                            sfx_click.play()
+                        elif event.key in [pygame.K_LEFT, pygame.K_a]:
+                            guide_modal_tab = (guide_modal_tab - 1) % 3
+                            sfx_click.play()
+                        elif event.key in [pygame.K_RIGHT, pygame.K_d, pygame.K_TAB]:
+                            guide_modal_tab = (guide_modal_tab + 1) % 3
+                            sfx_click.play()
+                        continue
+
                     if event.key in [pygame.K_ESCAPE, pygame.K_r, pygame.K_SPACE]:
                         current_state = STATE_MAP_SELECT
                         sfx_click.play()
 
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    if active_guide_modal:
+                        if guide_close_btn and guide_close_btn.collidepoint(mouse_pos):
+                            active_guide_modal = False
+                            sfx_click.play()
+                        else:
+                            tab_clicked = False
+                            for t_i, t_r in enumerate(guide_tab_rects):
+                                if t_r.collidepoint(mouse_pos):
+                                    guide_modal_tab = t_i
+                                    sfx_click.play()
+                                    tab_clicked = True
+                                    break
+                            if not tab_clicked:
+                                mw, mh = 980, 610
+                                mx, my = (SCREEN_WIDTH - mw) // 2, (SCREEN_HEIGHT - mh) // 2
+                                if not pygame.Rect(mx, my, mw, mh).collidepoint(mouse_pos):
+                                    active_guide_modal = False
+                                    sfx_click.play()
+                        continue
+
+                    if info_btn and info_btn.collidepoint(mouse_pos):
+                        active_guide_modal = True
+                        guide_modal_context = "relics"
+                        guide_modal_tab = 0
+                        sfx_click.play()
+                        continue
+
                     if back_btn and back_btn.collidepoint(mouse_pos):
                         current_state = STATE_MAP_SELECT
                         sfx_click.play()
@@ -2380,7 +2568,10 @@ def run_game():
                             if not is_paused:
                                 is_paused = True
                                 pause_frozen_frame = screen.copy()
+                            guide_modal_context = "combat"
                             active_guide_modal = not active_guide_modal
+                            if active_guide_modal:
+                                guide_modal_tab = 0
                             sfx_click.play()
                     elif event.key == pygame.K_SPACE:
                         if active_guide_modal:
@@ -2568,6 +2759,8 @@ def run_game():
                                         bestiary_scroll_y = 0
                                         sfx_click.play()
                                     elif b_id == "guide":
+                                        guide_modal_context = "combat"
+                                        guide_modal_tab = 0
                                         active_guide_modal = True
                                         sfx_click.play()
                                     elif b_id == "menu":
@@ -4103,7 +4296,7 @@ def run_game():
                     screen.blit(bt_surf, (brect.centerx - bt_surf.get_width() // 2, brect.centery - bt_surf.get_height() // 2))
 
                 if active_guide_modal:
-                    guide_close_btn, guide_tab_rects = draw_mechanics_guide_modal(screen, mouse_pos, current_tab=guide_modal_tab)
+                    guide_close_btn, guide_tab_rects = draw_mechanics_guide_modal(screen, mouse_pos, current_tab=guide_modal_tab, context=guide_modal_context)
 
             # Экран конца игры (Подробная статистика сессии)
             if game_over:

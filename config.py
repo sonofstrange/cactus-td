@@ -54,7 +54,7 @@ import pygame
 pygame.init()
 
 IS_ANDROID = hasattr(sys, 'getandroidapilevel') or 'ANDROID_ARGUMENT' in os.environ or 'ANDROID_PRIVATE' in os.environ
-GAME_VERSION = "0.1.1"
+GAME_VERSION = "0.1.2"
 
 if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
     BASE_DIR = sys._MEIPASS
