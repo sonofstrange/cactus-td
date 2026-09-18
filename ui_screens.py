@@ -4773,7 +4773,7 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
 
         # 3.1 Масштабирование экрана (Чёткость / Сглаживание)
         row1_y = 204
-        lbl_scale = small_font.render("Чёткость экрана (Масштаб):", True, WHITE)
+        lbl_scale = small_font.render("Чёткость (при перезапуске):", True, WHITE)
         surface.blit(lbl_scale, (col2_x + 18, row1_y + 4))
 
         scale_mode = savedata.get("Settings", {}).get("scale_quality", "sharp")

@@ -263,19 +263,26 @@ else:
     def set_scale_quality(mode_name):
         """
         mode_name: 'sharp' (0 - nearest, pixel-art) or 'smooth' (1 - bilinear).
+        Безопасное сохранение режима масштабирования без краша Direct3D11 / SDL2.
         """
-        global screen
         val = "1" if mode_name == "smooth" else "0"
         os.environ["SDL_RENDER_SCALE_QUALITY"] = val
-        if not IS_ANDROID and screen is not None:
-            try:
-                flags = pygame.SCALED | pygame.RESIZABLE
-                if pygame.display.is_fullscreen():
-                    flags |= pygame.FULLSCREEN
-                screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), flags)
-                apply_app_icon()
-            except Exception as e:
-                print(f"[DISPLAY] Failed to reapply scale quality: {e}", flush=True)
+        try:
+            import ctypes
+            _sdl = None
+            if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+                _sdl_path = os.path.join(sys._MEIPASS, "pygame", "SDL2.dll")
+                if os.path.exists(_sdl_path):
+                    _sdl = ctypes.CDLL(_sdl_path)
+            if not _sdl:
+                for _root, _dirs, _files in os.walk(sys.prefix):
+                    if "SDL2.dll" in _files:
+                        _sdl = ctypes.CDLL(os.path.join(_root, "SDL2.dll"))
+                        break
+            if _sdl and hasattr(_sdl, "SDL_SetHint"):
+                _sdl.SDL_SetHint(b"SDL_RENDER_SCALE_QUALITY", val.encode("ascii"))
+        except Exception:
+            pass
         return screen
 
     def _get_layout(*args, **kwargs):

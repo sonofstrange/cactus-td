@@ -2008,14 +2008,12 @@ def run_game():
                                 screen = set_scale_quality("sharp")
                                 save_data(savedata)
                                 sfx_click.play()
-                                break
 
                             elif ui_rects.get("scale_smooth") and ui_rects["scale_smooth"].collidepoint(mouse_pos):
                                 savedata.setdefault("Settings", {})["scale_quality"] = "smooth"
                                 screen = set_scale_quality("smooth")
                                 save_data(savedata)
                                 sfx_click.play()
-                                break
 
                             elif ui_rects.get("window_shake_toggle") and ui_rects["window_shake_toggle"].collidepoint(mouse_pos):
                                 cur_wsh = savedata.setdefault("Settings", {}).get("window_shake", True)
