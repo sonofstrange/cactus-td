@@ -269,6 +269,39 @@ def draw_rally_flag(surface, x, y, active=False, bg_time=None):
     pygame.draw.polygon(surface, b_col, flag_pts, width=1)
 
 
+def project_point_to_segment(px, py, ax, ay, bx, by):
+    """Проецирует точку (px, py) на отрезок между (ax, ay) и (bx, by)."""
+    dx = bx - ax
+    dy = by - ay
+    seg_len_sq = dx * dx + dy * dy
+    if seg_len_sq == 0:
+        return float(ax), float(ay)
+    t = max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / seg_len_sq))
+    return float(ax + t * dx), float(ay + t * dy)
+
+
+def get_nearest_point_on_road(px, py, path):
+    """
+    Находит ближайшую точку проекции на непрерывную линию дороги (отрезки между узлами path).
+    Возвращает (proj_x, proj_y, seg_idx, dist_to_road).
+    """
+    if not path or len(path) < 2:
+        return float(px), float(py), 0, 0.0
+    best_dist_sq = float('inf')
+    best_pt = (float(px), float(py))
+    best_idx = 0
+    for i in range(len(path) - 1):
+        ax, ay = path[i]
+        bx, by = path[i + 1]
+        proj_x, proj_y = project_point_to_segment(px, py, ax, ay, bx, by)
+        d_sq = (px - proj_x) ** 2 + (py - proj_y) ** 2
+        if d_sq < best_dist_sq:
+            best_dist_sq = d_sq
+            best_pt = (proj_x, proj_y)
+            best_idx = i
+    return best_pt[0], best_pt[1], best_idx, math.sqrt(best_dist_sq)
+
+
 # -------------------------------------------------------------------------
 # СОЛДАТЫ И КАЗАРМА
 # -------------------------------------------------------------------------
@@ -523,7 +556,18 @@ class Tower:
         return round(tot / max(0.5, window), 1)
 
     def set_rally_point(self, rx, ry, path=None):
-        """Устанавливает точку сбора солдат для палатки (в пределах зоны действия)."""
+        """Устанавливает точку сбора солдат для палатки (с притягиванием к полотну дороги)."""
+        best_idx = 0
+        if path and len(path) >= 2:
+            proj_x, proj_y, s_idx, road_dist = get_nearest_point_on_road(rx, ry, path)
+            # Притягивание к дороге, если точка в пределах 90 пикселей от оси дороги
+            if road_dist <= 90:
+                rx, ry = proj_x, proj_y
+                best_idx = s_idx
+        elif path and len(path) == 1:
+            rx, ry = path[0]
+            best_idx = 0
+
         d = math.hypot(rx - self.x, ry - self.y)
         max_r = float(self.range)
         if d > max_r and d > 0:
@@ -531,15 +575,6 @@ class Tower:
             ry = self.y + (ry - self.y) * (max_r / d)
 
         self.rally_point = (float(rx), float(ry))
-
-        best_idx = 0
-        if path:
-            best_dist = float('inf')
-            for idx, pt in enumerate(path):
-                dp = math.hypot(rx - pt[0], ry - pt[1])
-                if dp < best_dist:
-                    best_dist = dp
-                    best_idx = idx
         self.target_path_point = (float(rx), float(ry), best_idx)
         self._reposition_soldiers()
 
@@ -855,18 +890,14 @@ class Tower:
                 if self.target_path_point is not None:
                     self.rally_point = (float(self.target_path_point[0]), float(self.target_path_point[1]))
                 else:
-                    best_dist = float('inf')
-                    best_idx = 0
-                    best_pt = path[0] if path else (self.x, self.y)
-                    if path:
-                        for idx, pt in enumerate(path):
-                            d = math.hypot(self.x - pt[0], self.y - pt[1])
-                            if d < best_dist:
-                                best_dist = d
-                                best_idx = idx
-                                best_pt = pt
-                    self.target_path_point = (float(best_pt[0]), float(best_pt[1]), best_idx)
-                    self.rally_point = (float(best_pt[0]), float(best_pt[1]))
+                    if path and len(path) >= 2:
+                        rx, ry, best_idx, _ = get_nearest_point_on_road(self.x, self.y, path)
+                    elif path and len(path) == 1:
+                        rx, ry, best_idx = float(path[0][0]), float(path[0][1]), 0
+                    else:
+                        rx, ry, best_idx = float(self.x), float(self.y), 0
+                    self.target_path_point = (float(rx), float(ry), best_idx)
+                    self.rally_point = (float(rx), float(ry))
 
             self.soldiers = [s for s in self.soldiers if s.active]
 
@@ -979,7 +1010,7 @@ class Tower:
                     effects.append(LightningEffect(chain_pts, (90, 225, 255)))
                 sfx_tesla.play()
 
-    def draw(self, surface, hovered=False, upgrade_mode=False):
+    def draw(self, surface, hovered=False, upgrade_mode=False, show_rally_flag=False):
         # Каменный постамент под башней
         surface.blit(slot_img, (self.x - 22, self.y - 14))
 
@@ -1047,15 +1078,16 @@ class Tower:
         if self.type == "tent":
             for s in self.soldiers:
                 s.draw(surface)
-            rp = getattr(self, "rally_point", None)
-            if rp is None and self.target_path_point:
-                rp = (self.target_path_point[0], self.target_path_point[1])
-            if rp:
-                rx, ry = int(rp[0]), int(rp[1])
-                is_active = (hovered or getattr(self, "_rally_selecting", False) or getattr(self, "_is_inspected", False) or getattr(self, "_is_rally_targeting", False))
-                if is_active:
-                    pygame.draw.line(surface, (70, 210, 120), (self.x, self.y), (rx, ry), 2)
-                draw_rally_flag(surface, rx, ry, active=is_active)
+            is_active = (hovered or getattr(self, "_rally_selecting", False) or getattr(self, "_is_inspected", False) or getattr(self, "_is_rally_targeting", False))
+            if show_rally_flag or is_active:
+                rp = getattr(self, "rally_point", None)
+                if rp is None and self.target_path_point:
+                    rp = (self.target_path_point[0], self.target_path_point[1])
+                if rp:
+                    rx, ry = int(rp[0]), int(rp[1])
+                    if is_active:
+                        pygame.draw.line(surface, (70, 210, 120), (self.x, self.y), (rx, ry), 2)
+                    draw_rally_flag(surface, rx, ry, active=is_active)
 
         if hovered and self.range > 0:
             rx, ry, rr = int(self.x), int(self.y), int(self.range)

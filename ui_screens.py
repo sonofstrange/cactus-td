@@ -4238,8 +4238,8 @@ def play_start_window_animation(bg_time, game_map=0, path=None, tower_slots=None
         for k in range(24)
     ]
 
-    # Фаза 1: Сжатие диафрагмы к центру с закручивающимся вихрем и лучами (10 быстрых кадров)
-    steps = 10
+    # Фаза 1: Сжатие диафрагмы к центру с закручивающимся вихрем и лучами (плавный кинематографичный вихрь)
+    steps = 38
     for i in range(steps + 1):
         for ev in pygame.event.get():
             if ev.type == pygame.QUIT:
@@ -4290,23 +4290,23 @@ def play_start_window_animation(bg_time, game_map=0, path=None, tower_slots=None
         pygame.display.flip()
         clock.tick(60)
 
-    # Кульминация в центре: яркая вспышка сверхновой (2 быстрых кадра)
-    for fi in range(2):
+    # Кульминация в центре: яркая вспышка сверхновой
+    for fi in range(4):
         for ev in pygame.event.get():
             if ev.type == pygame.QUIT:
                 break
         screen.fill(mask_bg)
-        fr = (fi + 1) * 36
-        pygame.draw.circle(screen, WHITE, (center_x, center_y), 16)
+        fr = (fi + 1) * 28
+        pygame.draw.circle(screen, WHITE, (center_x, center_y), 18)
         pygame.draw.circle(screen, (255, 220, 100), (center_x, center_y), fr, width=3)
-        span = 120 - fi * 40
+        span = 140 - fi * 30
         pygame.draw.line(screen, WHITE, (center_x - span, center_y), (center_x + span, center_y), 3)
         pygame.draw.line(screen, WHITE, (center_x, center_y - span), (center_x, center_y + span), 3)
         pygame.display.flip()
         clock.tick(60)
 
-    # Фаза 2: Раскрытие карты (10 быстрых кадров)
-    steps_exp = 10
+    # Фаза 2: Раскрытие карты (плавное раскрытие)
+    steps_exp = 40
     for i in range(1, steps_exp + 1):
         for ev in pygame.event.get():
             if ev.type == pygame.QUIT:

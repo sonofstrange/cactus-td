@@ -3051,32 +3051,32 @@ def run_game():
 
                     # Установка точки сбора солдат палатки при активном прицеливании
                     if rally_targeting_tent and not is_paused and not game_over:
-                        # Если клик внутри карточки осмотра башни
-                        if last_card_rect and last_card_rect.collidepoint(mouse_pos):
-                            if last_target_rect and last_target_rect.collidepoint(mouse_pos):
-                                rally_targeting_tent._rally_selecting = False
-                                rally_targeting_tent = None
-                                sfx_click.play()
-                                continue
-                            # Если клик по другим кнопкам карточки — сбрасываем режим выбора, но даём сработать кнопкам
-                            rally_targeting_tent._rally_selecting = False
-                            rally_targeting_tent = None
-                        elif mouse_pos[1] < SCREEN_HEIGHT - 72:
-                            r_dist = math.hypot(mouse_pos[0] - rally_targeting_tent.x, mouse_pos[1] - rally_targeting_tent.y)
+                        if mouse_pos[1] < SCREEN_HEIGHT - 72:
+                            target_x, target_y = float(mouse_pos[0]), float(mouse_pos[1])
+                            if path and len(path) >= 2:
+                                proj_x, proj_y, _, road_dist = get_nearest_point_on_road(target_x, target_y, path)
+                                if road_dist <= 90:
+                                    target_x, target_y = proj_x, proj_y
+
+                            r_dist = math.hypot(target_x - rally_targeting_tent.x, target_y - rally_targeting_tent.y)
                             if r_dist <= rally_targeting_tent.range:
-                                rally_targeting_tent.set_rally_point(mouse_pos[0], mouse_pos[1], path=path)
-                                effects.append(RingEffect(mouse_pos[0], mouse_pos[1], 32, (80, 255, 130)))
+                                rally_targeting_tent.set_rally_point(target_x, target_y, path=path)
+                                effects.append(RingEffect(int(target_x), int(target_y), 32, (80, 255, 130)))
                                 for _ in range(10):
-                                    effects.append(DropSpark(mouse_pos[0], mouse_pos[1], burst=True))
-                                effects.append(FloatingText(mouse_pos[0], mouse_pos[1] - 22, "ТОЧКА СБОРА!", (130, 255, 170)))
+                                    effects.append(DropSpark(int(target_x), int(target_y), burst=True))
+                                effects.append(FloatingText(int(target_x), int(target_y) - 22, "ТОЧКА СБОРА!", (130, 255, 170)))
                                 sfx_click.play()
                                 rally_targeting_tent._rally_selecting = False
                                 rally_targeting_tent = None
                                 continue
                             else:
-                                effects.append(FloatingText(mouse_pos[0], mouse_pos[1] - 18, "ВНЕ ЗОНЫ ПАЛАТКИ!", (255, 110, 110)))
+                                effects.append(FloatingText(int(target_x), int(target_y) - 18, "ВНЕ ЗОНЫ ПАЛАТКИ!", (255, 110, 110)))
                                 laser.play()
                                 continue
+                        else:
+                            # Клик по нижней панели — отмена выбора точки сбора
+                            rally_targeting_tent._rally_selecting = False
+                            rally_targeting_tent = None
 
                     # Клик по кнопкам дока башен
                     b1_rect = pygame.Rect(18, SCREEN_HEIGHT - 70, 136, 58)
@@ -3859,9 +3859,13 @@ def run_game():
                             pygame.draw.circle(field_surf, col, (int(t.x), int(t.y)), rad, width=1)
 
                 if active_meteorite: active_meteorite.draw(field_surf)
-                if active_dig_site: active_dig_site.draw(field_surf)
-                for e in sorted(enemies, key=lambda m: m.y): e.draw(field_surf)
-                for t in towers: t.draw(field_surf, hovered=(t == hovered_tower), upgrade_mode=upgrade_mode)
+                is_rg_active = (savedata.get("Upgrades", {}).get("range_grid", 0) > 0 and savedata.get("Toggles", {}).get("range_grid", False))
+                any_tent_selected = (inspected_tower is not None and getattr(inspected_tower, "type", "") == "tent") or (rally_targeting_tent is not None)
+                show_all_tent_flags = is_rg_active or any_tent_selected
+
+                for t in towers:
+                    t._is_inspected = (t == inspected_tower)
+                    t.draw(field_surf, hovered=(t == hovered_tower), upgrade_mode=upgrade_mode, show_rally_flag=show_all_tent_flags)
                 for p in projectiles: p.draw(field_surf)
                 if cactus_drone: cactus_drone.draw(field_surf)
                 for drop in item_drops: drop.draw(field_surf)
@@ -4344,20 +4348,38 @@ def run_game():
                     screen.blit(r_surf, (tx - tr - 5, ty - tr - 5))
 
                     mx, my = mouse_pos
-                    in_range = (math.hypot(mx - tx, my - ty) <= tr)
+                    target_x, target_y = float(mx), float(my)
+                    is_snapped = False
+                    if path and len(path) >= 2:
+                        proj_x, proj_y, _, road_dist = get_nearest_point_on_road(mx, my, path)
+                        if road_dist <= 90:
+                            target_x, target_y = proj_x, proj_y
+                            is_snapped = True
+
+                    in_range = (math.hypot(target_x - tx, target_y - ty) <= tr)
                     line_col = (80, 255, 120, 190) if in_range else (255, 90, 90, 180)
 
-                    # Линия связи от центра палатки к курсору
+                    # Линия связи от центра палатки к целевой точке флага
                     guide_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-                    pygame.draw.line(guide_surf, line_col, (tx, ty), (mx, my), 2)
+                    pygame.draw.line(guide_surf, line_col, (tx, ty), (int(target_x), int(target_y)), 2)
                     screen.blit(guide_surf, (0, 0))
 
-                    # Превью флага на курсоре
-                    draw_rally_flag(screen, mx, my, active=True, bg_time=pygame.time.get_ticks())
+                    # Эффект притягивания к дороге: мягкое кольцо захвата дороги
+                    if is_snapped and in_range:
+                        snap_pulse = (math.sin(pygame.time.get_ticks() * 0.012) + 1.0) * 0.5
+                        s_r = int(14 + 4 * snap_pulse)
+                        snap_surf = pygame.Surface((s_r * 2 + 6, s_r * 2 + 6), pygame.SRCALPHA)
+                        pygame.draw.circle(snap_surf, (80, 255, 140, 50), (s_r + 3, s_r + 3), s_r)
+                        pygame.draw.circle(snap_surf, (140, 255, 190, 200), (s_r + 3, s_r + 3), s_r, width=2)
+                        screen.blit(snap_surf, (int(target_x - s_r - 3), int(target_y - s_r - 3)))
+
+                    # Превью флага на целевой позиции
+                    draw_rally_flag(screen, int(target_x), int(target_y), active=True, bg_time=pygame.time.get_ticks())
 
                     # Подсказка рядом с курсором
                     if in_range:
-                        t_txt = small_font.render("ТОЧКА СБОРА СОЛДАТ", True, (160, 255, 190))
+                        sub_t = "ПРИВЯЗКА К ДОРОГЕ" if is_snapped else "ТОЧКА СБОРА"
+                        t_txt = small_font.render(sub_t, True, (160, 255, 190))
                         t_sub = tiny_font.render("[ЛКМ] - Установить  |  [ПКМ / ESC] - Отмена", True, (210, 255, 220))
                         b_border = (80, 240, 120, 240)
                     else:
@@ -4366,8 +4388,8 @@ def run_game():
                         b_border = (255, 90, 90, 240)
                     bw = max(t_txt.get_width(), t_sub.get_width()) + 20
                     bh = 42
-                    bx = max(10, min(SCREEN_WIDTH - bw - 10, mx - bw // 2))
-                    by = max(40, my - 65)
+                    bx = max(10, min(SCREEN_WIDTH - bw - 10, int(target_x) - bw // 2))
+                    by = max(40, int(target_y) - 65)
                     b_surf = pygame.Surface((bw, bh), pygame.SRCALPHA)
                     pygame.draw.rect(b_surf, (20, 38, 26, 230), (0, 0, bw, bh), border_radius=6)
                     pygame.draw.rect(b_surf, b_border, (0, 0, bw, bh), width=1, border_radius=6)
@@ -4382,8 +4404,8 @@ def run_game():
                     hud_overlay.set_alpha(int(battle_ui_fade_alpha))
                     screen.blit(hud_overlay, (0, 0))
 
-                # Интерактивная карточка башни при наведении (в обычном и upgrade режимах)
-                if inspected_tower:
+                # Интерактивная карточка башни при наведении (скрыта во время выбора места для флага)
+                if inspected_tower and not rally_targeting_tent:
                     last_card_rect, last_btn_rect, last_target_rect, last_sell_rect, last_max_rect = draw_tower_inspect_card(
                         screen, inspected_tower, upgrade_mode, cacti, mouse_pos, savedata=savedata
                     )
