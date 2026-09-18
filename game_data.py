@@ -3716,23 +3716,24 @@ def get_tower_cost_multiplier(existing_count):
     if existing_count <= 0:
         return 1.0
     mult = 1.0
-    # Факторы мягкого роста для дубликатов башен того же типа:
-    steps = [1.08, 1.10, 1.12, 1.15, 1.18]
+    # Скейлинг цены на башню при покупке дубликатов того же типа:
+    # x1.2, x1.2, x1.5, x1.5, x2, x3, x4 и дальше на 4 каждый раз
+    steps = [1.2, 1.2, 1.5, 1.5, 2.0, 3.0, 4.0]
     for i in range(existing_count):
         mult *= steps[min(i, len(steps) - 1)]
     return mult
 
 MAP_TOWER_PRICE_STEP = {
-    0: 1.05,
-    1: 1.055,
-    2: 1.06,
-    3: 1.065,
-    4: 1.07,
-    5: 1.075,
-    6: 1.08,
-    7: 1.09,
-    8: 1.10,
-    9: 1.10
+    0: 1.10,
+    1: 1.11,
+    2: 1.12,
+    3: 1.13,
+    4: 1.14,
+    5: 1.15,
+    6: 1.16,
+    7: 1.18,
+    8: 1.20,
+    9: 1.20
 }
 
 def get_tower_build_cost(tower_type, towers, savedata=None, game_map=0, session_towers_bought=0):
