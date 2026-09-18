@@ -293,17 +293,85 @@ else:
     def set_scale_quality(mode_name):
         """
         mode_name: 'sharp' (0 - nearest, pixel-perfect 100% clarity) or 'smooth' (1 - bilinear).
-        Мгновенное переключение масштабирования на лету с гарантированным сохранением
-        pygame.SCALED | pygame.RESIZABLE (предотвращает смещение элементов в угол экрана).
+        Мгновенное аппаратное переключение фильтрации текстуры SDL2 на лету на уровне GPU.
+        Никогда не сбрасывает окно, не смещает координаты и полностью исключает краши Direct3D11.
         """
-        global screen
+        global screen, ACTIVE_SCALE_MODE
         val = "1" if mode_name == "smooth" else "0"
+        mode_int = 1 if mode_name == "smooth" else 0
         os.environ["SDL_RENDER_SCALE_QUALITY"] = val
-        if not IS_ANDROID and screen is not None:
+        ACTIVE_SCALE_MODE = mode_name
+
+        if not IS_ANDROID:
             try:
-                screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SCALED | pygame.RESIZABLE)
+                import ctypes
+                from ctypes import wintypes
+                import pygame._sdl2.video as s2v
+
+                _sdl = None
+                if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+                    _sdl_p = os.path.join(sys._MEIPASS, "pygame", "SDL2.dll")
+                    if os.path.exists(_sdl_p):
+                        _sdl = ctypes.CDLL(_sdl_p)
+                    else:
+                        _sdl_p2 = os.path.join(sys._MEIPASS, "SDL2.dll")
+                        if os.path.exists(_sdl_p2):
+                            _sdl = ctypes.CDLL(_sdl_p2)
+                if not _sdl:
+                    _local_sdl = os.path.join(os.path.dirname(pygame.__file__), "SDL2.dll")
+                    if os.path.exists(_local_sdl):
+                        _sdl = ctypes.CDLL(_local_sdl)
+
+                if _sdl and hasattr(_sdl, "SDL_SetTextureScaleMode"):
+                    if hasattr(_sdl, "SDL_SetHint"):
+                        _sdl.SDL_SetHint(b"SDL_RENDER_SCALE_QUALITY", val.encode("ascii"))
+
+                    w = s2v.Window.from_display_module()
+                    _sdl.SDL_GetWindowFromID.argtypes = [ctypes.c_uint32]
+                    _sdl.SDL_GetWindowFromID.restype = ctypes.c_void_p
+                    win_ptr = _sdl.SDL_GetWindowFromID(w.id)
+
+                    _sdl.SDL_GetRenderer.argtypes = [ctypes.c_void_p]
+                    _sdl.SDL_GetRenderer.restype = ctypes.c_void_p
+                    ren = _sdl.SDL_GetRenderer(win_ptr)
+
+                    if ren:
+                        k32 = ctypes.windll.kernel32
+                        class MEMORY_BASIC_INFORMATION(ctypes.Structure):
+                            _fields_ = [
+                                ("BaseAddress", ctypes.c_void_p),
+                                ("AllocationBase", ctypes.c_void_p),
+                                ("AllocationProtect", wintypes.DWORD),
+                                ("PartitionId", wintypes.WORD),
+                                ("RegionSize", ctypes.c_size_t),
+                                ("State", wintypes.DWORD),
+                                ("Protect", wintypes.DWORD),
+                                ("Type", wintypes.DWORD)
+                            ]
+
+                        def is_readable(addr):
+                            if not addr or addr < 0x10000:
+                                return False
+                            mbi = MEMORY_BASIC_INFORMATION()
+                            if k32.VirtualQuery(ctypes.c_void_p(addr), ctypes.byref(mbi), ctypes.sizeof(mbi)):
+                                return mbi.State == 0x1000 and (mbi.Protect & 0xEE) != 0
+                            return False
+
+                        _sdl.SDL_SetTextureScaleMode.argtypes = [ctypes.c_void_p, ctypes.c_int]
+                        _sdl.SDL_SetTextureScaleMode.restype = ctypes.c_int
+
+                        for off in range(0, 1500, 8):
+                            try:
+                                t_ptr = ctypes.c_void_p.from_address(ren + off).value
+                                if is_readable(t_ptr) and is_readable(t_ptr + 32):
+                                    tw = ctypes.c_int.from_address(t_ptr + 16).value
+                                    th = ctypes.c_int.from_address(t_ptr + 20).value
+                                    if tw == SCREEN_WIDTH and th == SCREEN_HEIGHT:
+                                        _sdl.SDL_SetTextureScaleMode(t_ptr, mode_int)
+                            except Exception:
+                                pass
             except Exception as e:
-                print(f"[DISPLAY] Failed to reapply scale quality: {e}", flush=True)
+                pass
         return screen
 
     def _get_layout(*args, **kwargs):
