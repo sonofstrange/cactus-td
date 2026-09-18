@@ -86,6 +86,8 @@ def run_game():
     current_state = STATE_MAIN_MENU
     demo_sim = MenuDemoSimulation()
     settings_source = "main_menu"
+    difficulty_modal_active = False
+    selected_diff_choice = savedata.get("difficulty", "normal")
 
     apply_audio_settings(savedata)
     set_graphics_preset(savedata.get("Settings", {}).get("graphics_preset", "normal"))
@@ -305,7 +307,14 @@ def run_game():
         next_meteor_wave = max(20 + random.randint(0, 3), start_wave + random.randint(gw_min, gw_max))
         gh_buffs = get_greenhouse_buffs(savedata)
         relic_buffs = get_all_relic_buffs(savedata)
-        max_lives = 12 + savedata["Upgrades"].get("base_health", 0) * 3 + gh_buffs.get("base_hp", 0) + relic_buffs.get("base_hp_bonus", 0)
+        diff = savedata.get("difficulty", "normal")
+        base_lives = 12 + savedata["Upgrades"].get("base_health", 0) * 3 + gh_buffs.get("base_hp", 0) + relic_buffs.get("base_hp_bonus", 0)
+        if diff == "casual":
+            max_lives = base_lives + 10
+        elif diff == "hardcore":
+            max_lives = max(1, base_lives // 2)
+        else:
+            max_lives = base_lives
         lives = max_lives
         animated_hp_ratio = 1.0
         hp_catchup_ratio = 1.0
@@ -313,6 +322,8 @@ def run_game():
         lives_at_wave_start = lives
         flawless_streak = 0
         cacti = 200 + (start_wave - 1) * 120 + savedata["Upgrades"].get("start_cacti", 0) * 80 + gh_buffs.get("start_gold", 0)
+        if diff == "casual":
+            cacti += 200
         if game_map == 9:
             cacti = int(savedata.get("CustomMapConfig", {}).get("start_gold", 400))
         elif game_map == 0:
@@ -428,16 +439,64 @@ def run_game():
             demo_sim.update(raw_dt)
             play_btn, set_btn, exit_btn = draw_main_menu_screen(screen, mouse_pos, demo_sim, bg_time=bg_time)
 
+            diff_btns = {}
+            confirm_btn = None
+            if difficulty_modal_active:
+                diff_btns, confirm_btn = draw_difficulty_select_modal(screen, mouse_pos, selected_diff_choice)
+
             for event in pygame.event.get():
                 if hasattr(event, "pos"):
                     mouse_pos = event.pos
                 if event.type == pygame.QUIT:
                     running = False
 
+                if difficulty_modal_active:
+                    if event.type == pygame.KEYDOWN:
+                        if event.key in [pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE]:
+                            savedata["difficulty"] = selected_diff_choice
+                            savedata["difficulty_selected"] = True
+                            save_data(savedata)
+                            difficulty_modal_active = False
+                            current_state = STATE_MAP_SELECT
+                            sfx_click.play()
+                        elif event.key in [pygame.K_1, pygame.K_c]:
+                            selected_diff_choice = "casual"
+                            sfx_click.play()
+                        elif event.key in [pygame.K_2, pygame.K_n]:
+                            selected_diff_choice = "normal"
+                            sfx_click.play()
+                        elif event.key in [pygame.K_3, pygame.K_h]:
+                            selected_diff_choice = "hardcore"
+                            sfx_click.play()
+                        elif event.key == pygame.K_ESCAPE:
+                            difficulty_modal_active = False
+                            sfx_click.play()
+                    elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                        hit_diff = False
+                        for d_key, d_rect in diff_btns.items():
+                            if d_rect and d_rect.collidepoint(mouse_pos):
+                                selected_diff_choice = d_key
+                                sfx_click.play()
+                                hit_diff = True
+                                break
+                        if not hit_diff and confirm_btn and confirm_btn.collidepoint(mouse_pos):
+                            savedata["difficulty"] = selected_diff_choice
+                            savedata["difficulty_selected"] = True
+                            save_data(savedata)
+                            difficulty_modal_active = False
+                            current_state = STATE_MAP_SELECT
+                            sfx_click.play()
+                    continue
+
                 if event.type == pygame.KEYDOWN:
                     if event.key in [pygame.K_SPACE, pygame.K_RETURN]:
-                        current_state = STATE_MAP_SELECT
-                        sfx_click.play()
+                        if not savedata.get("difficulty_selected", False):
+                            difficulty_modal_active = True
+                            selected_diff_choice = savedata.get("difficulty", "normal")
+                            sfx_click.play()
+                        else:
+                            current_state = STATE_MAP_SELECT
+                            sfx_click.play()
                     elif event.key == pygame.K_o:
                         current_state = STATE_SETTINGS
                         settings_source = "main_menu"
@@ -447,8 +506,13 @@ def run_game():
 
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     if play_btn and play_btn.collidepoint(mouse_pos):
-                        current_state = STATE_MAP_SELECT
-                        sfx_click.play()
+                        if not savedata.get("difficulty_selected", False):
+                            difficulty_modal_active = True
+                            selected_diff_choice = savedata.get("difficulty", "normal")
+                            sfx_click.play()
+                        else:
+                            current_state = STATE_MAP_SELECT
+                            sfx_click.play()
                     elif set_btn and set_btn.collidepoint(mouse_pos):
                         current_state = STATE_SETTINGS
                         settings_source = "main_menu"
@@ -1772,7 +1836,8 @@ def run_game():
                                 mode = save_modal_state.get("mode")
                                 val = save_modal_state.get("text", "").strip()
                                 if mode == "create":
-                                    sid, new_data = create_save_profile(val or "Новое сохранение", make_active=True)
+                                    diff = save_modal_state.get("difficulty", "normal")
+                                    sid, new_data = create_save_profile(val or "Новое сохранение", make_active=True, difficulty=diff)
                                     savedata.clear()
                                     savedata.update(new_data)
                                     apply_audio_settings(savedata)
@@ -1886,12 +1951,19 @@ def run_game():
                                     save_modal_state["text"] = clip
                                     save_modal_state.pop("error", None)
                                     sfx_click.play()
+                            elif ui_rects.get("modal_diff_btns") and any(r.collidepoint(mouse_pos) for r in ui_rects["modal_diff_btns"].values() if r):
+                                for d_key, d_rect in ui_rects["modal_diff_btns"].items():
+                                    if d_rect and d_rect.collidepoint(mouse_pos):
+                                        save_modal_state["difficulty"] = d_key
+                                        sfx_click.play()
+                                        break
                             elif ui_rects.get("modal_ok") and ui_rects["modal_ok"].collidepoint(mouse_pos):
                                 if save_modal_state.get("type") == "input":
                                     mode = save_modal_state.get("mode")
                                     val = save_modal_state.get("text", "").strip()
                                     if mode == "create":
-                                        sid, new_data = create_save_profile(val or "Новое сохранение", make_active=True)
+                                        diff = save_modal_state.get("difficulty", "normal")
+                                        sid, new_data = create_save_profile(val or "Новое сохранение", make_active=True, difficulty=diff)
                                         savedata.clear()
                                         savedata.update(new_data)
                                         apply_audio_settings(savedata)
@@ -2108,7 +2180,8 @@ def run_game():
                                 save_modal_state = {
                                     "type": "input",
                                     "mode": "create",
-                                    "text": f"Слот #{len(list_save_profiles()) + 1}"
+                                    "text": f"Слот #{len(list_save_profiles()) + 1}",
+                                    "difficulty": "normal"
                                 }
                                 try:
                                     pygame.key.start_text_input()
@@ -3593,13 +3666,20 @@ def run_game():
                 for drop in item_drops[:]:
                     collected = drop.update(effects, ui_dt)
                     if collected:
+                        diff = savedata.get("difficulty", "normal")
                         if drop.drop_type == "stellar":
-                            savedata["StellarCactuses"] = savedata.get("StellarCactuses", 0) + drop.count
-                            session_stellar += drop.count
+                            gain = drop.count
+                            if diff == "casual":
+                                gain = drop.count + (1 if (drop.count == 1 and random.random() < 0.25) else int(round(drop.count * 0.25)))
+                            savedata["StellarCactuses"] = savedata.get("StellarCactuses", 0) + gain
+                            session_stellar += gain
                             save_data(savedata)
                             sfx_star.play()
                         elif drop.drop_type == "dark":
-                            savedata["DarkCactuses"] = savedata.get("DarkCactuses", 0) + drop.count
+                            gain = drop.count
+                            if diff == "casual":
+                                gain = drop.count + (1 if (drop.count == 1 and random.random() < 0.25) else int(round(drop.count * 0.25)))
+                            savedata["DarkCactuses"] = savedata.get("DarkCactuses", 0) + gain
                             save_data(savedata)
                             sfx_combo.play()
                         elif drop.drop_type == "sprout":

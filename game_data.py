@@ -581,10 +581,19 @@ def has_upgradeable_greenhouse(savedata):
         lvl = c_info.get("level", 0)
         sprouts = c_info.get("sprouts", 0)
         if lvl < len(item["req_sprouts"]):
-            req = item["req_sprouts"][lvl]
+            req = get_greenhouse_sprout_req(item, lvl, savedata)
             if sprouts >= req:
                 return True
     return False
+
+def get_greenhouse_sprout_req(item, lvl, savedata=None):
+    if lvl < len(item["req_sprouts"]):
+        req = item["req_sprouts"][lvl]
+        sdata = savedata if isinstance(savedata, dict) else globals().get("savedata", None)
+        if sdata and isinstance(sdata, dict) and sdata.get("difficulty") == "hardcore":
+            req *= 2
+        return req
+    return 999999
 
 def level_up_greenhouse_cactus(savedata, cactus_id):
     gh = savedata.setdefault("Greenhouse", {})
@@ -594,7 +603,7 @@ def level_up_greenhouse_cactus(savedata, cactus_id):
             lvl = c_info.get("level", 0)
             sprouts = c_info.get("sprouts", 0)
             if lvl < len(item["req_sprouts"]):
-                req = item["req_sprouts"][lvl]
+                req = get_greenhouse_sprout_req(item, lvl, savedata)
                 if sprouts >= req:
                     c_info["level"] = lvl + 1
                     c_info["sprouts"] = sprouts - req
@@ -602,6 +611,12 @@ def level_up_greenhouse_cactus(savedata, cactus_id):
     return False, c_info.get("level", 0)
 
 def grant_cactus_sprout(savedata, cactus_id=None, count=1):
+    diff = savedata.get("difficulty", "normal") if isinstance(savedata, dict) else "normal"
+    if diff == "casual" and random.random() < 0.50:
+        count += 1
+    elif diff == "hardcore" and random.random() < 0.25:
+        return None, None
+
     gh = savedata.setdefault("Greenhouse", {})
     if not cactus_id:
         qh_lvl = savedata.get("Upgrades", {}).get("quantum_harvester", 0) if isinstance(savedata, dict) else 0
@@ -955,10 +970,45 @@ DEFAULT_SAVE = {
         "mammillaria": {"level": 0, "sprouts": 0}
     },
     "Relics": {},
+    "difficulty": "normal",
+    "difficulty_selected": False,
     "SaveId": "slot_main",
     "SaveName": "Основное сохранение",
     "CreatedAt": "",
     "UpdatedAt": ""
+}
+
+# -------------------------------------------------------------------------
+# КОНФИГУРАЦИЯ СЛОЖНОСТЕЙ (DIFFICULTY SYSTEM)
+# -------------------------------------------------------------------------
+DIFFICULTY_CONFIG = {
+    "casual": {
+        "id": "casual",
+        "name": "Казуальная",
+        "badge": "[КАЗУАЛ]",
+        "desc": "+10 HP базы, +200 старт. кактусов, башни -20% цены, скейлинг макс x3, мобы -25% HP, +25% зв./тёмн. кактусов, +50% шанс на +1 росток",
+        "color": (90, 220, 130),
+        "bg": (20, 55, 32),
+        "border": (60, 180, 100)
+    },
+    "normal": {
+        "id": "normal",
+        "name": "Нормальная (Рекомендуется)",
+        "badge": "[НОРМАЛЬНАЯ]",
+        "desc": "Классический сбалансированный опыт Оазиса. Рекомендуется для всех игроков.",
+        "color": (255, 220, 100),
+        "bg": (22, 38, 58),
+        "border": (90, 175, 255)
+    },
+    "hardcore": {
+        "id": "hardcore",
+        "name": "Хардкорная",
+        "badge": "[ХАРДКОР]",
+        "desc": "1/2 HP базы, у мобов и метеоритов x2 HP, все мета-улучшения в 2 раза дороже, 25% шанс потери ростка и реликвии.",
+        "color": (255, 110, 120),
+        "bg": (55, 20, 28),
+        "border": (220, 65, 75)
+    }
 }
 
 import sys
@@ -1296,6 +1346,7 @@ def list_save_profiles():
             profiles.append({
                 "id": sid,
                 "name": data.get("SaveName", sid),
+                "difficulty": data.get("difficulty", "normal"),
                 "created_at": data.get("CreatedAt", "-"),
                 "updated_at": data.get("UpdatedAt", "-"),
                 "is_active": (sid == active_id),
@@ -1319,7 +1370,7 @@ def list_save_profiles():
     profiles.sort(key=lambda p: (0 if p["is_active"] else 1, p["updated_at"]), reverse=False)
     return profiles
 
-def create_save_profile(name=None, make_active=True):
+def create_save_profile(name=None, make_active=True, difficulty="normal"):
     _init_saves_system()
     sid = f"slot_{int(time.time())}_{random.randint(100, 999)}"
     new_data = json.loads(json.dumps(DEFAULT_SAVE))
@@ -1328,6 +1379,8 @@ def create_save_profile(name=None, make_active=True):
     new_data["SaveName"] = name.strip() if (name and name.strip()) else f"Слот #{len(list_save_profiles()) + 1}"
     new_data["CreatedAt"] = now_str
     new_data["UpdatedAt"] = now_str
+    new_data["difficulty"] = difficulty
+    new_data["difficulty_selected"] = True
 
     slot_path = os.path.join(SAVES_DIR, f"{sid}.json")
     try:
@@ -1551,6 +1604,11 @@ def load_data(save_id=None):
             data["LevelsRecords"].append(0)
         if "Relics" not in data or not isinstance(data["Relics"], dict):
             data["Relics"] = {}
+        if "difficulty" not in data:
+            data["difficulty"] = "normal"
+        if "difficulty_selected" not in data:
+            has_prog = any(r > 0 for r in data.get("LevelsRecords", [])) or data.get("Stats", {}).get("total_kills", 0) > 0
+            data["difficulty_selected"] = True if has_prog else False
         check_retroactive_mastery(data)
         return data
     except Exception as e:
@@ -2810,7 +2868,7 @@ def check_node_requirements(node_id, savedata):
 
     return all_met, details
 
-def get_upgrade_node_cost(node_id, current_level):
+def get_upgrade_node_cost(node_id, current_level, savedata=None):
     """Возвращает (stellar_cost, dark_cost, max_lvl) для заданного узла древа."""
     node = UPGRADE_TREE_NODES.get(node_id)
     if not node:
@@ -2831,10 +2889,17 @@ def get_upgrade_node_cost(node_id, current_level):
     else:
         dark_cost = 0
 
+    sdata = savedata if isinstance(savedata, dict) else globals().get("savedata", None)
+    if sdata and isinstance(sdata, dict) and sdata.get("difficulty") == "hardcore":
+        if stellar_cost:
+            stellar_cost *= 2
+        if dark_cost:
+            dark_cost *= 2
+
     return stellar_cost, dark_cost, max_lvl
 
-def get_upgrade_price(upgrade_id, current_level):
-    cost, dark_cost, max_lvl = get_upgrade_node_cost(upgrade_id, current_level)
+def get_upgrade_price(upgrade_id, current_level, savedata=None):
+    cost, dark_cost, max_lvl = get_upgrade_node_cost(upgrade_id, current_level, savedata=savedata)
     return cost, max_lvl
 
 # (Устаревший дубликат RELICS_DATA удален, актуальная система реликвий и пьедесталов находится ниже)
@@ -3682,6 +3747,119 @@ ACHIEVEMENTS_DATA = [
         "icon": crown_upg_icon,
         "check": lambda s: s.get("Stats", {}).get("play_time_seconds", 0) >= 18000,
         "progress": lambda s: (min(300, int(s.get("Stats", {}).get("play_time_seconds", 0) // 60)), 300)
+    },
+    # -------------------------------------------------------------------------
+    # 5. ГЛОБАЛЬНЫЕ ДОСТИЖЕНИЯ (GLOBAL PRESTIGE ACHIEVEMENTS)
+    # -------------------------------------------------------------------------
+    {
+        "id": "global_wave_25",
+        "category": "global",
+        "cat_name": "Глобальные",
+        "title": "Первые Шаги",
+        "desc": "Пройдите 25 волн на любой локации",
+        "reward": 0,
+        "icon": trophy_icon,
+        "check": lambda s: max(s.get("LevelsRecords", [0]) or [0]) >= 25,
+        "progress": lambda s: (min(25, max(s.get("LevelsRecords", [0]) or [0])), 25)
+    },
+    {
+        "id": "global_wave_50",
+        "category": "global",
+        "cat_name": "Глобальные",
+        "title": "Повелитель Оазиса",
+        "desc": "Пройдите 50 волн на любой локации",
+        "reward": 0,
+        "icon": crown_upg_icon,
+        "check": lambda s: max(s.get("LevelsRecords", [0]) or [0]) >= 50,
+        "progress": lambda s: (min(50, max(s.get("LevelsRecords", [0]) or [0])), 50)
+    },
+    {
+        "id": "global_wave_100",
+        "category": "global",
+        "cat_name": "Глобальные",
+        "title": "Вековая Оборона",
+        "desc": "Пройдите 100 волн и завершите Финал кампании",
+        "reward": 0,
+        "icon": crown_upg_icon,
+        "check": lambda s: s.get("GameCompleted", False) or max(s.get("LevelsRecords", [0]) or [0]) >= 100,
+        "progress": lambda s: (min(100, max(s.get("LevelsRecords", [0]) or [0])), 100)
+    },
+    {
+        "id": "global_hardcore_50",
+        "category": "global",
+        "cat_name": "Глобальные",
+        "title": "Железная Воля",
+        "desc": "Достигните 50 волны на сложности Хардкор",
+        "reward": 0,
+        "icon": void_boss_img,
+        "check": lambda s: s.get("difficulty") == "hardcore" and max(s.get("LevelsRecords", [0]) or [0]) >= 50,
+        "progress": lambda s: (min(50, max(s.get("LevelsRecords", [0]) or [0])) if s.get("difficulty") == "hardcore" else 0, 50)
+    },
+    {
+        "id": "global_all_relics",
+        "category": "global",
+        "cat_name": "Глобальные",
+        "title": "Хранитель Древностей",
+        "desc": "Найдите все 20 древних реликвий в Музее",
+        "reward": 0,
+        "icon": relic_icon,
+        "check": lambda s: sum(1 for r in globals().get("RELICS_DATA", {}).values() if s.get("Relics", {}).get(r["id"], {}).get("level", 0) > 0) >= 20,
+        "progress": lambda s: (min(20, sum(1 for r in globals().get("RELICS_DATA", {}).values() if s.get("Relics", {}).get(r["id"], {}).get("level", 0) > 0)), 20)
+    },
+    {
+        "id": "global_botanist",
+        "category": "global",
+        "cat_name": "Глобальные",
+        "title": "Мастер Оранжереи",
+        "desc": "Вырастите все 8 сортов кактусов до 3+ уровня",
+        "reward": 0,
+        "icon": sprout_icon,
+        "check": lambda s: sum(1 for c in globals().get("GREENHOUSE_CACTI", []) if s.get("Greenhouse", {}).get(c["id"], {}).get("level", 0) >= 3) >= 8,
+        "progress": lambda s: (min(8, sum(1 for c in globals().get("GREENHOUSE_CACTI", []) if s.get("Greenhouse", {}).get(c["id"], {}).get("level", 0) >= 3)), 8)
+    },
+    {
+        "id": "global_talent_master",
+        "category": "global",
+        "cat_name": "Глобальные",
+        "title": "Мастер Древа",
+        "desc": "Изучите хотя бы 40 узлов в Древе улучшений",
+        "reward": 0,
+        "icon": trophy_icon,
+        "check": lambda s: sum(1 for nid in globals().get("UPGRADE_TREE_NODES", {}) if s.get("Upgrades", {}).get(nid, 0) > 0) >= 40,
+        "progress": lambda s: (min(40, sum(1 for nid in globals().get("UPGRADE_TREE_NODES", {}) if s.get("Upgrades", {}).get(nid, 0) > 0)), 40)
+    },
+    {
+        "id": "global_stellar_millionaire",
+        "category": "global",
+        "cat_name": "Глобальные",
+        "title": "Звёздный Барон",
+        "desc": "Соберите суммарно 500 Звёздных кактусов",
+        "reward": 0,
+        "icon": stellar_cactus_img,
+        "check": lambda s: s.get("StellarCactuses", 0) >= 500,
+        "progress": lambda s: (min(500, s.get("StellarCactuses", 0)), 500)
+    },
+    {
+        "id": "global_boss_slayer",
+        "category": "global",
+        "cat_name": "Глобальные",
+        "title": "Истребитель Боссов",
+        "desc": "Одолейте 25 боссов за всё время игры",
+        "reward": 0,
+        "icon": boss_img,
+        "check": lambda s: s.get("Stats", {}).get("bosses_defeated", 0) >= 25,
+        "progress": lambda s: (min(25, s.get("Stats", {}).get("bosses_defeated", 0)), 25)
+    },
+    {
+        "id": "global_ultimate_tower",
+        "category": "global",
+        "cat_name": "Глобальные",
+        "title": "Абсолютная Мощь",
+        "desc": "Прокачайте любую башню в бою до 25 уровня",
+        "reward": 0,
+        "icon": magic_tower_img,
+        "check": lambda s: s.get("Stats", {}).get("max_tower_level_reached", 0) >= 25,
+        "progress": lambda s: (min(25, s.get("Stats", {}).get("max_tower_level_reached", 0)), 25)
     }
 ]
 
@@ -3714,15 +3892,22 @@ def get_unclaimed_achievements_count(savedata):
         if aid in valid_ids and st.get("unlocked", False) and not st.get("claimed", False)
     )
 
-def get_tower_cost_multiplier(existing_count):
+def get_tower_cost_multiplier(existing_count, difficulty="normal"):
     if existing_count <= 0:
         return 1.0
     mult = 1.0
     # Скейлинг цены на башню при покупке дубликатов того же типа:
-    # x1.2, x1.2, x1.5, x1.5, x2, x3, x4 и дальше на 4 каждый раз
-    steps = [1.2, 1.2, 1.5, 1.5, 2.0, 3.0, 4.0]
+    # На казуале: максимум x3.0
+    # На нормале и хардкоре: x1.2, x1.2, x1.5, x1.5, x2, x3, x4 и дальше на 4 каждый раз
+    if difficulty == "casual":
+        steps = [1.2, 1.2, 1.5, 1.5, 2.0, 3.0]
+        max_step = 3.0
+    else:
+        steps = [1.2, 1.2, 1.5, 1.5, 2.0, 3.0, 4.0]
+        max_step = 4.0
     for i in range(existing_count):
-        mult *= steps[min(i, len(steps) - 1)]
+        step_val = steps[i] if i < len(steps) else max_step
+        mult *= step_val
     return mult
 
 MAP_TOWER_PRICE_STEP = {
@@ -3743,13 +3928,20 @@ def get_tower_build_cost(tower_type, towers, savedata=None, game_map=0, session_
     base = base_costs.get(tower_type, 100)
     cnt = sum(1 for t in towers if t.type == tower_type)
 
+    sdata = savedata if isinstance(savedata, dict) else globals().get("savedata", None)
+    diff = sdata.get("difficulty", "normal") if sdata else "normal"
+
     # Модификатор цены за каждую покупку башни в текущем забеге (х1.05 на карте 0 .. х1.10 на карте 8/9)
     step = MAP_TOWER_PRICE_STEP.get(game_map, 1.05)
     session_mult = step ** max(0, session_towers_bought)
 
-    cost = int(base * get_tower_cost_multiplier(cnt) * session_mult)
-    if cnt == 0 and savedata and isinstance(savedata, dict):
-        r_buffs = get_all_relic_buffs(savedata)
+    cost = int(base * get_tower_cost_multiplier(cnt, difficulty=diff) * session_mult)
+    # На сложности Казуальная: цены на башни на 20% ниже
+    if diff == "casual":
+        cost = int(cost * 0.8)
+
+    if cnt == 0 and sdata and isinstance(sdata, dict):
+        r_buffs = get_all_relic_buffs(sdata)
         disc = min(0.50, r_buffs.get("first_tower_discount", 0.0))
         if disc > 0:
             cost = max(10, int(cost * (1.0 - disc)))
@@ -4024,10 +4216,15 @@ def are_map_relics_maxed(map_id, savedata):
     relics_dict = savedata.get("Relics", {})
     return all(relics_dict.get(rid, {}).get("level", 0) >= max_cap for rid in r_ids)
 
-def get_relic_upgrade_requirements(level):
+def get_relic_upgrade_requirements(level, savedata=None):
     if level <= 1:
-        return 1
-    return 2 ** (level - 1)
+        base_req = 1
+    else:
+        base_req = 2 ** (level - 1)
+    sdata = savedata if isinstance(savedata, dict) else globals().get("savedata", None)
+    if sdata and isinstance(sdata, dict) and sdata.get("difficulty") == "hardcore":
+        return base_req * 2
+    return base_req
 
 def add_relic_drop(relic_id, savedata, count=1):
     if "Relics" not in savedata:
@@ -4043,7 +4240,7 @@ def add_relic_drop(relic_id, savedata, count=1):
     lvl_up = False
 
     while cur_lvl < max_cap:
-        req = get_relic_upgrade_requirements(cur_lvl + 1)
+        req = get_relic_upgrade_requirements(cur_lvl + 1, savedata)
         if relic_entry["finds"] >= req:
             relic_entry["finds"] -= req
             cur_lvl += 1

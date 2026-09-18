@@ -559,7 +559,7 @@ def draw_greenhouse_modal(surface, cactus_id, savedata, mouse_pos):
     # Кнопка улучшения в модалке
     upg_btn_rect = None
     if level < 5:
-        req_spr = c_data["req_sprouts"][level]
+        req_spr = get_greenhouse_sprout_req(c_data, level, savedata)
         can_upg = (sprouts >= req_spr)
         upg_btn_rect = pygame.Rect(modal_rect.left + 24, modal_rect.top + 332, left_w + 140, 48)
         u_hov = upg_btn_rect.collidepoint(mouse_pos) and can_upg
@@ -624,7 +624,7 @@ def draw_greenhouse_modal(surface, cactus_id, savedata, mouse_pos):
         surface.blit(b_txt, (badge_rect.centerx - b_txt.get_width() // 2, badge_rect.centery - b_txt.get_height() // 2))
 
         # Требуемые саженцы
-        req_val = c_data["req_sprouts"][idx_lvl]
+        req_val = get_greenhouse_sprout_req(c_data, idx_lvl, savedata)
         req_txt = tiny_font.render(f"Требует: {req_val} саж.", True, (160, 205, 180) if not is_unl else (120, 170, 140))
         surface.blit(req_txt, (tier_rect.right - req_txt.get_width() - 12, tier_rect.top + 12))
 
@@ -720,7 +720,7 @@ def draw_greenhouse_screen(surface, savedata, mouse_pos, inspected_cactus_id=Non
             bd_col = (90, 195, 140) if cd_hov else (55, 120, 85)
             bd_w = 2 if cd_hov else 1
         else:
-            req_0 = c_data["req_sprouts"][0]
+            req_0 = get_greenhouse_sprout_req(c_data, 0, savedata)
             if sprouts >= req_0:
                 bg_col = (26, 40, 32) if cd_hov else (20, 32, 25)
                 bd_col = (110, 230, 140)
@@ -801,7 +801,7 @@ def draw_greenhouse_screen(surface, savedata, mouse_pos, inspected_cactus_id=Non
 
         # Нижняя часть: Шкала саженцев и кнопка улучшения
         if level < 5:
-            req_sprouts = c_data["req_sprouts"][level]
+            req_sprouts = get_greenhouse_sprout_req(c_data, level, savedata)
             can_upg = (sprouts >= req_sprouts)
 
             bar_rect = pygame.Rect(cx + 10, cy + 206, 136, 28)
@@ -2455,7 +2455,8 @@ def draw_achievements_screen(surface, savedata, mouse_pos, scroll_y=0, filter_st
             "combat": ((180, 55, 45), (255, 140, 130), "БОЙ"),
             "towers": ((30, 110, 165), (140, 215, 255), "БАШНИ"),
             "greenhouse": ((35, 135, 70), (140, 255, 170), "ФЛОРА"),
-            "talents": ((110, 60, 165), (215, 170, 255), "ТАЛАНТЫ")
+            "talents": ((110, 60, 165), (215, 170, 255), "ТАЛАНТЫ"),
+            "global": ((145, 110, 25), (255, 230, 110), "ГЛОБАЛ")
         }
 
         for idx, (ach, is_unlocked, is_claimed) in enumerate(filtered_list):
@@ -2557,21 +2558,29 @@ def draw_achievements_screen(surface, savedata, mouse_pos, scroll_y=0, filter_st
             elif is_unlocked:
                 pygame.draw.rect(surface, (45, 175, 75) if not b_hover else (60, 205, 95), btn_rect, border_radius=8)
                 pygame.draw.rect(surface, YELLOW, btn_rect, width=2, border_radius=8)
-                claim_txt = font.render(f"ЗАБРАТЬ +{ach['reward']}", True, WHITE)
-                tot_w = claim_txt.get_width() + 26
-                start_cx = btn_rect.centerx - tot_w // 2
-                surface.blit(claim_txt, (start_cx, btn_rect.centery - claim_txt.get_height() // 2))
-                surface.blit(stellar_cactus_img_s, (start_cx + claim_txt.get_width() + 4, btn_rect.centery - 12))
+                if ach.get('reward', 0) > 0:
+                    claim_txt = font.render(f"ЗАБРАТЬ +{ach['reward']}", True, WHITE)
+                    tot_w = claim_txt.get_width() + 26
+                    start_cx = btn_rect.centerx - tot_w // 2
+                    surface.blit(claim_txt, (start_cx, btn_rect.centery - claim_txt.get_height() // 2))
+                    surface.blit(stellar_cactus_img_s, (start_cx + claim_txt.get_width() + 4, btn_rect.centery - 12))
+                else:
+                    claim_txt = font.render("ЗАВЕРШИТЬ", True, WHITE)
+                    surface.blit(claim_txt, (btn_rect.centerx - claim_txt.get_width() // 2, btn_rect.centery - claim_txt.get_height() // 2))
                 if btn_rect.bottom >= 182 and btn_rect.top <= SCREEN_HEIGHT:
                     claim_buttons.append((aid, btn_rect, ach['reward']))
             else:
                 pygame.draw.rect(surface, (26, 33, 44), btn_rect, border_radius=8)
                 pygame.draw.rect(surface, (48, 60, 76), btn_rect, width=1, border_radius=8)
-                lbl = small_font.render(f"НАГРАДА: +{ach['reward']}", True, (165, 185, 210))
-                tot_w = lbl.get_width() + 26
-                start_lx = btn_rect.centerx - tot_w // 2
-                surface.blit(lbl, (start_lx, btn_rect.centery - lbl.get_height() // 2))
-                surface.blit(stellar_cactus_img_s, (start_lx + lbl.get_width() + 4, btn_rect.centery - 12))
+                if ach.get('reward', 0) > 0:
+                    lbl = small_font.render(f"НАГРАДА: +{ach['reward']}", True, (165, 185, 210))
+                    tot_w = lbl.get_width() + 26
+                    start_lx = btn_rect.centerx - tot_w // 2
+                    surface.blit(lbl, (start_lx, btn_rect.centery - lbl.get_height() // 2))
+                    surface.blit(stellar_cactus_img_s, (start_lx + lbl.get_width() + 4, btn_rect.centery - 12))
+                else:
+                    lbl = small_font.render("ПРЕСТИЖ", True, (255, 215, 120))
+                    surface.blit(lbl, (btn_rect.centerx - lbl.get_width() // 2, btn_rect.centery - lbl.get_height() // 2))
 
     # Снимаем клиппинг
     surface.set_clip(None)
@@ -2635,11 +2644,15 @@ def draw_achievements_screen(surface, savedata, mouse_pos, scroll_y=0, filter_st
         ca_hov = claim_all_btn.collidepoint(mouse_pos)
         pygame.draw.rect(surface, (45, 175, 75) if not ca_hov else (60, 210, 95), claim_all_btn, border_radius=8)
         pygame.draw.rect(surface, GOLD, claim_all_btn, width=2, border_radius=8)
-        ca_txt = font.render(f"ЗАБРАТЬ ВСЁ (+{unclaimed_stars})", True, WHITE)
-        tot_w = ca_txt.get_width() + 26
-        st_x = claim_all_btn.centerx - tot_w // 2
-        surface.blit(ca_txt, (st_x, claim_all_btn.centery - ca_txt.get_height() // 2))
-        surface.blit(stellar_cactus_img_s, (st_x + ca_txt.get_width() + 4, claim_all_btn.centery - 12))
+        if unclaimed_stars > 0:
+            ca_txt = font.render(f"ЗАБРАТЬ ВСЁ (+{unclaimed_stars})", True, WHITE)
+            tot_w = ca_txt.get_width() + 26
+            st_x = claim_all_btn.centerx - tot_w // 2
+            surface.blit(ca_txt, (st_x, claim_all_btn.centery - ca_txt.get_height() // 2))
+            surface.blit(stellar_cactus_img_s, (st_x + ca_txt.get_width() + 4, claim_all_btn.centery - 12))
+        else:
+            ca_txt = font.render("ЗАБРАТЬ ВСЁ", True, WHITE)
+            surface.blit(ca_txt, (claim_all_btn.centerx - ca_txt.get_width() // 2, claim_all_btn.centery - ca_txt.get_height() // 2))
     else:
         info_badge = pygame.Rect(SCREEN_WIDTH - 240, 24, 210, 48)
         pygame.draw.rect(surface, (22, 28, 38), info_badge, border_radius=8)
@@ -2696,7 +2709,8 @@ def draw_achievements_screen(surface, savedata, mouse_pos, scroll_y=0, filter_st
         ("combat", "Бой и Боссы"),
         ("towers", "Башни и Экономика"),
         ("greenhouse", "Оранжерея и Карты"),
-        ("talents", "Таланты")
+        ("talents", "Таланты"),
+        ("global", "Глобальные")
     ]
     cur_cx = 35
     for c_key, c_label in cat_tabs_def:
@@ -4477,6 +4491,7 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
     modal_paste_code_btn = None
     modal_ok_btn = None
     modal_cancel_btn = None
+    modal_diff_btns = {}
     save_actions = []
     max_scroll = 0
 
@@ -4871,6 +4886,17 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
                 ab_txt = tiny_font.render("[ТЕКУЩИЙ СЛОТ]", True, (180, 255, 200))
                 surface.blit(ab_txt, (act_badge_rect.centerx - ab_txt.get_width() // 2, act_badge_rect.centery - ab_txt.get_height() // 2))
 
+            # Бейдж сложности профиля
+            p_diff = p.get("difficulty", "normal")
+            diff_cfg = DIFFICULTY_CONFIG.get(p_diff, DIFFICULTY_CONFIG["normal"])
+            d_bx = name_x + name_surf.get_width() + (148 if is_act else 12)
+            d_bw = 110 if p_diff == "normal" else 92
+            diff_badge_rect = pygame.Rect(d_bx, card_rect.top + 7, d_bw, 24)
+            pygame.draw.rect(surface, diff_cfg["bg"], diff_badge_rect, border_radius=5)
+            pygame.draw.rect(surface, diff_cfg["border"], diff_badge_rect, width=1, border_radius=5)
+            db_txt = tiny_font.render(diff_cfg["badge"], True, diff_cfg["color"])
+            surface.blit(db_txt, (diff_badge_rect.centerx - db_txt.get_width() // 2, diff_badge_rect.centery - db_txt.get_height() // 2))
+
             # 2. Дата создания и изменения
             dt_txt = f"ID: {p['id']}  |  Создан: {p.get('created_at', '—')}  |  Обновлён: {p.get('updated_at', '—')}"
             dt_surf = tiny_font.render(dt_txt, True, (135, 155, 180))
@@ -5072,37 +5098,129 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
         dim_surf.fill((0, 0, 0, 215))
         surface.blit(dim_surf, (0, 0))
 
-        mw, mh = 580, 240
-        mx = (SCREEN_WIDTH - mw) // 2
-        my = (SCREEN_HEIGHT - mh) // 2
-        m_rect = pygame.Rect(mx, my, mw, mh)
-
-        pygame.draw.rect(surface, (20, 28, 42), m_rect, border_radius=14)
-        pygame.draw.rect(surface, (80, 185, 255), m_rect, width=2, border_radius=14)
-
         mode = modal_state.get("mode", "create")
-        m_title_str = "НОВОЕ СОХРАНЕНИЕ" if mode == "create" else "ПЕРЕИМЕНОВАНИЕ СОХРАНЕНИЯ"
-        m_title = large_font.render(m_title_str, True, (240, 250, 255))
-        surface.blit(m_title, (m_rect.centerx - m_title.get_width() // 2, my + 20))
+        if mode == "create":
+            mw, mh = 740, 430
+            mx = (SCREEN_WIDTH - mw) // 2
+            my = (SCREEN_HEIGHT - mh) // 2
+            m_rect = pygame.Rect(mx, my, mw, mh)
 
-        sub_msg = tiny_font.render("Введите название файла сохранения (до 24 символов) и нажмите Enter:", True, (150, 195, 235))
-        surface.blit(sub_msg, (m_rect.centerx - sub_msg.get_width() // 2, my + 60))
+            pygame.draw.rect(surface, (20, 28, 42), m_rect, border_radius=14)
+            pygame.draw.rect(surface, (80, 185, 255), m_rect, width=2, border_radius=14)
 
-        # Поле ввода текста
-        input_rect = pygame.Rect(mx + 36, my + 92, mw - 72, 44)
-        pygame.draw.rect(surface, (12, 16, 26), input_rect, border_radius=8)
-        pygame.draw.rect(surface, GOLD, input_rect, width=2, border_radius=8)
+            m_title = large_font.render("НОВОЕ СОХРАНЕНИЕ", True, (240, 250, 255))
+            surface.blit(m_title, (m_rect.centerx - m_title.get_width() // 2, my + 14))
 
-        text_str = modal_state.get("text", "")
-        cursor_visible = (int(time.time() * 2.2) % 2 == 0)
-        display_str = text_str + ("|" if cursor_visible else "")
+            sub_msg = tiny_font.render("Введите название файла сохранения (до 24 символов):", True, (150, 195, 235))
+            surface.blit(sub_msg, (mx + 36, my + 46))
 
-        t_surf = font.render(display_str, True, WHITE)
-        surface.blit(t_surf, (input_rect.left + 14, input_rect.centery - t_surf.get_height() // 2))
+            input_rect = pygame.Rect(mx + 36, my + 68, mw - 72, 38)
+            pygame.draw.rect(surface, (12, 16, 26), input_rect, border_radius=8)
+            pygame.draw.rect(surface, GOLD, input_rect, width=2, border_radius=8)
 
-        # Кнопки Подтверждения и Отмены
-        modal_ok_btn = pygame.Rect(mx + 36, my + 160, 240, 48)
-        modal_cancel_btn = pygame.Rect(mx + mw - 276, my + 160, 240, 48)
+            text_str = modal_state.get("text", "")
+            cursor_visible = (int(time.time() * 2.2) % 2 == 0)
+            display_str = text_str + ("|" if cursor_visible else "")
+            t_surf = font.render(display_str, True, WHITE)
+            surface.blit(t_surf, (input_rect.left + 12, input_rect.centery - t_surf.get_height() // 2))
+
+            lbl_diff = font.render("ВЫБЕРИТЕ СЛОЖНОСТЬ:", True, (255, 220, 100))
+            surface.blit(lbl_diff, (mx + 36, my + 116))
+
+            cur_diff = modal_state.get("difficulty", "normal")
+            diff_specs = [
+                ("casual", "КАЗУАЛЬНАЯ", "[КАЗУАЛ]", (90, 220, 130), (18, 40, 24), (26, 62, 36), [
+                    "+10 HP базы, +200 какт.",
+                    "Цены башен: -20%",
+                    "Скейлинг: макс. x3",
+                    "Мобы: -25% HP",
+                    "+25% зв./тёмн. кактусов",
+                    "+50% шанс на +1 росток"
+                ]),
+                ("normal", "НОРМАЛЬНАЯ", "[РЕКОМЕНДУЕТСЯ]", (255, 215, 60), (20, 34, 52), (30, 54, 82), [
+                    "Оригинальный баланс",
+                    "Стандартное HP базы",
+                    "Классические цены",
+                    "Оригинальный дроп",
+                    "Рекомендуется для",
+                    "всех игроков!"
+                ]),
+                ("hardcore", "ХАРДКОРНАЯ", "[ХАРДКОР]", (255, 95, 105), (44, 18, 24), (64, 24, 34), [
+                    "1/2 HP базы!",
+                    "Мобы и метеоры: x2 HP!",
+                    "Мета: в 2 раза дороже!",
+                    "25% шанс потери ростка",
+                    "25% риск обвала реликвий",
+                    "Для ветеранов TD!"
+                ])
+            ]
+
+            cw, ch = 212, 196
+            gap = 15
+            start_x = mx + 36
+            card_y = my + 144
+
+            for idx, (d_key, d_title, d_badge, d_col, d_bg, d_sel_bg, d_lines) in enumerate(diff_specs):
+                c_rect = pygame.Rect(start_x + idx * (cw + gap), card_y, cw, ch)
+                modal_diff_btns[d_key] = c_rect
+                is_sel = (cur_diff == d_key)
+                hov = c_rect.collidepoint(mouse_pos)
+
+                bg_c = d_sel_bg if is_sel else ((26, 36, 48) if hov else d_bg)
+                pygame.draw.rect(surface, bg_c, c_rect, border_radius=10)
+
+                bd_c = GOLD if is_sel else (WHITE if hov else d_col)
+                bd_w = 3 if is_sel else (2 if hov else 1)
+                pygame.draw.rect(surface, bd_c, c_rect, width=bd_w, border_radius=10)
+
+                t_dt = small_font.render(d_title, True, GOLD if is_sel else d_col)
+                surface.blit(t_dt, (c_rect.centerx - t_dt.get_width() // 2, c_rect.top + 8))
+
+                t_bg = tiny_font.render(d_badge, True, WHITE if is_sel else d_col)
+                surface.blit(t_bg, (c_rect.centerx - t_bg.get_width() // 2, c_rect.top + 26))
+
+                pygame.draw.line(surface, bd_c, (c_rect.left + 12, c_rect.top + 44), (c_rect.right - 12, c_rect.top + 44), 1)
+
+                ly = c_rect.top + 50
+                for line in d_lines:
+                    l_surf = tiny_font.render(f"• {line}", True, (240, 245, 255) if is_sel else (180, 200, 220))
+                    surface.blit(l_surf, (c_rect.left + 10, ly))
+                    ly += 20
+
+                if is_sel:
+                    st_txt = tiny_font.render("✔ ВЫБРАНО", True, GOLD)
+                    surface.blit(st_txt, (c_rect.centerx - st_txt.get_width() // 2, c_rect.bottom - 22))
+
+            btn_y = my + mh - 58
+            modal_ok_btn = pygame.Rect(mx + 36, btn_y, 310, 44)
+            modal_cancel_btn = pygame.Rect(mx + mw - 346, btn_y, 310, 44)
+        else:
+            mw, mh = 580, 240
+            mx = (SCREEN_WIDTH - mw) // 2
+            my = (SCREEN_HEIGHT - mh) // 2
+            m_rect = pygame.Rect(mx, my, mw, mh)
+
+            pygame.draw.rect(surface, (20, 28, 42), m_rect, border_radius=14)
+            pygame.draw.rect(surface, (80, 185, 255), m_rect, width=2, border_radius=14)
+
+            m_title = large_font.render("ПЕРЕИМЕНОВАНИЕ СОХРАНЕНИЯ", True, (240, 250, 255))
+            surface.blit(m_title, (m_rect.centerx - m_title.get_width() // 2, my + 20))
+
+            sub_msg = tiny_font.render("Введите название файла сохранения (до 24 символов) и нажмите Enter:", True, (150, 195, 235))
+            surface.blit(sub_msg, (m_rect.centerx - sub_msg.get_width() // 2, my + 60))
+
+            input_rect = pygame.Rect(mx + 36, my + 92, mw - 72, 44)
+            pygame.draw.rect(surface, (12, 16, 26), input_rect, border_radius=8)
+            pygame.draw.rect(surface, GOLD, input_rect, width=2, border_radius=8)
+
+            text_str = modal_state.get("text", "")
+            cursor_visible = (int(time.time() * 2.2) % 2 == 0)
+            display_str = text_str + ("|" if cursor_visible else "")
+            t_surf = font.render(display_str, True, WHITE)
+            surface.blit(t_surf, (input_rect.left + 14, input_rect.centery - t_surf.get_height() // 2))
+
+            modal_ok_btn = pygame.Rect(mx + 36, my + 160, 240, 48)
+            modal_cancel_btn = pygame.Rect(mx + mw - 276, my + 160, 240, 48)
 
         m_ok_hov = modal_ok_btn.collidepoint(mouse_pos)
         m_can_hov = modal_cancel_btn.collidepoint(mouse_pos)
@@ -5300,8 +5418,148 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
         "save_actions": save_actions,
         "max_scroll": max_scroll,
         "modal_ok": modal_ok_btn,
-        "modal_cancel": modal_cancel_btn
+        "modal_cancel": modal_cancel_btn,
+        "modal_diff_btns": modal_diff_btns
     }
+
+
+# -------------------------------------------------------------------------
+# МОДАЛЬНОЕ ОКНО: ВЫБОР СЛОЖНОСТИ (ПРИ СТАРТЕ ИГРЫ)
+# -------------------------------------------------------------------------
+def draw_difficulty_select_modal(surface, mouse_pos, selected_diff="normal"):
+    """
+    Полноэкранное модальное окно первоначального выбора сложности кампании.
+    Показывается при старте игры или если сложность ещё не была выбрана.
+    Возвращает: (diff_btns_dict, confirm_btn_rect)
+    """
+    dim_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+    dim_surf.fill((0, 0, 0, 225))
+    surface.blit(dim_surf, (0, 0))
+
+    mw, mh = 900, 520
+    mx = (SCREEN_WIDTH - mw) // 2
+    my = (SCREEN_HEIGHT - mh) // 2
+    m_rect = pygame.Rect(mx, my, mw, mh)
+
+    pygame.draw.rect(surface, (18, 24, 34), m_rect, border_radius=16)
+    pygame.draw.rect(surface, (70, 160, 240), m_rect, width=2, border_radius=16)
+
+    # Заголовок
+    title = large_font.render("ВЫБОР СЛОЖНОСТИ ИГРЫ", True, (240, 250, 255))
+    surface.blit(title, (m_rect.centerx - title.get_width() // 2, my + 22))
+
+    subtitle = tiny_font.render("Выберите уровень сложности для вашего приключения в Оазисе:", True, (150, 195, 235))
+    surface.blit(subtitle, (m_rect.centerx - subtitle.get_width() // 2, my + 60))
+
+    diff_defs = [
+        {
+            "id": "casual",
+            "title": "КАЗУАЛЬНАЯ",
+            "badge": "[КАЗУАЛ]",
+            "theme_col": (90, 220, 130),
+            "bg_col": (18, 42, 26),
+            "sel_bg": (28, 64, 40),
+            "features": [
+                "+10 HP здоровья базы",
+                "+200 стартовых кактусов в бою",
+                "Цены башен и улучшений: -20%",
+                "Скейлинг башен: максимум x3",
+                "У врагов на 25% меньше HP",
+                "+25% Звёздных и Тёмных кактусов",
+                "+50% шанс на +1 росток",
+                "Мягкий и комфортный опыт"
+            ]
+        },
+        {
+            "id": "normal",
+            "title": "НОРМАЛЬНАЯ",
+            "badge": "[РЕКОМЕНДУЕТСЯ]",
+            "theme_col": (255, 215, 60),
+            "bg_col": (20, 36, 54),
+            "sel_bg": (32, 58, 86),
+            "features": [
+                "Оригинальный баланс Оазиса",
+                "Стандартное здоровье базы",
+                "Классические цены и скейлинг башен",
+                "Стандартное HP мобов и боссов",
+                "Оригинальный шанс дропа ростков",
+                "Идеально сбалансированная игра",
+                "Рекомендуется для всех игроков!"
+            ]
+        },
+        {
+            "id": "hardcore",
+            "title": "ХАРДКОРНАЯ",
+            "badge": "[ХАРДКОР]",
+            "theme_col": (255, 95, 105),
+            "bg_col": (44, 18, 24),
+            "sel_bg": (68, 24, 34),
+            "features": [
+                "В 2 раза МЕНЬШЕ здоровья базы",
+                "У ВСЕХ мобов в 2 раза больше HP",
+                "У метеоритов в 2 раза больше HP",
+                "Все улучшения в 2 раза дороже!",
+                "(Древо, Оранжерея, Реликвии)",
+                "25% риск не получить росток",
+                "25% шанс обвала при раскопках",
+                "Для истинных ветеранов TD!"
+            ]
+        }
+    ]
+
+    card_w = 260
+    card_h = 320
+    gap = 20
+    cards_start_x = mx + (mw - (card_w * 3 + gap * 2)) // 2
+    cards_y = my + 96
+
+    diff_btns = {}
+    for idx, d_info in enumerate(diff_defs):
+        did = d_info["id"]
+        cx = cards_start_x + idx * (card_w + gap)
+        c_rect = pygame.Rect(cx, cards_y, card_w, card_h)
+        diff_btns[did] = c_rect
+
+        is_sel = (selected_diff == did)
+        hov = c_rect.collidepoint(mouse_pos)
+
+        card_bg = d_info["sel_bg"] if is_sel else ((28, 38, 52) if hov else d_info["bg_col"])
+        pygame.draw.rect(surface, card_bg, c_rect, border_radius=12)
+
+        border_col = GOLD if is_sel else (WHITE if hov else d_info["theme_col"])
+        border_w = 3 if is_sel else (2 if hov else 1)
+        pygame.draw.rect(surface, border_col, c_rect, width=border_w, border_radius=12)
+
+        t_title = font.render(d_info["title"], True, GOLD if is_sel else d_info["theme_col"])
+        surface.blit(t_title, (c_rect.centerx - t_title.get_width() // 2, c_rect.top + 14))
+
+        t_badge = tiny_font.render(d_info["badge"], True, WHITE if is_sel else d_info["theme_col"])
+        surface.blit(t_badge, (c_rect.centerx - t_badge.get_width() // 2, c_rect.top + 38))
+
+        pygame.draw.line(surface, border_col, (c_rect.left + 16, c_rect.top + 58), (c_rect.right - 16, c_rect.top + 58), 1)
+
+        item_y = c_rect.top + 66
+        for f_line in d_info["features"]:
+            f_surf = tiny_font.render(f"• {f_line}", True, (240, 245, 255) if is_sel else (190, 205, 225))
+            surface.blit(f_surf, (c_rect.left + 14, item_y))
+            item_y += 24
+
+        if is_sel:
+            sel_tag = small_font.render("✔ ВЫБРАНО", True, GOLD)
+            surface.blit(sel_tag, (c_rect.centerx - sel_tag.get_width() // 2, c_rect.bottom - 30))
+        else:
+            clk_tag = tiny_font.render("Нажмите для выбора", True, (130, 150, 175))
+            surface.blit(clk_tag, (c_rect.centerx - clk_tag.get_width() // 2, c_rect.bottom - 26))
+
+    confirm_btn = pygame.Rect(mx + (mw - 380) // 2, my + mh - 66, 380, 48)
+    cf_hov = confirm_btn.collidepoint(mouse_pos)
+    pygame.draw.rect(surface, (38, 140, 75) if cf_hov else (26, 105, 55), confirm_btn, border_radius=10)
+    pygame.draw.rect(surface, GOLD if cf_hov else (120, 235, 160), confirm_btn, width=2, border_radius=10)
+
+    t_cf = font.render("ПОДТВЕРДИТЬ И НАЧАТЬ [ENTER]", True, WHITE)
+    surface.blit(t_cf, (confirm_btn.centerx - t_cf.get_width() // 2, confirm_btn.centery - t_cf.get_height() // 2))
+
+    return diff_btns, confirm_btn
 
 
 # -------------------------------------------------------------------------
@@ -5666,7 +5924,7 @@ def draw_relics_screen(surface, savedata, mouse_pos, bg_time=None):
         rentry = relics_dict.get(rid, {"level": 0, "finds": 0})
         cur_lvl = rentry.get("level", 0)
         finds = rentry.get("finds", 0)
-        req = get_relic_upgrade_requirements(cur_lvl + 1) if cur_lvl < max_cap else 0
+        req = get_relic_upgrade_requirements(cur_lvl + 1, savedata) if cur_lvl < max_cap else 0
         is_unlocked = cur_lvl > 0
         is_maxed = is_unlocked and (cur_lvl >= max_cap)
         is_equipped = (rid in equipped)
@@ -6092,8 +6350,8 @@ def draw_main_menu_screen(surface, mouse_pos, demo_sim, bg_time=None):
     e_txt = font.render("ВЫХОД", True, WHITE)
     surface.blit(e_txt, (exit_btn.centerx - e_txt.get_width() // 2, exit_btn.centery - e_txt.get_height() // 2))
 
-    # 5. Нижняя панель информации (Версия 0.1.2 • Автор: sonofstrange)
-    foot_str = "Версия 0.1.2 • Автор: sonofstrange"
+    # 5. Нижняя панель информации (Версия GAME_VERSION • Автор: sonofstrange)
+    foot_str = f"Версия {GAME_VERSION} • Автор: sonofstrange"
     foot_txt = tiny_font.render(foot_str, True, (180, 210, 240))
     fp_w = foot_txt.get_width() + 36
     fp_h = 28

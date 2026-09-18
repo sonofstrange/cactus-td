@@ -590,6 +590,9 @@ class Tower:
         relic_atk_spd = relic_buffs.get("atk_spd_mult", 0.0)
 
         upg_discount = min(0.50, relic_buffs.get("upgrade_cost_discount", 0.0))
+        diff = savedata.get("difficulty", "normal") if 'savedata' in globals() and isinstance(savedata, dict) else "normal"
+        diff_upg_mult = 0.8 if diff == "casual" else 1.0
+        cost_mult = (1.0 - upg_discount) * diff_upg_mult
 
         if self.type == "magic":
             magic_focus_lvl = savedata.get("Upgrades", {}).get("magic_focus", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
@@ -599,7 +602,7 @@ class Tower:
             dmg = round((1.0 + dmg_per_lvl * lvl) * mult * (1.0 + magic_focus_lvl * 0.12 + gh_buffs.get("void_dmg_mult", 0.0)), 1)
             raw_cd = max(0.35, 0.95 - lvl * 0.038)
             cd = max(0.20, round(raw_cd / (1.0 + atk_spd_lvl * 0.04 + relic_atk_spd), 2))
-            cost = int((75 * (1.18 ** lvl) + 25 * lvl) * (1.0 - upg_discount))
+            cost = max(5, int((75 * (1.18 ** lvl) + 25 * lvl) * cost_mult))
             map6_crit = 8 if g_map == 6 else 0  # Лабиринт: крит-шанс +8%
             crit_bonus = int(relic_buffs.get("crit_chance_bonus", 0.0) * 100)
             crit_chance = min(100, 5 + 1 * lvl + magic_focus_lvl * 4 + crit_mast_lvl * 2.5 + map6_crit + crit_bonus)
@@ -628,7 +631,7 @@ class Tower:
             frozen_multiplier = round(1.40 + inferno_lvl * 0.10 + relic_buffs.get("frozen_dmg_bonus", 0.0), 2)
             raw_cd = max(0.90, 1.75 - lvl * 0.04)
             cd = max(0.50, round(raw_cd / (1.0 + atk_spd_lvl * 0.04 + relic_atk_spd), 2))
-            cost = int((90 * (1.17 ** lvl) + 20 * lvl) * (1.0 - upg_discount))
+            cost = max(5, int((90 * (1.17 ** lvl) + 20 * lvl) * cost_mult))
             combo_pct = int((frozen_multiplier - 1.0) * 100)
             return {
                 "damage": dmg,
@@ -659,7 +662,7 @@ class Tower:
                 slow_dur = round(slow_dur * 1.15, 1)
             raw_cd = max(0.55, 1.30 - lvl * 0.045)
             cd = max(0.30, round(raw_cd / (1.0 + atk_spd_lvl * 0.04 + relic_atk_spd), 2))
-            cost = int((85 * (1.18 ** lvl) + 20 * lvl) * (1.0 - upg_discount))
+            cost = max(5, int((85 * (1.18 ** lvl) + 20 * lvl) * cost_mult))
             return {
                 "damage": dmg,
                 "range": rng,
@@ -681,7 +684,7 @@ class Tower:
             soldiers = 4 if lvl >= 8 else (3 if lvl >= 4 else 2)
             soldier_hp = int((28 + lvl * 16 + knight_lvl * 10 + shield_lvl * 30) * (1.0 + gh_buffs.get("soldier_hp_mult", 0.0) + relic_buffs.get("soldier_hp_mult", 0.0)))
             soldier_dmg = round((2.0 + lvl * 0.8) * mult * (1.0 + knight_lvl * 0.15 + gh_buffs.get("soldier_dmg_mult", 0.0)), 1)
-            cost = int((100 * (1.20 ** lvl) + 25 * lvl) * (1.0 - upg_discount))
+            cost = max(5, int((100 * (1.20 ** lvl) + 25 * lvl) * cost_mult))
             armor_red = min(50, knight_lvl * 6 + int(relic_buffs.get("soldier_armor_mult", 0.0) * 100))
             p_desc = f"Орден: -{armor_red}% урона воинам" if armor_red > 0 else "Тактика: удерживают врагов на тропе"
             if shield_lvl > 0:
@@ -710,7 +713,7 @@ class Tower:
             cd = max(0.28, round(raw_cd / (1.0 + atk_spd_lvl * 0.04 + relic_atk_spd), 2))
             overcharge_lvl = savedata.get("Upgrades", {}).get("overcharge", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
             chains = 3 + (lvl // 5) + overcharge_lvl + gh_buffs.get("extra_jumps", 0) + relic_buffs.get("tesla_extra_targets", 0)
-            cost = int((120 * (1.19 ** lvl) + 25 * lvl) * (1.0 - upg_discount))
+            cost = max(5, int((120 * (1.19 ** lvl) + 25 * lvl) * cost_mult))
             chains_lbl = f"{chains} цели" if 2 <= chains <= 4 else f"{chains} целей"
             return {
                 "damage": dmg,
@@ -728,7 +731,7 @@ class Tower:
             irrig_lvl = savedata.get("Upgrades", {}).get("farm_irrigation", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
             relic_farm = relic_buffs.get("farm_income_mult", 0.0)
             income = int((35 + 25 * lvl + 8 * (lvl ** 1.35)) * (1.0 + soil_lvl * 0.10 + gh_buffs.get("farm_mult", 0.0) + relic_farm))
-            cost = int((80 * (1.20 ** lvl) + 25 * lvl) * (1.0 - upg_discount))
+            cost = max(5, int((80 * (1.20 ** lvl) + 25 * lvl) * cost_mult))
             if irrig_lvl > 0:
                 aura_range = 90 + (irrig_lvl - 1) * 40 + lvl * 3
                 speed_boost = [0, 8, 14, 20][irrig_lvl]
@@ -1494,7 +1497,9 @@ class AstralMeteorite:
         hp_mod = calculate_hp_modificator(self.wave)
         biome = MAP_BIOMES_DATA.get(self.game_map, {})
         hp_mult = biome.get("hp_mult", 1.0)
-        self.max_hp = float(max(200, int(200.0 * hp_mod * hp_mult)))
+        diff = savedata.get("difficulty", "normal") if 'savedata' in globals() and isinstance(savedata, dict) else "normal"
+        diff_hp = 0.75 if diff == "casual" else (2.0 if diff == "hardcore" else 1.0)
+        self.max_hp = float(max(200, int(200.0 * hp_mod * hp_mult * diff_hp)))
         self.hp = self.max_hp
         self.targeted = False
         self.radius = 26
@@ -1838,6 +1843,14 @@ class Enemy:
 
         if hp_mult != 1.0:
             self.health *= hp_mult
+
+        diff = savedata.get("difficulty", "normal") if 'savedata' in globals() and isinstance(savedata, dict) else "normal"
+        if diff == "casual":
+            self.health *= 0.75
+        elif diff == "hardcore":
+            self.health *= 2.0
+        self.health = max(1.0, self.health)
+
         if spd_mult != 1.0:
             self.base_speed *= spd_mult
         if cacti_mult != 1.0:
@@ -2328,6 +2341,14 @@ class DigMinigameSession:
             if self.uncovered_cells == self.relic_cells:
                 # Победа!
                 self.is_won = True
+                diff = self.savedata.get("difficulty", "normal") if isinstance(self.savedata, dict) else "normal"
+                if diff == "hardcore" and random.random() < 0.25:
+                    self.status_text = "ОБВАЛ! Реликвия разрушена (Хардкор)!"
+                    self.result_reward_text = "Артефакт поврежден при раскопках"
+                    self.status_color = (255, 120, 120)
+                    sfx_dig_miss.play()
+                    return "win"
+
                 sfx_relic_found.play()
                 bonus_count = 2 if self.savedata.get("Upgrades", {}).get("relic_double_drop", 0) > 0 else 1
                 new_lvl, lvl_up = add_relic_drop(self.relic_id, self.savedata, count=bonus_count)
