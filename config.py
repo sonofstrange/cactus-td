@@ -837,21 +837,55 @@ def _create_shovel_icon(sz):
     return s
 
 def _create_relic_icon(sz):
-    s = pygame.Surface((sz, sz), pygame.SRCALPHA)
-    hs = sz // 2
-    pygame.draw.circle(s, (255, 215, 80), (hs, hs), hs - 2, width=1)
-    poly = [
-        (hs - sz // 5, hs - sz // 3),
-        (hs + sz // 5, hs - sz // 3),
-        (hs + sz // 3, hs),
-        (hs + sz // 6, hs + sz // 3),
-        (hs - sz // 6, hs + sz // 3),
-        (hs - sz // 3, hs),
-    ]
-    pygame.draw.polygon(s, (240, 185, 45), poly)
-    pygame.draw.polygon(s, (160, 115, 20), poly, width=1)
-    pygame.draw.circle(s, (60, 220, 255), (hs, hs - 2), max(1, sz // 8))
-    return s
+    scale = 4
+    big_sz = sz * scale
+    s = pygame.Surface((big_sz, big_sz), pygame.SRCALPHA)
+    cx, cy = big_sz / 2.0, big_sz / 2.0
+
+    r_outer = big_sz * 0.45
+    r_inner = big_sz * 0.36
+
+    # 1. Внешний золотой обод артефакта
+    pygame.draw.circle(s, (140, 95, 15, 220), (int(cx), int(cy)), int(r_outer) + 2)
+    pygame.draw.circle(s, (245, 195, 45), (int(cx), int(cy)), int(r_outer))
+    pygame.draw.circle(s, (255, 235, 120), (int(cx), int(cy)), int(r_outer) - scale, width=scale)
+
+    # 2. Тело медальона (тёмное античное золото)
+    pygame.draw.circle(s, (180, 130, 30), (int(cx), int(cy)), int(r_inner))
+    pygame.draw.circle(s, (110, 75, 15), (int(cx), int(cy)), int(r_inner), width=scale)
+
+    # 3. 4 золотых заклепки на сторонах света
+    rivet_dist = (r_outer + r_inner) / 2.0
+    for ang in [0, 90, 180, 270]:
+        rad = math.radians(ang)
+        rx = cx + math.cos(rad) * rivet_dist
+        ry = cy + math.sin(rad) * rivet_dist
+        pygame.draw.circle(s, (255, 240, 160), (int(rx), int(ry)), int(scale * 1.2))
+        pygame.draw.circle(s, (120, 80, 15), (int(rx), int(ry)), int(scale * 1.2), width=1)
+
+    # 4. Центральный кристалл Древних Знаний (гранёный лазурный алмаз)
+    cr_w = big_sz * 0.22
+    cr_h = big_sz * 0.28
+    pt_top = (cx, cy - cr_h)
+    pt_right = (cx + cr_w, cy)
+    pt_bot = (cx, cy + cr_h)
+    pt_left = (cx - cr_w, cy)
+
+    # Сияние кристалла
+    glow_surf = pygame.Surface((big_sz, big_sz), pygame.SRCALPHA)
+    pygame.draw.circle(glow_surf, (0, 230, 255, 90), (int(cx), int(cy)), int(big_sz * 0.25))
+    s.blit(glow_surf, (0, 0))
+
+    # Грани кристалла
+    pygame.draw.polygon(s, (30, 165, 215), [pt_top, (cx, cy), pt_bot, pt_left])
+    pygame.draw.polygon(s, (90, 225, 255), [pt_top, pt_right, pt_bot, (cx, cy)])
+    pygame.draw.polygon(s, (200, 250, 255), [pt_top, (cx + cr_w * 0.4, cy - cr_h * 0.2), (cx, cy), (cx - cr_w * 0.4, cy - cr_h * 0.2)])
+    pygame.draw.polygon(s, (15, 85, 130), [pt_top, pt_right, pt_bot, pt_left], width=scale)
+    pygame.draw.circle(s, (255, 255, 255), (int(cx - scale), int(cy - cr_h * 0.4)), int(scale * 0.8))
+
+    return pygame.transform.smoothscale(s, (sz, sz))
+
+create_relic_icon = _create_relic_icon
 
 shovel_icon = _create_shovel_icon(24)
 shovel_icon_s = _create_shovel_icon(18)

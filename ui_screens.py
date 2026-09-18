@@ -388,7 +388,7 @@ def draw_map_info_modal(surface, map_id, sdata, mouse_pos, inspect_wave=1):
     pygame.draw.line(surface, (38, 52, 72), (modal_rect.left + 24, hdr_line_y), (modal_rect.right - 24, hdr_line_y), 1)
 
     # Список карточек слаймов на этой волне (с проверкой открытия в Бестиарии)
-    discovered_set = set(sdata.get("BestiaryDiscovered", [1]))
+    discovered_set = set(sdata.get("BestiaryDiscovered", []))
     row_y = hdr_line_y + 6
     card_h = 42
 
@@ -1016,7 +1016,7 @@ def draw_bestiary_screen(surface, savedata, mouse_pos, scroll_y=0, bg_time=None)
     hdr_txt = large_font.render("БЕСТИАРИЙ СЛАЙМОВ", True, (240, 255, 245))
     surface.blit(hdr_txt, (SCREEN_WIDTH // 2 - hdr_txt.get_width() // 2, 8))
 
-    discovered = savedata.get("BestiaryDiscovered", [1])
+    discovered = savedata.get("BestiaryDiscovered", [])
     claimed = savedata.get("BestiaryClaimed", {})
 
     sub_txt = tiny_font.render(f"Изучено слаймов: {len(discovered)} / {len(BESTIARY_DATA)}  |  Награды: +2 Звёздных кактуса за обычных, +5 Звёздных и +1 Тёмный за боссов!", True, (160, 190, 220))
@@ -1615,23 +1615,7 @@ def _create_crisp_shovel(sz):
     return s
 
 def _create_crisp_relic(sz):
-    s = pygame.Surface((sz, sz), pygame.SRCALPHA)
-    hs = sz // 2
-    pygame.draw.circle(s, (255, 215, 80), (hs, hs), hs - 2, width=max(2, sz // 14))
-    pygame.draw.circle(s, (180, 130, 30), (hs, hs), hs - 2 - max(2, sz // 14), width=1)
-    poly = [
-        (hs - int(sz * 0.18), hs - int(sz * 0.32)),
-        (hs + int(sz * 0.18), hs - int(sz * 0.32)),
-        (hs + int(sz * 0.30), hs - int(sz * 0.05)),
-        (hs + int(sz * 0.15), hs + int(sz * 0.30)),
-        (hs - int(sz * 0.15), hs + int(sz * 0.30)),
-        (hs - int(sz * 0.30), hs - int(sz * 0.05)),
-    ]
-    pygame.draw.polygon(s, (245, 190, 50), poly)
-    pygame.draw.polygon(s, (150, 100, 20), poly, width=max(1, sz // 18))
-    pygame.draw.circle(s, (60, 220, 255), (hs, hs - 2), max(2, sz // 7))
-    pygame.draw.circle(s, (220, 250, 255), (hs - 1, hs - 3), max(1, sz // 14))
-    return s
+    return create_relic_icon(sz)
 
 _TREE_ICON_FILES = {
     "bounty": "bounty_upg_icon.png",
@@ -2455,8 +2439,7 @@ def draw_achievements_screen(surface, savedata, mouse_pos, scroll_y=0, filter_st
             "combat": ((180, 55, 45), (255, 140, 130), "БОЙ"),
             "towers": ((30, 110, 165), (140, 215, 255), "БАШНИ"),
             "greenhouse": ((35, 135, 70), (140, 255, 170), "ФЛОРА"),
-            "talents": ((110, 60, 165), (215, 170, 255), "ТАЛАНТЫ"),
-            "global": ((145, 110, 25), (255, 230, 110), "ГЛОБАЛ")
+            "talents": ((110, 60, 165), (215, 170, 255), "ТАЛАНТЫ")
         }
 
         for idx, (ach, is_unlocked, is_claimed) in enumerate(filtered_list):
@@ -2709,8 +2692,7 @@ def draw_achievements_screen(surface, savedata, mouse_pos, scroll_y=0, filter_st
         ("combat", "Бой и Боссы"),
         ("towers", "Башни и Экономика"),
         ("greenhouse", "Оранжерея и Карты"),
-        ("talents", "Таланты"),
-        ("global", "Глобальные")
+        ("talents", "Таланты")
     ]
     cur_cx = 35
     for c_key, c_label in cat_tabs_def:
@@ -2730,6 +2712,175 @@ def draw_achievements_screen(surface, savedata, mouse_pos, scroll_y=0, filter_st
         cur_cx += cw + 10
 
     return back_rect, claim_buttons, claim_all_btn, tab_actions, max_scroll
+
+
+def draw_global_achievements_screen(surface, mouse_pos, scroll_y=0, bg_time=None):
+    """
+    Отрисовывает экран ГЛОБАЛЬНЫХ достижений (доступен из Главного Меню).
+    Отображает СТРОГО 10 глобальных ачивок, не привязанных к конкретному сейву!
+    """
+    if bg_time is None:
+        bg_time = pygame.time.get_ticks()
+    generate_background(surface, bg_time, custom_cols=((16, 22, 32), (24, 32, 46)))
+
+    global_meta = load_global_achievements()
+    total_cnt = len(GLOBAL_ACHIEVEMENTS_DATA)
+    unlocked_cnt = sum(1 for a in GLOBAL_ACHIEVEMENTS_DATA if global_meta.get(a["id"], {}).get("unlocked", False))
+    completion_pct = int((unlocked_cnt / max(1, total_cnt)) * 100)
+
+    # 1. Список карточек
+    card_w = 560
+    card_h = 106
+    start_x = 35
+    start_y = 112
+    row_h = 118
+    col_gap = 20
+
+    total_rows = (total_cnt + 1) // 2
+    total_content_h = start_y + total_rows * row_h + 20
+    max_scroll = max(0, total_content_h - SCREEN_HEIGHT)
+
+    # Клиппинг зоны скролла карточек
+    viewport_rect = pygame.Rect(0, 98, SCREEN_WIDTH, SCREEN_HEIGHT - 98)
+    surface.set_clip(viewport_rect)
+
+    for idx, ach in enumerate(GLOBAL_ACHIEVEMENTS_DATA):
+        col = idx % 2
+        row = idx // 2
+        cx = start_x + col * (card_w + col_gap)
+        cy = start_y + row * row_h - scroll_y
+
+        if cy + card_h < 98 or cy > SCREEN_HEIGHT:
+            continue
+
+        aid = ach["id"]
+        info = global_meta.get(aid, {})
+        is_unlocked = info.get("unlocked", False)
+        cur_p = info.get("progress", 0)
+        max_p = info.get("max", ach.get("max_val", 1))
+        if max_p <= 1 and ach.get("max_val", 1) > 1:
+            max_p = ach.get("max_val", 1)
+        if cur_p >= max_p:
+            is_unlocked = True
+
+        card_rect = pygame.Rect(cx, cy, card_w, card_h)
+
+        # Фон карточки
+        c_bg = (24, 32, 44) if not is_unlocked else (22, 36, 32)
+        c_border = (50, 68, 92) if not is_unlocked else (70, 190, 110)
+        pygame.draw.rect(surface, c_bg, card_rect, border_radius=10)
+        pygame.draw.rect(surface, c_border, card_rect, width=2 if is_unlocked else 1, border_radius=10)
+
+        # Иконка достижения
+        icon_box = pygame.Rect(card_rect.left + 14, card_rect.top + 14, 52, 52)
+        pygame.draw.rect(surface, (15, 20, 28), icon_box, border_radius=8)
+        pygame.draw.rect(surface, (70, 95, 125), icon_box, width=1, border_radius=8)
+        raw_ic = ach.get("icon", trophy_icon)
+        scaled_ic = pygame.transform.smoothscale(raw_ic, (38, 38))
+        surface.blit(scaled_ic, (icon_box.centerx - 19, icon_box.centery - 19))
+
+        # Заголовок и бейдж
+        t_color = (255, 225, 120) if is_unlocked else WHITE
+        t_surf = font.render(ach.get("title", ""), True, t_color)
+        surface.blit(t_surf, (card_rect.left + 78, card_rect.top + 12))
+
+        # Бейдж [ГЛОБАЛЬНОЕ]
+        b_rect = pygame.Rect(card_rect.left + 78 + t_surf.get_width() + 10, card_rect.top + 14, 86, 18)
+        pygame.draw.rect(surface, (70, 52, 16), b_rect, border_radius=4)
+        pygame.draw.rect(surface, (215, 175, 60), b_rect, width=1, border_radius=4)
+        b_txt = tiny_font.render("ГЛОБАЛЬНОЕ", True, (255, 225, 130))
+        surface.blit(b_txt, (b_rect.centerx - b_txt.get_width() // 2, b_rect.centery - b_txt.get_height() // 2))
+
+        # Описание достижения
+        d_surf = tiny_font.render(ach.get("desc", ""), True, (175, 195, 220))
+        surface.blit(d_surf, (card_rect.left + 78, card_rect.top + 36))
+
+        # Прогресс-бар
+        pb_w = 320
+        pb_h = 18
+        pb_x = card_rect.left + 78
+        pb_y = card_rect.top + 70
+        pygame.draw.rect(surface, (12, 16, 22), (pb_x, pb_y, pb_w, pb_h), border_radius=6)
+        ratio = min(1.0, cur_p / max(1, max_p))
+        if is_unlocked:
+            ratio = 1.0
+        if ratio > 0:
+            fill_w = max(6, int(pb_w * ratio))
+            fill_col = (50, 195, 95) if is_unlocked else (245, 190, 45)
+            pygame.draw.rect(surface, fill_col, (pb_x, pb_y, fill_w, pb_h), border_radius=6)
+        pygame.draw.rect(surface, (60, 80, 105), (pb_x, pb_y, pb_w, pb_h), width=1, border_radius=6)
+
+        # Текст прогресса по центру полоски
+        pct_val = int(ratio * 100)
+        p_str = f"{max_p:,} / {max_p:,} (100%)".replace(",", " ") if is_unlocked else (f"{cur_p:,} / {max_p:,} ({pct_val}%)".replace(",", " ") if max_p >= 1000 else f"{cur_p} / {max_p} ({pct_val}%)")
+        pt_surf = tiny_font.render(p_str, True, (240, 248, 255))
+        surface.blit(pt_surf, (pb_x + pb_w // 2 - pt_surf.get_width() // 2, pb_y + pb_h // 2 - pt_surf.get_height() // 2))
+
+        # Статус справа
+        st_box = pygame.Rect(card_rect.right - 142, card_rect.centery - 18, 126, 36)
+        if is_unlocked:
+            pygame.draw.rect(surface, (26, 75, 42), st_box, border_radius=6)
+            pygame.draw.rect(surface, (90, 215, 135), st_box, width=1, border_radius=6)
+            st_lbl = small_font.render("ВЫПОЛНЕНО", True, (160, 255, 190))
+            chk_x = st_box.centerx - st_lbl.get_width() // 2 - 10
+            chk_y = st_box.centery
+            pygame.draw.lines(surface, (120, 255, 160), False, [(chk_x, chk_y), (chk_x + 3, chk_y + 4), (chk_x + 7, chk_y - 4)], 2)
+            surface.blit(st_lbl, (chk_x + 12, st_box.centery - st_lbl.get_height() // 2))
+        else:
+            pygame.draw.rect(surface, (26, 34, 46), st_box, border_radius=6)
+            pygame.draw.rect(surface, (60, 80, 105), st_box, width=1, border_radius=6)
+            st_lbl = small_font.render("В ПРОЦЕССЕ", True, (160, 185, 215))
+            surface.blit(st_lbl, (st_box.centerx - st_lbl.get_width() // 2, st_box.centery - st_lbl.get_height() // 2))
+
+    surface.set_clip(None)
+
+    # Интерактивный скроллбар справа
+    if max_scroll > 0:
+        sb_track = pygame.Rect(SCREEN_WIDTH - 14, 102, 6, SCREEN_HEIGHT - 116)
+        pygame.draw.rect(surface, (25, 34, 46), sb_track, border_radius=3)
+        sb_h = max(35, int(sb_track.height * (sb_track.height / total_content_h)))
+        sb_y = sb_track.top + int((sb_track.height - sb_h) * (scroll_y / max_scroll))
+        sb_thumb = pygame.Rect(SCREEN_WIDTH - 14, sb_y, 6, sb_h)
+        pygame.draw.rect(surface, (90, 135, 185), sb_thumb, border_radius=3)
+
+    # 2. Неподвижная шапка (y = 0 .. 96)
+    header_rect = pygame.Rect(0, 0, SCREEN_WIDTH, 96)
+    pygame.draw.rect(surface, (14, 18, 26), header_rect)
+    pygame.draw.line(surface, (42, 56, 75), (0, 96), (SCREEN_WIDTH, 96), 2)
+
+    # Кнопка «Назад»
+    back_rect = pygame.Rect(30, 24, 140, 48)
+    b_hov = back_rect.collidepoint(mouse_pos)
+    pygame.draw.rect(surface, (215, 65, 65) if b_hov else (180, 50, 50), back_rect, border_radius=8)
+    pygame.draw.rect(surface, WHITE, back_rect, width=2, border_radius=8)
+    back_txt = font.render("< НАЗАД", True, WHITE)
+    surface.blit(back_txt, (back_rect.centerx - back_txt.get_width() // 2, back_rect.centery - back_txt.get_height() // 2))
+
+    # Заголовок по центру
+    title = large_font.render("ГЛОБАЛЬНЫЕ ДОСТИЖЕНИЯ", True, GOLD)
+    surface.blit(title, (SCREEN_WIDTH // 2 - title.get_width() // 2, 14))
+
+    # Сводный прогресс
+    prog_info = small_font.render(f"Выполнено: {unlocked_cnt} / {total_cnt} ({completion_pct}%)  •  Престиж аккаунта", True, (210, 225, 240))
+    surface.blit(prog_info, (SCREEN_WIDTH // 2 - prog_info.get_width() // 2, 48))
+
+    top_bar_rect = pygame.Rect(SCREEN_WIDTH // 2 - 130, 74, 260, 8)
+    pygame.draw.rect(surface, (12, 16, 22), top_bar_rect, border_radius=4)
+    if total_cnt > 0 and unlocked_cnt > 0:
+        fill_w = max(4, int(top_bar_rect.width * (unlocked_cnt / total_cnt)))
+        pygame.draw.rect(surface, GOLD, (top_bar_rect.left, top_bar_rect.top, fill_w, top_bar_rect.height), border_radius=4)
+    pygame.draw.rect(surface, (60, 75, 95), top_bar_rect, width=1, border_radius=4)
+
+    # Плашка пояснения справа
+    info_badge = pygame.Rect(SCREEN_WIDTH - 260, 24, 230, 48)
+    pygame.draw.rect(surface, (22, 28, 38), info_badge, border_radius=8)
+    pygame.draw.rect(surface, (75, 60, 25), info_badge, width=1, border_radius=8)
+    ib_t1 = tiny_font.render("Общий престиж аккаунта", True, (255, 225, 120))
+    ib_t2 = tiny_font.render("Сохраняется между всеми сейвами", True, (160, 180, 205))
+    surface.blit(ib_t1, (info_badge.centerx - ib_t1.get_width() // 2, info_badge.top + 8))
+    surface.blit(ib_t2, (info_badge.centerx - ib_t2.get_width() // 2, info_badge.top + 26))
+
+    return back_rect, max_scroll
 
 
 def perform_bulk_upgrade(tower, cacti, effects=None, savedata=None):
@@ -6114,7 +6265,7 @@ class MenuDemoSimulation:
             slime_type = random.choice(slime_pool)
             demo_wave = random.randint(3, 16)
             try:
-                en = Enemy(slime_type, demo_wave, self.path, game_map=self.map_id)
+                en = Enemy(slime_type, demo_wave, self.path, game_map=self.map_id, is_demo=True)
                 self.enemies.append(en)
             except Exception:
                 pass
@@ -6312,39 +6463,52 @@ def draw_main_menu_screen(surface, mouse_pos, demo_sim, bg_time=None):
     btn_x = cx - btn_w // 2
 
     # Кнопка: В БОЙ
-    play_btn = pygame.Rect(btn_x, 340, btn_w, 64)
+    play_btn = pygame.Rect(btn_x, 318, btn_w, 60)
     p_hov = play_btn.collidepoint(mouse_pos)
-    p_surf = pygame.Surface((btn_w, 64), pygame.SRCALPHA)
+    p_surf = pygame.Surface((btn_w, 60), pygame.SRCALPHA)
     p_bg = (28, 92, 48, 230) if p_hov else (18, 56, 32, 190)
     p_brd = (120, 255, 170, 255) if p_hov else (60, 180, 100, 220)
-    pygame.draw.rect(p_surf, p_bg, (0, 0, btn_w, 64), border_radius=16)
-    pygame.draw.rect(p_surf, p_brd, (0, 0, btn_w, 64), width=2, border_radius=16)
+    pygame.draw.rect(p_surf, p_bg, (0, 0, btn_w, 60), border_radius=16)
+    pygame.draw.rect(p_surf, p_brd, (0, 0, btn_w, 60), width=2, border_radius=16)
     surface.blit(p_surf, play_btn)
 
     p_txt = large_font.render("В БОЙ", True, WHITE)
     surface.blit(p_txt, (play_btn.centerx - p_txt.get_width() // 2, play_btn.centery - p_txt.get_height() // 2))
 
+    # Кнопка: ДОСТИЖЕНИЯ
+    ach_btn = pygame.Rect(btn_x, 390, btn_w, 54)
+    a_hov = ach_btn.collidepoint(mouse_pos)
+    a_surf = pygame.Surface((btn_w, 54), pygame.SRCALPHA)
+    a_bg = (110, 80, 24, 230) if a_hov else (65, 48, 14, 190)
+    a_brd = (255, 225, 100, 255) if a_hov else (180, 140, 45, 220)
+    pygame.draw.rect(a_surf, a_bg, (0, 0, btn_w, 54), border_radius=14)
+    pygame.draw.rect(a_surf, a_brd, (0, 0, btn_w, 54), width=2, border_radius=14)
+    surface.blit(a_surf, ach_btn)
+
+    a_txt = font.render("ДОСТИЖЕНИЯ", True, WHITE)
+    surface.blit(a_txt, (ach_btn.centerx - a_txt.get_width() // 2, ach_btn.centery - a_txt.get_height() // 2))
+
     # Кнопка: НАСТРОЙКИ
-    set_btn = pygame.Rect(btn_x, 424, btn_w, 56)
+    set_btn = pygame.Rect(btn_x, 456, btn_w, 52)
     s_hov = set_btn.collidepoint(mouse_pos)
-    s_surf = pygame.Surface((btn_w, 56), pygame.SRCALPHA)
+    s_surf = pygame.Surface((btn_w, 52), pygame.SRCALPHA)
     s_bg = (30, 62, 98, 230) if s_hov else (20, 38, 62, 190)
     s_brd = (110, 205, 255, 255) if s_hov else (55, 100, 155, 220)
-    pygame.draw.rect(s_surf, s_bg, (0, 0, btn_w, 56), border_radius=14)
-    pygame.draw.rect(s_surf, s_brd, (0, 0, btn_w, 56), width=2, border_radius=14)
+    pygame.draw.rect(s_surf, s_bg, (0, 0, btn_w, 52), border_radius=14)
+    pygame.draw.rect(s_surf, s_brd, (0, 0, btn_w, 52), width=2, border_radius=14)
     surface.blit(s_surf, set_btn)
 
     s_txt = font.render("НАСТРОЙКИ", True, WHITE)
     surface.blit(s_txt, (set_btn.centerx - s_txt.get_width() // 2, set_btn.centery - s_txt.get_height() // 2))
 
     # Кнопка: ВЫХОД
-    exit_btn = pygame.Rect(btn_x, 500, btn_w, 52)
+    exit_btn = pygame.Rect(btn_x, 520, btn_w, 48)
     e_hov = exit_btn.collidepoint(mouse_pos)
-    e_surf = pygame.Surface((btn_w, 52), pygame.SRCALPHA)
+    e_surf = pygame.Surface((btn_w, 48), pygame.SRCALPHA)
     e_bg = (95, 30, 36, 230) if e_hov else (58, 20, 24, 190)
     e_brd = (255, 110, 120, 255) if e_hov else (145, 45, 52, 220)
-    pygame.draw.rect(e_surf, e_bg, (0, 0, btn_w, 52), border_radius=14)
-    pygame.draw.rect(e_surf, e_brd, (0, 0, btn_w, 52), width=2, border_radius=14)
+    pygame.draw.rect(e_surf, e_bg, (0, 0, btn_w, 48), border_radius=14)
+    pygame.draw.rect(e_surf, e_brd, (0, 0, btn_w, 48), width=2, border_radius=14)
     surface.blit(e_surf, exit_btn)
 
     e_txt = font.render("ВЫХОД", True, WHITE)
@@ -6362,7 +6526,7 @@ def draw_main_menu_screen(surface, mouse_pos, demo_sim, bg_time=None):
     surface.blit(foot_pill, (cx - fp_w // 2, foot_y))
     surface.blit(foot_txt, (cx - foot_txt.get_width() // 2, foot_y + (fp_h - foot_txt.get_height()) // 2))
 
-    return play_btn, set_btn, exit_btn
+    return play_btn, ach_btn, set_btn, exit_btn
 
 
 

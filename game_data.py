@@ -820,7 +820,7 @@ def get_wave_analysis(map_id, wave_num, sdata=None):
 
 def has_unclaimed_bestiary(sdata):
     claimed = sdata.get("BestiaryClaimed", {})
-    disc = sdata.get("BestiaryDiscovered", [1])
+    disc = sdata.get("BestiaryDiscovered", [])
     for s in BESTIARY_DATA:
         sid = s["id"]
         is_claimed = (sid in claimed) if isinstance(claimed, list) else bool(claimed.get(str(sid), False))
@@ -848,7 +848,7 @@ DEFAULT_SAVE = {
     "StarterStellarBonus": True,
     "DarkCactuses": 0,
     "MasteryClaimed": {},
-    "BestiaryDiscovered": [1],
+    "BestiaryDiscovered": [],
     "BestiaryClaimed": {},
     "FlawlessWaveStreak": 0,
     "Upgrades": {
@@ -960,7 +960,7 @@ DEFAULT_SAVE = {
         "play_time_seconds": 0.0
     },
     "Greenhouse": {
-        "saguaro": {"level": 1, "sprouts": 1},
+        "saguaro": {"level": 0, "sprouts": 0},
         "opuntia": {"level": 0, "sprouts": 0},
         "fire_barrel": {"level": 0, "sprouts": 0},
         "frost_aloe": {"level": 0, "sprouts": 0},
@@ -1247,6 +1247,16 @@ def check_retroactive_mastery(sdata):
     if awarded_any:
         save_data(sdata)
 
+def get_all_save_slot_files():
+    """Возвращает список файлов слотов сохранений, исключая служебные файлы."""
+    if not os.path.exists(SAVES_DIR):
+        return []
+    ignored = {"active_profile.json", "global_achievements.json", "global_achievements.ctd"}
+    return [
+        f for f in os.listdir(SAVES_DIR)
+        if f.endswith(".json") and f not in ignored and not f.startswith("global_") and not f.startswith("active_") and not f.startswith("export_")
+    ]
+
 def _init_saves_system():
     os.makedirs(SAVES_DIR, exist_ok=True)
     active_id = None
@@ -1258,7 +1268,7 @@ def _init_saves_system():
         except Exception:
             active_id = None
 
-    slot_files = [f for f in os.listdir(SAVES_DIR) if f.endswith(".json") and f != "active_profile.json"]
+    slot_files = get_all_save_slot_files()
 
     if not slot_files:
         if os.path.exists(LEGACY_SAVE_PATH):
@@ -1313,7 +1323,7 @@ def list_save_profiles():
     _init_saves_system()
     active_id = get_active_save_id()
     profiles = []
-    slot_files = [f for f in os.listdir(SAVES_DIR) if f.endswith(".json") and f != "active_profile.json"]
+    slot_files = get_all_save_slot_files()
     for fname in slot_files:
         sid = fname[:-5]
         fpath = os.path.join(SAVES_DIR, fname)
@@ -1488,7 +1498,7 @@ def delete_save_profile(save_id):
 
     active_id = get_active_save_id()
     if save_id == active_id:
-        slot_files = [f for f in os.listdir(SAVES_DIR) if f.endswith(".json") and f != "active_profile.json"]
+        slot_files = get_all_save_slot_files()
         if slot_files:
             new_active = slot_files[0][:-5]
             set_active_save_id(new_active)
@@ -1544,7 +1554,7 @@ def load_data(save_id=None):
         if "MasteryClaimed" not in data:
             data["MasteryClaimed"] = {}
         if "BestiaryDiscovered" not in data:
-            data["BestiaryDiscovered"] = [1]
+            data["BestiaryDiscovered"] = []
         if "BestiaryClaimed" not in data:
             data["BestiaryClaimed"] = {}
         if "FlawlessWaveStreak" not in data:
@@ -1610,12 +1620,37 @@ def load_data(save_id=None):
             has_prog = any(r > 0 for r in data.get("LevelsRecords", [])) or data.get("Stats", {}).get("total_kills", 0) > 0
             data["difficulty_selected"] = True if has_prog else False
         check_retroactive_mastery(data)
+
+        # Очистка локального сейва от глобальных ачивок (глобальные хранятся отдельно)
+        ach_dict = data.setdefault("Achievements", {})
+        for gid in ["global_wave_25", "global_wave_50", "global_wave_100", "global_hardcore_50", "global_all_relics", "global_botanist", "global_talent_master", "global_stellar_millionaire", "global_boss_slayer", "global_ultimate_tower"]:
+            ach_dict.pop(gid, None)
+
         return data
     except Exception as e:
         print(f"Failed to load save: {e}. Using default.")
         d = json.loads(json.dumps(DEFAULT_SAVE))
         d["SaveId"] = save_id
         return d
+
+GLOBAL_ACHIEVEMENTS_PATH = os.path.join(SAVES_DIR, "global_achievements.json")
+
+def load_global_achievements():
+    """Загружает глобальные достижения, разделяемые между всеми сейвами."""
+    if os.path.exists(GLOBAL_ACHIEVEMENTS_PATH):
+        try:
+            return read_save_file(GLOBAL_ACHIEVEMENTS_PATH)
+        except Exception as e:
+            print(f"Error loading global achievements: {e}")
+    return {}
+
+def save_global_achievements(global_data):
+    """Сохраняет глобальные достижения в saves/global_achievements.json в зашифрованном формате CTD."""
+    try:
+        os.makedirs(SAVES_DIR, exist_ok=True)
+        write_save_file(GLOBAL_ACHIEVEMENTS_PATH, global_data)
+    except Exception as e:
+        print(f"Error saving global achievements: {e}")
 
 def save_data(data):
     try:
@@ -1625,6 +1660,7 @@ def save_data(data):
         slot_path = os.path.join(SAVES_DIR, f"{save_id}.json")
         write_save_file(slot_path, data)
         write_save_file(LEGACY_SAVE_PATH, data)
+        update_global_achievements(data)
     except Exception as e:
         print(f"Save error: {e}")
 
@@ -3613,8 +3649,8 @@ ACHIEVEMENTS_DATA = [
         "desc": "Изучите 1 талант в Древе Прокачки",
         "reward": 1,
         "icon": start_lvl_icon,
-        "check": lambda s: sum(1 for v in s.get("Upgrades", {}).values() if v > 0) >= 1,
-        "progress": lambda s: (min(1, sum(1 for v in s.get("Upgrades", {}).values() if v > 0)), 1)
+        "check": lambda s: sum(1 for k, v in s.get("Upgrades", {}).items() if k != "oasis_core" and v > 0) >= 1,
+        "progress": lambda s: (min(1, sum(1 for k, v in s.get("Upgrades", {}).items() if k != "oasis_core" and v > 0)), 1)
     },
     {
         "id": "talent_collector",
@@ -3624,8 +3660,8 @@ ACHIEVEMENTS_DATA = [
         "desc": "Изучите 5 различных талантов в Древе",
         "reward": 2,
         "icon": cactus_img,
-        "check": lambda s: sum(1 for v in s.get("Upgrades", {}).values() if v > 0) >= 5,
-        "progress": lambda s: (min(5, sum(1 for v in s.get("Upgrades", {}).values() if v > 0)), 5)
+        "check": lambda s: sum(1 for k, v in s.get("Upgrades", {}).items() if k != "oasis_core" and v > 0) >= 5,
+        "progress": lambda s: (min(5, sum(1 for k, v in s.get("Upgrades", {}).items() if k != "oasis_core" and v > 0)), 5)
     },
     {
         "id": "talent_master",
@@ -3635,8 +3671,8 @@ ACHIEVEMENTS_DATA = [
         "desc": "Изучите 15 различных талантов в Древе",
         "reward": 6,
         "icon": bounty_upg_icon,
-        "check": lambda s: sum(1 for v in s.get("Upgrades", {}).values() if v > 0) >= 15,
-        "progress": lambda s: (min(15, sum(1 for v in s.get("Upgrades", {}).values() if v > 0)), 15)
+        "check": lambda s: sum(1 for k, v in s.get("Upgrades", {}).items() if k != "oasis_core" and v > 0) >= 15,
+        "progress": lambda s: (min(15, sum(1 for k, v in s.get("Upgrades", {}).items() if k != "oasis_core" and v > 0)), 15)
     },
     {
         "id": "talent_sage",
@@ -3646,8 +3682,8 @@ ACHIEVEMENTS_DATA = [
         "desc": "Изучите 25 талантов в Древе",
         "reward": 12,
         "icon": crown_upg_icon,
-        "check": lambda s: sum(1 for v in s.get("Upgrades", {}).values() if v > 0) >= 25,
-        "progress": lambda s: (min(25, sum(1 for v in s.get("Upgrades", {}).values() if v > 0)), 25)
+        "check": lambda s: sum(1 for k, v in s.get("Upgrades", {}).items() if k != "oasis_core" and v > 0) >= 25,
+        "progress": lambda s: (min(25, sum(1 for k, v in s.get("Upgrades", {}).items() if k != "oasis_core" and v > 0)), 25)
     },
     {
         "id": "speed_demon",
@@ -3749,123 +3785,197 @@ ACHIEVEMENTS_DATA = [
         "progress": lambda s: (min(300, int(s.get("Stats", {}).get("play_time_seconds", 0) // 60)), 300)
     },
     # -------------------------------------------------------------------------
-    # 5. ГЛОБАЛЬНЫЕ ДОСТИЖЕНИЯ (GLOBAL PRESTIGE ACHIEVEMENTS)
-    # -------------------------------------------------------------------------
+]
+
+# -------------------------------------------------------------------------
+# 5. ГЛОБАЛЬНЫЕ ДОСТИЖЕНИЯ (GLOBAL PRESTIGE ACHIEVEMENTS)
+# Хранятся ТОЛЬКО в saves/global_achievements.json и отображаются ТОЛЬКО в Главном Меню!
+# -------------------------------------------------------------------------
+GLOBAL_ACHIEVEMENTS_DATA = [
+    # --- ОРАНЖЕРЕЯ ---
     {
-        "id": "global_wave_25",
+        "id": "global_greenhouse_collector",
         "category": "global",
         "cat_name": "Глобальные",
-        "title": "Первые Шаги",
-        "desc": "Пройдите 25 волн на любой локации",
+        "title": "Флорист Оазиса",
+        "desc": "Соберите и посадите все 8 сортов кактусов в Оранжерее",
         "reward": 0,
+        "max_val": 8,
+        "icon": sprout_icon,
+        "check": lambda s: sum(1 for c in globals().get("GREENHOUSE_CACTI", []) if s.get("Greenhouse", {}).get(c["id"], {}).get("level", 0) >= 1) >= 8,
+        "progress": lambda s: (min(8, sum(1 for c in globals().get("GREENHOUSE_CACTI", []) if s.get("Greenhouse", {}).get(c["id"], {}).get("level", 0) >= 1)), 8)
+    },
+    {
+        "id": "global_greenhouse_master",
+        "category": "global",
+        "cat_name": "Глобальные",
+        "title": "Владыка Оранжереи",
+        "desc": "Прокачайте все 8 сортов кактусов до максимального 5 уровня",
+        "reward": 0,
+        "max_val": 8,
+        "icon": sprout_icon,
+        "check": lambda s: sum(1 for c in globals().get("GREENHOUSE_CACTI", []) if s.get("Greenhouse", {}).get(c["id"], {}).get("level", 0) >= 5) >= 8,
+        "progress": lambda s: (min(8, sum(1 for c in globals().get("GREENHOUSE_CACTI", []) if s.get("Greenhouse", {}).get(c["id"], {}).get("level", 0) >= 5)), 8)
+    },
+
+    # --- РЕЛИКВИИ ---
+    {
+        "id": "global_relic_collector",
+        "category": "global",
+        "cat_name": "Глобальные",
+        "title": "Хранитель Древностей",
+        "desc": "Отыщите все 20 древних реликвий в Музее Археологии",
+        "reward": 0,
+        "max_val": 20,
+        "icon": relic_icon,
+        "check": lambda s: sum(1 for r in globals().get("RELICS_DATA", {}).values() if s.get("Relics", {}).get(r["id"], {}).get("level", 0) >= 1) >= 20,
+        "progress": lambda s: (min(20, sum(1 for r in globals().get("RELICS_DATA", {}).values() if s.get("Relics", {}).get(r["id"], {}).get("level", 0) >= 1)), 20)
+    },
+    {
+        "id": "global_relic_master",
+        "category": "global",
+        "cat_name": "Глобальные",
+        "title": "Золотой Век Археологии",
+        "desc": "Восстановите все 20 древних реликвий до максимального уровня",
+        "reward": 0,
+        "max_val": 20,
+        "icon": relic_icon,
+        "check": lambda s: sum(1 for r in globals().get("RELICS_DATA", {}).values() if s.get("Relics", {}).get(r["id"], {}).get("level", 0) >= 5) >= 20,
+        "progress": lambda s: (min(20, sum(1 for r in globals().get("RELICS_DATA", {}).values() if s.get("Relics", {}).get(r["id"], {}).get("level", 0) >= 5)), 20)
+    },
+
+    # --- ДРЕВО ТАЛАНТОВ ---
+    {
+        "id": "global_tree_nodes_all",
+        "category": "global",
+        "cat_name": "Глобальные",
+        "title": "Архитектор Древа",
+        "desc": "Изучите абсолютно все 65 узлов в Древе улучшений Оазиса",
+        "reward": 0,
+        "max_val": 65,
         "icon": trophy_icon,
-        "check": lambda s: max(s.get("LevelsRecords", [0]) or [0]) >= 25,
-        "progress": lambda s: (min(25, max(s.get("LevelsRecords", [0]) or [0])), 25)
+        "check": lambda s: sum(1 for nid in globals().get("UPGRADE_TREE_NODES", {}) if nid != "oasis_core" and s.get("Upgrades", {}).get(nid, 0) >= 1) >= 65,
+        "progress": lambda s: (min(65, sum(1 for nid in globals().get("UPGRADE_TREE_NODES", {}) if nid != "oasis_core" and s.get("Upgrades", {}).get(nid, 0) >= 1)), 65)
     },
     {
-        "id": "global_wave_50",
+        "id": "global_tree_levels_max",
         "category": "global",
         "cat_name": "Глобальные",
-        "title": "Повелитель Оазиса",
-        "desc": "Пройдите 50 волн на любой локации",
+        "title": "Венец Эволюции",
+        "desc": "Прокачайте все 65 улучшений Древа до абсолютного максимума",
         "reward": 0,
+        "max_val": 247,
         "icon": crown_upg_icon,
-        "check": lambda s: max(s.get("LevelsRecords", [0]) or [0]) >= 50,
-        "progress": lambda s: (min(50, max(s.get("LevelsRecords", [0]) or [0])), 50)
+        "check": lambda s: sum(min(n.get("max_lvl", 1), s.get("Upgrades", {}).get(nid, 0)) for nid, n in globals().get("UPGRADE_TREE_NODES", {}).items() if nid != "oasis_core") >= 247,
+        "progress": lambda s: (min(247, sum(min(n.get("max_lvl", 1), s.get("Upgrades", {}).get(nid, 0)) for nid, n in globals().get("UPGRADE_TREE_NODES", {}).items() if nid != "oasis_core")), 247)
     },
+
+    # --- ПРОХОЖДЕНИЕ ИГРЫ ---
     {
-        "id": "global_wave_100",
+        "id": "global_game_completed",
         "category": "global",
         "cat_name": "Глобальные",
-        "title": "Вековая Оборона",
-        "desc": "Пройдите 100 волн и завершите Финал кампании",
+        "title": "Триумф Оазиса",
+        "desc": "Одолейте 100 волн и завершите Финал кампании",
         "reward": 0,
+        "max_val": 100,
         "icon": crown_upg_icon,
-        "check": lambda s: s.get("GameCompleted", False) or max(s.get("LevelsRecords", [0]) or [0]) >= 100,
-        "progress": lambda s: (min(100, max(s.get("LevelsRecords", [0]) or [0])), 100)
+        "check": lambda s: (s.get("LevelsRecords", [])[8] if len(s.get("LevelsRecords", [])) > 8 else 0) >= 100,
+        "progress": lambda s: (min(100, s.get("LevelsRecords", [])[8] if len(s.get("LevelsRecords", [])) > 8 else 0), 100)
+    },
+
+    # --- ЖЁСТКИЕ ТРЕБОВАНИЯ ---
+    {
+        "id": "global_boss_slayer_100",
+        "category": "global",
+        "cat_name": "Глобальные",
+        "title": "Истребитель Боссов",
+        "desc": "Одолейте 100 боссов за всё время игры во всех битвах",
+        "reward": 0,
+        "max_val": 100,
+        "icon": boss_img,
+        "check": lambda s: s.get("Stats", {}).get("bosses_defeated", 0) >= 100,
+        "progress": lambda s: (min(100, s.get("Stats", {}).get("bosses_defeated", 0)), 100)
     },
     {
-        "id": "global_hardcore_50",
+        "id": "global_hardcore_conqueror",
         "category": "global",
         "cat_name": "Глобальные",
         "title": "Железная Воля",
         "desc": "Достигните 50 волны на сложности Хардкор",
         "reward": 0,
+        "max_val": 50,
         "icon": void_boss_img,
         "check": lambda s: s.get("difficulty") == "hardcore" and max(s.get("LevelsRecords", [0]) or [0]) >= 50,
         "progress": lambda s: (min(50, max(s.get("LevelsRecords", [0]) or [0])) if s.get("difficulty") == "hardcore" else 0, 50)
     },
     {
-        "id": "global_all_relics",
+        "id": "global_stellar_tycoon",
         "category": "global",
         "cat_name": "Глобальные",
-        "title": "Хранитель Древностей",
-        "desc": "Найдите все 20 древних реликвий в Музее",
+        "title": "Звёздный Магнат",
+        "desc": "Накопите суммарно 1 000 Звёздных кактусов",
         "reward": 0,
-        "icon": relic_icon,
-        "check": lambda s: sum(1 for r in globals().get("RELICS_DATA", {}).values() if s.get("Relics", {}).get(r["id"], {}).get("level", 0) > 0) >= 20,
-        "progress": lambda s: (min(20, sum(1 for r in globals().get("RELICS_DATA", {}).values() if s.get("Relics", {}).get(r["id"], {}).get("level", 0) > 0)), 20)
-    },
-    {
-        "id": "global_botanist",
-        "category": "global",
-        "cat_name": "Глобальные",
-        "title": "Мастер Оранжереи",
-        "desc": "Вырастите все 8 сортов кактусов до 3+ уровня",
-        "reward": 0,
-        "icon": sprout_icon,
-        "check": lambda s: sum(1 for c in globals().get("GREENHOUSE_CACTI", []) if s.get("Greenhouse", {}).get(c["id"], {}).get("level", 0) >= 3) >= 8,
-        "progress": lambda s: (min(8, sum(1 for c in globals().get("GREENHOUSE_CACTI", []) if s.get("Greenhouse", {}).get(c["id"], {}).get("level", 0) >= 3)), 8)
-    },
-    {
-        "id": "global_talent_master",
-        "category": "global",
-        "cat_name": "Глобальные",
-        "title": "Мастер Древа",
-        "desc": "Изучите хотя бы 40 узлов в Древе улучшений",
-        "reward": 0,
-        "icon": trophy_icon,
-        "check": lambda s: sum(1 for nid in globals().get("UPGRADE_TREE_NODES", {}) if s.get("Upgrades", {}).get(nid, 0) > 0) >= 40,
-        "progress": lambda s: (min(40, sum(1 for nid in globals().get("UPGRADE_TREE_NODES", {}) if s.get("Upgrades", {}).get(nid, 0) > 0)), 40)
-    },
-    {
-        "id": "global_stellar_millionaire",
-        "category": "global",
-        "cat_name": "Глобальные",
-        "title": "Звёздный Барон",
-        "desc": "Соберите суммарно 500 Звёздных кактусов",
-        "reward": 0,
+        "max_val": 1000,
         "icon": stellar_cactus_img,
-        "check": lambda s: s.get("StellarCactuses", 0) >= 500,
-        "progress": lambda s: (min(500, s.get("StellarCactuses", 0)), 500)
-    },
-    {
-        "id": "global_boss_slayer",
-        "category": "global",
-        "cat_name": "Глобальные",
-        "title": "Истребитель Боссов",
-        "desc": "Одолейте 25 боссов за всё время игры",
-        "reward": 0,
-        "icon": boss_img,
-        "check": lambda s: s.get("Stats", {}).get("bosses_defeated", 0) >= 25,
-        "progress": lambda s: (min(25, s.get("Stats", {}).get("bosses_defeated", 0)), 25)
-    },
-    {
-        "id": "global_ultimate_tower",
-        "category": "global",
-        "cat_name": "Глобальные",
-        "title": "Абсолютная Мощь",
-        "desc": "Прокачайте любую башню в бою до 25 уровня",
-        "reward": 0,
-        "icon": magic_tower_img,
-        "check": lambda s: s.get("Stats", {}).get("max_tower_level_reached", 0) >= 25,
-        "progress": lambda s: (min(25, s.get("Stats", {}).get("max_tower_level_reached", 0)), 25)
+        "check": lambda s: s.get("StellarCactuses", 0) >= 1000,
+        "progress": lambda s: (min(1000, s.get("StellarCactuses", 0)), 1000)
     }
 ]
 
+def update_global_achievements(savedata):
+    """Обновляет статус 10 глобальных достижений в saves/global_achievements.json."""
+    global_meta = load_global_achievements()
+    changed = False
+
+    # Удаляем старые неактуальные ключи, если они были сохранены
+    valid_ids = {g["id"] for g in GLOBAL_ACHIEVEMENTS_DATA}
+    keys_to_del = [k for k in global_meta if k not in valid_ids]
+    if keys_to_del:
+        for k in keys_to_del:
+            del global_meta[k]
+        changed = True
+
+    for gach in GLOBAL_ACHIEVEMENTS_DATA:
+        gid = gach["id"]
+        entry = global_meta.setdefault(gid, {
+            "unlocked": False,
+            "progress": 0,
+            "max": 1,
+            "unlocked_at": ""
+        })
+        try:
+            cur_p, max_p = gach["progress"](savedata)
+            entry["max"] = max_p
+            is_valid = gach["check"](savedata) or cur_p >= max_p
+
+            if gid == "global_game_completed" and not is_valid:
+                # Сбрасываем ошибочное открытие и завышенный прогресс от прошлых версий
+                if entry.get("unlocked", False) or entry.get("progress", 0) > cur_p:
+                    entry["unlocked"] = False
+                    entry["unlocked_at"] = ""
+                    entry["progress"] = cur_p
+                    changed = True
+            else:
+                if cur_p > entry.get("progress", 0):
+                    entry["progress"] = cur_p
+                    changed = True
+                if is_valid and not entry.get("unlocked", False):
+                    entry["unlocked"] = True
+                    entry["unlocked_at"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+                    changed = True
+        except Exception:
+            pass
+
+    if changed:
+        save_global_achievements(global_meta)
+    return global_meta
+
 def check_achievements(savedata):
+    """Проверяет только локальные достижения текущего сейва."""
     unlocked_any = False
     ach_dict = savedata.setdefault("Achievements", {})
+
     for ach in ACHIEVEMENTS_DATA:
         aid = ach["id"]
         status = ach_dict.setdefault(aid, {"unlocked": False, "claimed": False})
@@ -3873,6 +3983,10 @@ def check_achievements(savedata):
             if ach["check"](savedata):
                 status["unlocked"] = True
                 unlocked_any = True
+
+    # Заодно синхронизируем прогресс глобальных достижений
+    update_global_achievements(savedata)
+
     return unlocked_any
 
 def has_unclaimed_achievements(savedata):

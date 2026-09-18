@@ -76,6 +76,7 @@ def run_game():
     STATE_MAP_SELECT = "MAP_SELECT"
     STATE_UPGRADES = "UPGRADES"
     STATE_ACHIEVEMENTS = "ACHIEVEMENTS"
+    STATE_GLOBAL_ACHIEVEMENTS = "GLOBAL_ACHIEVEMENTS"
     STATE_BESTIARY = "BESTIARY"
     STATE_GREENHOUSE = "GREENHOUSE"
     STATE_RELICS = "RELICS"
@@ -124,6 +125,12 @@ def run_game():
     bestiary_drag_start_scroll = 0
     bestiary_drag_moved = False
     bestiary_return_state = STATE_MAP_SELECT
+    achievements_return_state = STATE_MAP_SELECT
+    global_ach_scroll_y = 0
+    is_dragging_global_ach = False
+    global_ach_drag_start_y = 0
+    global_ach_drag_start_scroll = 0
+    global_ach_drag_moved = False
     inspected_greenhouse_cactus = None
     credits_scroll_y = 0.0
     credits_source = "game"
@@ -308,7 +315,7 @@ def run_game():
         gh_buffs = get_greenhouse_buffs(savedata)
         relic_buffs = get_all_relic_buffs(savedata)
         diff = savedata.get("difficulty", "normal")
-        base_lives = 12 + savedata["Upgrades"].get("base_health", 0) * 3 + gh_buffs.get("base_hp", 0) + relic_buffs.get("base_hp_bonus", 0)
+        base_lives = 10 + savedata["Upgrades"].get("base_health", 0) * 3 + gh_buffs.get("base_hp", 0) + relic_buffs.get("base_hp_bonus", 0)
         if diff == "casual":
             max_lives = base_lives + 10
         elif diff == "hardcore":
@@ -427,6 +434,8 @@ def run_game():
             win_mgr.set_title(f"CactusTD Remastered | Бестиарий ({len(savedata.get('BestiaryDiscovered', []))}/10)")
         elif current_state == STATE_ACHIEVEMENTS:
             win_mgr.set_title("CactusTD Remastered | Достижения")
+        elif current_state == STATE_GLOBAL_ACHIEVEMENTS:
+            win_mgr.set_title("CactusTD Remastered | Глобальные Достижения")
         elif current_state == STATE_SETTINGS:
             win_mgr.set_title("CactusTD Remastered | Настройки")
         elif current_state == STATE_CREDITS:
@@ -437,7 +446,7 @@ def run_game():
         # =================================================================
         if current_state == STATE_MAIN_MENU:
             demo_sim.update(raw_dt)
-            play_btn, set_btn, exit_btn = draw_main_menu_screen(screen, mouse_pos, demo_sim, bg_time=bg_time)
+            play_btn, ach_btn, set_btn, exit_btn = draw_main_menu_screen(screen, mouse_pos, demo_sim, bg_time=bg_time)
 
             diff_btns = {}
             confirm_btn = None
@@ -497,6 +506,10 @@ def run_game():
                         else:
                             current_state = STATE_MAP_SELECT
                             sfx_click.play()
+                    elif event.key == pygame.K_a:
+                        current_state = STATE_GLOBAL_ACHIEVEMENTS
+                        global_ach_scroll_y = 0
+                        sfx_click.play()
                     elif event.key == pygame.K_o:
                         current_state = STATE_SETTINGS
                         settings_source = "main_menu"
@@ -513,6 +526,10 @@ def run_game():
                         else:
                             current_state = STATE_MAP_SELECT
                             sfx_click.play()
+                    elif ach_btn and ach_btn.collidepoint(mouse_pos):
+                        current_state = STATE_GLOBAL_ACHIEVEMENTS
+                        global_ach_scroll_y = 0
+                        sfx_click.play()
                     elif set_btn and set_btn.collidepoint(mouse_pos):
                         current_state = STATE_SETTINGS
                         settings_source = "main_menu"
@@ -636,6 +653,7 @@ def run_game():
                     elif event.key == pygame.K_u:
                         current_state = STATE_UPGRADES
                     elif event.key == pygame.K_a:
+                        achievements_return_state = STATE_MAP_SELECT
                         current_state = STATE_ACHIEVEMENTS
                     elif event.key == pygame.K_b:
                         bestiary_return_state = STATE_MAP_SELECT
@@ -803,6 +821,7 @@ def run_game():
                     elif upg_btn.collidepoint(mouse_pos):
                         current_state = STATE_UPGRADES
                     elif ach_btn.collidepoint(mouse_pos):
+                        achievements_return_state = STATE_MAP_SELECT
                         current_state = STATE_ACHIEVEMENTS
                     elif bestiary_btn.collidepoint(mouse_pos):
                         bestiary_return_state = STATE_MAP_SELECT
@@ -1198,7 +1217,7 @@ def run_game():
 
                 if event.type == pygame.KEYDOWN:
                     if event.key in [pygame.K_ESCAPE, pygame.K_a, pygame.K_SPACE, getattr(pygame, 'K_AC_BACK', -999)]:
-                        current_state = STATE_MAP_SELECT
+                        current_state = achievements_return_state
                         sfx_click.play()
                     elif event.key in [pygame.K_UP, pygame.K_w]:
                         ach_scroll_y = max(0, ach_scroll_y - 60)
@@ -1227,7 +1246,7 @@ def run_game():
                         is_dragging_ach = False
                         if not ach_drag_moved:
                             if back_rect.collidepoint(mouse_pos):
-                                current_state = STATE_MAP_SELECT
+                                current_state = achievements_return_state
                                 sfx_click.play()
 
                             # Кнопка «Забрать всё»
@@ -1307,7 +1326,7 @@ def run_game():
                         is_dragging_ach = False
                         if not ach_drag_moved:
                             if back_rect.collidepoint(touch_pos):
-                                current_state = STATE_MAP_SELECT
+                                current_state = achievements_return_state
                                 sfx_click.play()
                             elif claim_all_btn and claim_all_btn.collidepoint(touch_pos):
                                 total_claimed = 0
@@ -1347,6 +1366,91 @@ def run_game():
                                             sfx_achievement.play()
                                             save_data(savedata)
                                             break
+
+            pygame.display.flip()
+            continue
+
+        # =================================================================
+        # ЭКРАН 3.5: ГЛОБАЛЬНЫЕ ДОСТИЖЕНИЯ (ПРЕСТИЖ АККАУНТА - ИЗ МЕНЮ)
+        # =================================================================
+        elif current_state == STATE_GLOBAL_ACHIEVEMENTS:
+            back_rect, max_global_ach_scroll = draw_global_achievements_screen(
+                screen, mouse_pos, global_ach_scroll_y, bg_time=bg_time
+            )
+
+            for event in pygame.event.get():
+                if hasattr(event, "pos"):
+                    mouse_pos = event.pos
+                if event.type == pygame.QUIT:
+                    running = False
+
+                if event.type == pygame.KEYDOWN:
+                    if event.key in [pygame.K_ESCAPE, pygame.K_a, pygame.K_SPACE, getattr(pygame, 'K_AC_BACK', -999)]:
+                        current_state = STATE_MAIN_MENU
+                        sfx_click.play()
+                    elif event.key in [pygame.K_UP, pygame.K_w]:
+                        global_ach_scroll_y = max(0, global_ach_scroll_y - 60)
+                    elif event.key in [pygame.K_DOWN, pygame.K_s]:
+                        global_ach_scroll_y = min(max_global_ach_scroll, global_ach_scroll_y + 60)
+                    elif event.key == pygame.K_PAGEUP:
+                        global_ach_scroll_y = max(0, global_ach_scroll_y - 300)
+                    elif event.key == pygame.K_PAGEDOWN:
+                        global_ach_scroll_y = min(max_global_ach_scroll, global_ach_scroll_y + 300)
+                    elif event.key == pygame.K_HOME:
+                        global_ach_scroll_y = 0
+                    elif event.key == pygame.K_END:
+                        global_ach_scroll_y = max_global_ach_scroll
+
+                elif event.type == pygame.MOUSEWHEEL:
+                    global_ach_scroll_y = max(0, min(max_global_ach_scroll, global_ach_scroll_y - event.y * 50))
+
+                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    is_dragging_global_ach = True
+                    global_ach_drag_start_y = mouse_pos[1]
+                    global_ach_drag_start_scroll = global_ach_scroll_y
+                    global_ach_drag_moved = False
+
+                elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                    if is_dragging_global_ach:
+                        is_dragging_global_ach = False
+                        if not global_ach_drag_moved:
+                            if back_rect.collidepoint(mouse_pos):
+                                current_state = STATE_MAIN_MENU
+                                sfx_click.play()
+
+                elif event.type == pygame.MOUSEMOTION:
+                    if is_dragging_global_ach:
+                        dy = mouse_pos[1] - global_ach_drag_start_y
+                        if abs(dy) > 5:
+                            global_ach_drag_moved = True
+                        global_ach_scroll_y = max(0, min(max_global_ach_scroll, global_ach_drag_start_scroll - dy))
+
+                elif event.type == pygame.FINGERDOWN:
+                    touch_pos = (int(event.x * SCREEN_WIDTH), int(event.y * SCREEN_HEIGHT))
+                    mouse_pos = touch_pos
+                    is_dragging_global_ach = True
+                    global_ach_drag_start_y = touch_pos[1]
+                    global_ach_drag_start_scroll = global_ach_scroll_y
+                    global_ach_drag_moved = False
+
+                elif event.type == pygame.FINGERMOTION:
+                    touch_pos = (int(event.x * SCREEN_WIDTH), int(event.y * SCREEN_HEIGHT))
+                    mouse_pos = touch_pos
+                    if is_dragging_global_ach:
+                        delta_px = event.dy * SCREEN_HEIGHT * 1.5
+                        if abs(delta_px) > 2:
+                            global_ach_drag_moved = True
+                        global_ach_scroll_y = max(0, min(max_global_ach_scroll, global_ach_scroll_y - delta_px))
+
+                elif event.type == pygame.FINGERUP:
+                    touch_pos = (int(event.x * SCREEN_WIDTH), int(event.y * SCREEN_HEIGHT))
+                    mouse_pos = touch_pos
+                    if is_dragging_global_ach:
+                        is_dragging_global_ach = False
+                        if not global_ach_drag_moved:
+                            if back_rect.collidepoint(touch_pos):
+                                current_state = STATE_MAIN_MENU
+                                sfx_click.play()
 
             pygame.display.flip()
             continue
@@ -4297,7 +4401,7 @@ def run_game():
             if is_paused and not game_over:
                 screen.blit(pause_overlay_surf, (0, 0))
 
-                pw, ph = 380, 390
+                pw, ph = 380, 336
                 px = (SCREEN_WIDTH - pw) // 2
                 py = (SCREEN_HEIGHT - ph) // 2
                 p_box = pygame.Rect(px, py, pw, ph)
@@ -4305,7 +4409,7 @@ def run_game():
                 pygame.draw.rect(screen, (22, 28, 38), p_box, border_radius=14)
                 pygame.draw.rect(screen, (65, 160, 245), p_box, width=2, border_radius=14)
 
-                screen.blit(_pause_title_surf, (p_box.centerx - _pause_title_surf.get_width() // 2, py + 16))
+                screen.blit(_pause_title_surf, (p_box.centerx - _pause_title_surf.get_width() // 2, py + 18))
 
                 btn_w, btn_h = 300, 38
                 bx = p_box.centerx - btn_w // 2
@@ -4335,7 +4439,7 @@ def run_game():
                 # Инфо-строка биома внизу меню паузы
                 biome = MAP_BIOMES_DATA.get(game_map, MAP_BIOMES_DATA[0])
                 p_sub_txt = tiny_font.render(f"{biome['name']}  •  Волна {wave}  •  {biome['mutator_badge']}", True, (150, 175, 205))
-                screen.blit(p_sub_txt, (p_box.centerx - p_sub_txt.get_width() // 2, py + 304))
+                screen.blit(p_sub_txt, (p_box.centerx - p_sub_txt.get_width() // 2, py + 302))
 
                 for brect, bt_surf, col_normal, col_hov in p_btns:
                     b_hovered = brect.collidepoint(mouse_pos)

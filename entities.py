@@ -1671,11 +1671,12 @@ class OrbitalBeamEffect:
 # КЛАСС ВРАГА (Слаймы)
 # -------------------------------------------------------------------------
 class Enemy:
-    def __init__(self, enemy_type, current_wave, path, game_map=0):
+    def __init__(self, enemy_type, current_wave, path, game_map=0, is_demo=False):
         self.type = enemy_type
         self.path = path
         self.wave = current_wave
         self.game_map = game_map
+        self.is_demo = is_demo
         hp_mod = calculate_hp_modificator(current_wave)
 
         self.is_armored = False
@@ -1857,8 +1858,8 @@ class Enemy:
             self.reward = max(1, int(round(self.reward * cacti_mult)))
 
         # Открытие слайма в Словаре (Bestiary)
-        if 'savedata' in globals() and isinstance(savedata, dict):
-            disc = savedata.setdefault("BestiaryDiscovered", [1])
+        if not self.is_demo and 'savedata' in globals() and isinstance(savedata, dict):
+            disc = savedata.setdefault("BestiaryDiscovered", [])
             base_id = enemy_type
             if base_id >= 3000: base_id = 3000
             elif base_id >= 2000: base_id = 2000
