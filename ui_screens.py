@@ -6197,24 +6197,17 @@ def draw_main_menu_screen(surface, mouse_pos, demo_sim, bg_time=None):
 
     # 5. Нижняя панель информации (Версия 0.1.2 • Автор: sonofstrange)
     foot_str = "Версия 0.1.2 • Автор: sonofstrange"
-    foot_txt = tiny_font.render(foot_str, True, (160, 190, 225))
+    foot_txt = tiny_font.render(foot_str, True, (180, 210, 240))
     fp_w = foot_txt.get_width() + 36
-    fp_h = 26
+    fp_h = 28
     foot_pill = pygame.Surface((fp_w, fp_h), pygame.SRCALPHA)
-    pygame.draw.rect(foot_pill, (10, 14, 22, 180), (0, 0, fp_w, fp_h), border_radius=13)
-    pygame.draw.rect(foot_pill, (50, 75, 110, 180), (0, 0, fp_w, fp_h), width=1, border_radius=13)
-    surface.blit(foot_pill, (cx - fp_w // 2, SCREEN_HEIGHT - 38))
-    # 4.5. Кнопка «? МЕХАНИКИ» в правом верхнем углу главного меню
-    info_btn = pygame.Rect(SCREEN_WIDTH - 160, 20, 138, 44)
-    i_hov = info_btn.collidepoint(mouse_pos)
-    i_surf = pygame.Surface((138, 44), pygame.SRCALPHA)
-    pygame.draw.rect(i_surf, (28, 65, 95, 230) if i_hov else (18, 42, 65, 190), (0, 0, 138, 44), border_radius=10)
-    pygame.draw.rect(i_surf, (90, 200, 255, 255) if i_hov else (50, 135, 185, 220), (0, 0, 138, 44), width=1, border_radius=10)
-    surface.blit(i_surf, info_btn)
-    i_txt = small_font.render("? МЕХАНИКИ", True, (220, 245, 255))
-    surface.blit(i_txt, (info_btn.centerx - i_txt.get_width() // 2, info_btn.centery - i_txt.get_height() // 2))
+    pygame.draw.rect(foot_pill, (10, 14, 22, 180), (0, 0, fp_w, fp_h), border_radius=14)
+    pygame.draw.rect(foot_pill, (50, 75, 110, 180), (0, 0, fp_w, fp_h), width=1, border_radius=14)
+    foot_y = SCREEN_HEIGHT - 38
+    surface.blit(foot_pill, (cx - fp_w // 2, foot_y))
+    surface.blit(foot_txt, (cx - foot_txt.get_width() // 2, foot_y + (fp_h - foot_txt.get_height()) // 2))
 
-    return play_btn, set_btn, exit_btn, info_btn
+    return play_btn, set_btn, exit_btn
 
 
 

@@ -421,14 +421,7 @@ def run_game():
         # =================================================================
         if current_state == STATE_MAIN_MENU:
             demo_sim.update(raw_dt)
-            play_btn, set_btn, exit_btn, info_btn = draw_main_menu_screen(screen, mouse_pos, demo_sim, bg_time=bg_time)
-
-            guide_close_btn = None
-            guide_tab_rects = []
-            if active_guide_modal:
-                guide_close_btn, guide_tab_rects = draw_mechanics_guide_modal(
-                    screen, mouse_pos, current_tab=guide_modal_tab, context=guide_modal_context
-                )
+            play_btn, set_btn, exit_btn = draw_main_menu_screen(screen, mouse_pos, demo_sim, bg_time=bg_time)
 
             for event in pygame.event.get():
                 if hasattr(event, "pos"):
@@ -437,18 +430,6 @@ def run_game():
                     running = False
 
                 if event.type == pygame.KEYDOWN:
-                    if active_guide_modal:
-                        if event.key in [pygame.K_ESCAPE, pygame.K_SPACE, pygame.K_F1]:
-                            active_guide_modal = False
-                            sfx_click.play()
-                        elif event.key in [pygame.K_LEFT, pygame.K_a]:
-                            guide_modal_tab = (guide_modal_tab - 1) % 3
-                            sfx_click.play()
-                        elif event.key in [pygame.K_RIGHT, pygame.K_d, pygame.K_TAB]:
-                            guide_modal_tab = (guide_modal_tab + 1) % 3
-                            sfx_click.play()
-                        continue
-
                     if event.key in [pygame.K_SPACE, pygame.K_RETURN]:
                         current_state = STATE_MAP_SELECT
                         sfx_click.play()
@@ -460,33 +441,7 @@ def run_game():
                         running = False
 
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    if active_guide_modal:
-                        if guide_close_btn and guide_close_btn.collidepoint(mouse_pos):
-                            active_guide_modal = False
-                            sfx_click.play()
-                        else:
-                            tab_clicked = False
-                            for t_i, t_r in enumerate(guide_tab_rects):
-                                if t_r.collidepoint(mouse_pos):
-                                    guide_modal_tab = t_i
-                                    sfx_click.play()
-                                    tab_clicked = True
-                                    break
-                            if not tab_clicked:
-                                mw, mh = 980, 610
-                                mx, my = (SCREEN_WIDTH - mw) // 2, (SCREEN_HEIGHT - mh) // 2
-                                if not pygame.Rect(mx, my, mw, mh).collidepoint(mouse_pos):
-                                    active_guide_modal = False
-                                    sfx_click.play()
-                        continue
-
-                    if info_btn and info_btn.collidepoint(mouse_pos):
-                        active_guide_modal = True
-                        guide_modal_context = "combat"
-                        guide_modal_tab = 0
-                        sfx_click.play()
-                        continue
-                    elif play_btn and play_btn.collidepoint(mouse_pos):
+                    if play_btn and play_btn.collidepoint(mouse_pos):
                         current_state = STATE_MAP_SELECT
                         sfx_click.play()
                     elif set_btn and set_btn.collidepoint(mouse_pos):
