@@ -25,34 +25,6 @@ if sys.platform == "win32":
             except Exception:
                 pass
 
-# Читаем сохранённую настройку чёткости масштаба до инициализации окна Pygame/SDL2
-_init_scale_val = "0"
-try:
-    _base_dir_check = sys._MEIPASS if (getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS')) else os.path.dirname(os.path.abspath(__file__))
-    _s_path = os.path.join(_base_dir_check, "savedata.json")
-    if not os.path.exists(_s_path):
-        _s_path = "savedata.json"
-    if os.path.exists(_s_path):
-        import json
-        with open(_s_path, "r", encoding="utf-8") as _f:
-            _s_data = json.load(_f)
-            if _s_data.get("Settings", {}).get("scale_quality") == "smooth":
-                _init_scale_val = "1"
-except Exception:
-    pass
-
-if "SDL_RENDER_SCALE_QUALITY" not in os.environ:
-    os.environ["SDL_RENDER_SCALE_QUALITY"] = _init_scale_val
-
-import io
-import math
-import random
-import struct
-import wave
-import pygame
-
-pygame.init()
-
 IS_ANDROID = hasattr(sys, 'getandroidapilevel') or 'ANDROID_ARGUMENT' in os.environ or 'ANDROID_PRIVATE' in os.environ
 GAME_VERSION = "0.1.2"
 
@@ -63,15 +35,73 @@ elif IS_ANDROID:
 else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
+# Базовая директория пользовательских сохранений (никогда не sys._MEIPASS, т.к. она временная и read-only!)
+if IS_ANDROID:
+    try:
+        from android.storage import app_storage_path
+        SAVE_BASE_DIR = app_storage_path()
+    except Exception:
+        SAVE_BASE_DIR = os.environ.get("ANDROID_APP_DATA", os.environ.get("ANDROID_PRIVATE", "."))
+elif getattr(sys, 'frozen', False):
+    SAVE_BASE_DIR = os.path.dirname(sys.executable)
+else:
+    SAVE_BASE_DIR = BASE_DIR
+
+# Читаем сохранённую настройку чёткости масштаба до инициализации окна Pygame/SDL2
+_init_scale_val = "0"
+try:
+    import json
+    _candidates = []
+    _act_p = os.path.join(SAVE_BASE_DIR, "saves", "active_profile.json")
+    if os.path.exists(_act_p):
+        try:
+            with open(_act_p, "r", encoding="utf-8") as _af:
+                _aid = json.load(_af).get("active_id", "slot_main")
+                _candidates.append(os.path.join(SAVE_BASE_DIR, "saves", f"{_aid}.json"))
+        except Exception:
+            pass
+    _candidates.append(os.path.join(SAVE_BASE_DIR, "saves", "slot_main.json"))
+    _candidates.append(os.path.join(SAVE_BASE_DIR, "savedata.json"))
+    _candidates.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "savedata.json"))
+    _candidates.append("savedata.json")
+
+    for _p in _candidates:
+        if os.path.exists(_p):
+            try:
+                with open(_p, "r", encoding="utf-8") as _f:
+                    _s_data = json.load(_f)
+                    _sq = _s_data.get("Settings", {}).get("scale_quality")
+                    if _sq == "smooth":
+                        _init_scale_val = "1"
+                        break
+                    elif _sq == "sharp":
+                        _init_scale_val = "0"
+                        break
+            except Exception:
+                pass
+except Exception:
+    pass
+
+ACTIVE_SCALE_MODE = "smooth" if _init_scale_val == "1" else "sharp"
+os.environ["SDL_RENDER_SCALE_QUALITY"] = _init_scale_val
+
+import io
+import math
+import random
+import struct
+import wave
+import pygame
+
+pygame.init()
+
 SCREEN_WIDTH = 1280
 SCREEN_HEIGHT = 720
 
 # Инициализация дисплея с поддержкой нативного полноэкранного масштабирования на Android
-# Инициализация дисплея с поддержкой нативного полноэкранного масштабирования на Android
 USE_NATIVE_SCALED = False
 
 if IS_ANDROID:
-    os.environ["SDL_RENDER_SCALE_QUALITY"] = "1"
+    os.environ["SDL_RENDER_SCALE_QUALITY"] = _init_scale_val
     try:
         screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SCALED | pygame.FULLSCREEN)
         if screen is not None and screen.get_size() == (SCREEN_WIDTH, SCREEN_HEIGHT):
@@ -190,6 +220,9 @@ if IS_ANDROID:
 
     def set_scale_quality(mode_name):
         return screen
+
+    def restart_game(data=None):
+        pass
 def apply_app_icon():
     """Устанавливает иконку приложения (кактус) в Pygame и нативно в Win32."""
     try:
@@ -284,6 +317,30 @@ else:
         except Exception:
             pass
         return screen
+
+    def restart_game(data=None):
+        """
+        Безопасный перезапуск игры для немедленного применения нового графического пайплайна SDL2.
+        Сохраняет текущие данные и запускает новый экземпляр приложения.
+        """
+        if data is not None:
+            try:
+                import game_data
+                game_data.save_data(data)
+            except Exception:
+                pass
+        if IS_ANDROID:
+            return
+        try:
+            import subprocess
+            pygame.quit()
+            if getattr(sys, 'frozen', False):
+                subprocess.Popen([sys.executable] + sys.argv[1:])
+            else:
+                subprocess.Popen([sys.executable] + sys.argv)
+            sys.exit(0)
+        except Exception as e:
+            print(f"[RESTART] Failed to restart process: {e}", flush=True)
 
     def _get_layout(*args, **kwargs):
         return {
