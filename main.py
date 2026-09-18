@@ -154,8 +154,8 @@ def run_game():
     animated_hp_ratio = 1.0
     hp_catchup_ratio = 1.0
     session_towers_bought = 0
-    tree_cam_x = 0
-    tree_cam_y = 40
+    tree_cam_x = 135
+    tree_cam_y = -25
     tree_zoom = 1.0
     selected_tree_node = "oasis_core"
     is_dragging_tree = False
@@ -907,7 +907,7 @@ def run_game():
         # ЭКРАН 2: ДРЕВО УЛУЧШЕНИЙ
         # =================================================================
         elif current_state == STATE_UPGRADES:
-            back_rect, center_rect, buy_btn_rect, toggle_btn_rect, node_rects, dark_bal_rect, zoom_in_rect, zoom_out_rect, zoom_reset_rect, info_btn_rect = draw_upgrade_tree_screen(
+            back_rect, center_rect, buy_btn_rect, toggle_btn_rect, node_rects, dark_bal_rect, zoom_in_rect, zoom_out_rect, zoom_reset_rect, info_btn_rect, jump_btn_rects = draw_upgrade_tree_screen(
                 screen, savedata, mouse_pos, tree_cam_x, tree_cam_y, selected_tree_node, is_dragging_tree, tree_zoom, bg_time=bg_time
             )
 
@@ -1012,14 +1012,21 @@ def run_game():
                                 sfx_upgrade.play()
                             else:
                                 laser.play()
+                    elif event.key == pygame.K_c:
+                        vw = SCREEN_WIDTH - 350
+                        vh = SCREEN_HEIGHT - 64
+                        tree_cam_x = 600 - (vw / 2)
+                        tree_cam_y = 340 - (vh / 2)
+                        tree_zoom = 1.0
+                        sfx_click.play()
                     elif event.key in [pygame.K_UP, pygame.K_w]:
-                        tree_cam_y = max(-400, tree_cam_y - int(50 / tree_zoom))
+                        tree_cam_y = max(-500, tree_cam_y - int(50 / tree_zoom))
                     elif event.key in [pygame.K_DOWN, pygame.K_s]:
                         tree_cam_y = min(2200, tree_cam_y + int(50 / tree_zoom))
                     elif event.key in [pygame.K_LEFT, pygame.K_a]:
-                        tree_cam_x = max(-800, tree_cam_x - int(50 / tree_zoom))
+                        tree_cam_x = max(-1200, tree_cam_x - int(50 / tree_zoom))
                     elif event.key in [pygame.K_RIGHT, pygame.K_d]:
-                        tree_cam_x = min(1800, tree_cam_x + int(50 / tree_zoom))
+                        tree_cam_x = min(2400, tree_cam_x + int(50 / tree_zoom))
 
                 elif event.type == pygame.MOUSEWHEEL:
                     zoom_delta = 0.12 * event.y
@@ -1054,6 +1061,24 @@ def run_game():
                                     sfx_click.play()
                         continue
 
+                    # Клик по кнопке быстрого перехода к родительской/мета ноде [✈ К УЗЛУ]
+                    jump_handled = False
+                    if jump_btn_rects:
+                        for j_rect, target_nid in jump_btn_rects:
+                            if j_rect.collidepoint(mouse_pos):
+                                selected_tree_node = target_nid
+                                if target_nid in UPGRADE_TREE_NODES:
+                                    target_node = UPGRADE_TREE_NODES[target_nid]
+                                    vw = SCREEN_WIDTH - 350
+                                    vh = SCREEN_HEIGHT - 64
+                                    tree_cam_x = target_node["x"] - (vw / (2 * tree_zoom))
+                                    tree_cam_y = target_node["y"] - (vh / (2 * tree_zoom))
+                                sfx_click.play()
+                                jump_handled = True
+                                break
+                    if jump_handled:
+                        continue
+
                     if info_btn_rect and info_btn_rect.collidepoint(mouse_pos):
                         active_guide_modal = True
                         guide_modal_context = "tree"
@@ -1065,8 +1090,10 @@ def run_game():
                         sfx_click.play()
                         continue
                     elif center_rect.collidepoint(mouse_pos):
-                        tree_cam_x = 0
-                        tree_cam_y = 40
+                        vw = SCREEN_WIDTH - 350
+                        vh = SCREEN_HEIGHT - 64
+                        tree_cam_x = 600 - (vw / 2)
+                        tree_cam_y = 340 - (vh / 2)
                         tree_zoom = 1.0
                         sfx_click.play()
                         continue
@@ -1098,8 +1125,10 @@ def run_game():
                         continue
                     elif dark_bal_rect and dark_bal_rect.collidepoint(mouse_pos):
                         selected_tree_node = "astral_beacon"
-                        tree_cam_x = 0
-                        tree_cam_y = 815
+                        vw = SCREEN_WIDTH - 350
+                        vh = SCREEN_HEIGHT - 64
+                        tree_cam_x = 600 - (vw / 2)
+                        tree_cam_y = 800 - (vh / 2)
                         tree_zoom = 1.0
                         sfx_click.play()
                         continue
@@ -2471,13 +2500,15 @@ def run_game():
 
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_1:
-                        selected_tower_type = "magic"
-                        upgrade_mode = False
-                        inspected_tower = None
+                        if savedata["Upgrades"].get("magic_tower", 1) > 0:
+                            selected_tower_type = "magic"
+                            upgrade_mode = False
+                            inspected_tower = None
                     elif event.key == pygame.K_2:
-                        selected_tower_type = "rock"
-                        upgrade_mode = False
-                        inspected_tower = None
+                        if savedata["Upgrades"].get("rock_tower", 0) > 0:
+                            selected_tower_type = "rock"
+                            upgrade_mode = False
+                            inspected_tower = None
                     elif event.key == pygame.K_3:
                         if savedata["Upgrades"].get("freeze_tower", 0) > 0:
                             selected_tower_type = "freeze"
@@ -3088,12 +3119,12 @@ def run_game():
                     b6_rect = pygame.Rect(758, SCREEN_HEIGHT - 70, 136, 58)
                     b_upg_rect = pygame.Rect(906, SCREEN_HEIGHT - 70, 136, 58)
 
-                    if b1_rect.collidepoint(mouse_pos):
+                    if b1_rect.collidepoint(mouse_pos) and savedata["Upgrades"].get("magic_tower", 1) > 0:
                         selected_tower_type = "magic"
                         upgrade_mode = False
                         inspected_tower = None
                         continue
-                    elif b2_rect.collidepoint(mouse_pos):
+                    elif b2_rect.collidepoint(mouse_pos) and savedata["Upgrades"].get("rock_tower", 0) > 0:
                         selected_tower_type = "rock"
                         upgrade_mode = False
                         inspected_tower = None
@@ -4175,14 +4206,16 @@ def run_game():
                             orb_txt = tiny_font.render(f"КД: {int(orbital_strike_cd + 0.9)}с", True, (170, 150, 190))
                     screen.blit(orb_txt, (orbital_btn_rect.centerx - orb_txt.get_width() // 2, orbital_btn_rect.centery - orb_txt.get_height() // 2))
 
+                has_magic = savedata["Upgrades"].get("magic_tower", 1) > 0
+                has_rock = savedata["Upgrades"].get("rock_tower", 0) > 0
                 has_freeze = savedata["Upgrades"].get("freeze_tower", 0) > 0
                 has_tent = savedata["Upgrades"].get("tent_tower", 0) > 0
                 has_tesla = savedata["Upgrades"].get("tesla_tower", 0) > 0
                 has_farm = savedata["Upgrades"].get("farm_tower", 0) > 0
 
                 buttons_data = [
-                    ("1", "Маг", get_tower_build_cost("magic", towers, savedata=savedata, game_map=game_map, session_towers_bought=session_towers_bought), magic_tower_img, (18, SCREEN_HEIGHT - 70, 136, 58), "magic", True),
-                    ("2", "Огонь", get_tower_build_cost("rock", towers, savedata=savedata, game_map=game_map, session_towers_bought=session_towers_bought), rock_tower_img, (166, SCREEN_HEIGHT - 70, 136, 58), "rock", True),
+                    ("1", "Маг", get_tower_build_cost("magic", towers, savedata=savedata, game_map=game_map, session_towers_bought=session_towers_bought), magic_tower_img, (18, SCREEN_HEIGHT - 70, 136, 58), "magic", has_magic),
+                    ("2", "Огонь", get_tower_build_cost("rock", towers, savedata=savedata, game_map=game_map, session_towers_bought=session_towers_bought), rock_tower_img, (166, SCREEN_HEIGHT - 70, 136, 58), "rock", has_rock),
                     ("3", "Мороз", get_tower_build_cost("freeze", towers, savedata=savedata, game_map=game_map, session_towers_bought=session_towers_bought), freeze_tower_img, (314, SCREEN_HEIGHT - 70, 136, 58), "freeze", has_freeze),
                     ("4", "Палатка", get_tower_build_cost("tent", towers, savedata=savedata, game_map=game_map, session_towers_bought=session_towers_bought), tent_tower_img, (462, SCREEN_HEIGHT - 70, 136, 58), "tent", has_tent),
                     ("5", "Тесла", get_tower_build_cost("tesla", towers, savedata=savedata, game_map=game_map, session_towers_bought=session_towers_bought), tesla_tower_img, (610, SCREEN_HEIGHT - 70, 136, 58), "tesla", has_tesla),

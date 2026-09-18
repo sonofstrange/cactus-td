@@ -853,6 +853,8 @@ DEFAULT_SAVE = {
     "FlawlessWaveStreak": 0,
     "Upgrades": {
         "oasis_core": 1,
+        "magic_tower": 1,
+        "rock_tower": 0,
         "speed_limit": 0,
         "spawn_rush": 0,
         "start_tower_level": 0,
@@ -1566,6 +1568,9 @@ def load_data(save_id=None):
                 if k not in data["Upgrades"]:
                     data["Upgrades"][k] = v
         data["Upgrades"]["oasis_core"] = max(1, data["Upgrades"].get("oasis_core", 1))
+        data["Upgrades"]["magic_tower"] = max(1, data["Upgrades"].get("magic_tower", 1))
+        if data["Upgrades"].get("rock_tower", 0) == 0 and data["Upgrades"].get("inferno_mastery", 0) > 0:
+            data["Upgrades"]["rock_tower"] = 1
         if "Toggles" not in data:
             data["Toggles"] = dict(DEFAULT_SAVE.get("Toggles", {}))
         else:
@@ -1674,7 +1679,8 @@ UPGRADE_TREE_NODES = {
         "title": "Оазис Кактусов",
         "branch": "core",
         "branch_title": "Истоки",
-        "x": 460, "y": 120,
+        "scale": 2.0,
+        "x": 600, "y": 100,
         "max_lvl": 1,
         "costs": [0],
         "requires": {},
@@ -1687,15 +1693,15 @@ UPGRADE_TREE_NODES = {
         "stat_nxt": lambda lvl: "Активировать ядро оазиса",
         "icon_key": "cactus"
     },
-    # ---------------- ВЕТКА 1: ВООРУЖЕНИЕ И БАШНИ (СИНИЙ) ----------------
+    # ---------------- ВЕТКА 1: ВООРУЖЕНИЕ И БАШНИ (СИНИЙ) ----------------,
     "start_tower_level": {
         "title": "Стартовый Уровень",
         "branch": "tech",
-        "branch_title": "Вооружение",
-        "x": 120, "y": 250,
+        "branch_title": "Башни Оазиса",
+        "x": -60, "y": 280,
         "max_lvl": 10,
         "costs": [2, 3, 5, 8, 12, 17, 23, 30, 38, 47],
-        "requires": {"oasis_core": 1},
+        "requires": {'oasis_core': 1},
         "desc": [
             "Башни возводятся сразу улучшенными.",
             "+1 к стартовому уровню всех возводимых башен",
@@ -1705,99 +1711,14 @@ UPGRADE_TREE_NODES = {
         "stat_nxt": lambda lvl: f"Старт постройки: {2 + lvl} ур. башни",
         "icon_key": "start_lvl"
     },
-    "sniper_optics": {
-        "title": "Оптика Дальнобоя",
-        "branch": "tech",
-        "branch_title": "Вооружение",
-        "x": -80, "y": 250,
-        "max_lvl": 4,
-        "costs": [3, 7, 14, 25],
-        "requires": {"start_tower_level": 1},
-        "desc": [
-            "Прицельные линзы высокой точности.",
-            "+8px к дальности атаки всех стрелковых",
-            "башен (Магия, Огонь, Заморозка) за ур.!"
-        ],
-        "stat_cur": lambda lvl: f"+{lvl * 8}px к радиусу башен" if lvl > 0 else "Базовый радиус атаки башен",
-        "stat_nxt": lambda lvl: f"+{(lvl + 1) * 8}px к радиусу башен",
-        "icon_key": "magic_tower"
-    },
-    "magic_power": {
-        "title": "Магический Резонанс",
-        "branch": "tech",
-        "branch_title": "Вооружение",
-        "x": 230, "y": 250,
-        "max_lvl": 4,
-        "costs": [8, 18, 35, 60],
-        "requires": {"start_tower_level": 1},
-        "desc": [
-            "Усиливает магический урон за уровень.",
-            "Увеличивает прирост урона Магической",
-            "Башни: +0.1 / +0.2 / +0.3 / +0.4 за ур.!"
-        ],
-        "stat_cur": lambda lvl: f"+{round(lvl * 0.1, 1)} к урону за ур. башни ({round(0.75 + lvl * 0.1, 2)}/ур.)" if lvl > 0 else "Базовый прирост (+0.75 урона/ур.)",
-        "stat_nxt": lambda lvl: f"+{round((lvl + 1) * 0.1, 1)} к урону за ур. башни ({round(0.85 + lvl * 0.1, 2)}/ур.)",
-        "icon_key": "magic_tower"
-    },
-    "freeze_tower": {
-        "title": "Заморозка",
-        "branch": "tech",
-        "branch_title": "Вооружение",
-        "x": 120, "y": 395,
-        "max_lvl": 1,
-        "costs": [10],
-        "requires": {"start_tower_level": 1},
-        "desc": [
-            "Открывает Ледяную Башню [3].",
-            "Замедляет толпы мобов на тропе.",
-            "Огненная башня бьёт по льду +40%!"
-        ],
-        "stat_cur": lambda lvl: "Ледяная Башня разблокирована [3]" if lvl >= 1 else "Заблокирована (требуется покупка)",
-        "stat_nxt": lambda lvl: "Открыть доступ к Ледяной Башне [3]",
-        "icon_key": "freeze_tower"
-    },
-    "inferno_mastery": {
-        "title": "Адский Жар",
-        "branch": "tech",
-        "branch_title": "Вооружение",
-        "x": 230, "y": 395,
-        "max_lvl": 5,
-        "costs": [4, 8, 15, 25, 38],
-        "requires": {"start_tower_level": 1},
-        "desc": [
-            "Заряжает снаряды вулканической лавой.",
-            "+10% урона огня, +6px сплэш-радиус",
-            "и повышенный урон по заморозке (+10%/ур.)!"
-        ],
-        "stat_cur": lambda lvl: f"+{lvl * 10}% урона огня, +{lvl * 6}px сплэш, +{lvl * 10}% по льду" if lvl > 0 else "Базовый сплэш 50px (без бонусов)",
-        "stat_nxt": lambda lvl: f"+{(lvl + 1) * 10}% урона огня, +{(lvl + 1) * 6}px сплэш, +{(lvl + 1) * 10}% по льду",
-        "icon_key": "rock_tower"
-    },
-    "frost_nova": {
-        "title": "Ледяная Нова",
-        "branch": "tech",
-        "branch_title": "Вооружение",
-        "x": 30, "y": 395,
-        "max_lvl": 3,
-        "costs": [7, 16, 28],
-        "requires": {"freeze_tower": "max"},
-        "desc": [
-            "Глубокая абсолютная заморозка.",
-            "Замедление сильнее на +4%, длительность +10%",
-            "и периодический урон обморожения!"
-        ],
-        "stat_cur": lambda lvl: f"+{lvl * 4}% замедления, +{lvl * 10}% время действия" if lvl > 0 else "Базовый мороз (без бонусов)",
-        "stat_nxt": lambda lvl: f"+{(lvl + 1) * 4}% замедления, +{(lvl + 1) * 10}% время действия",
-        "icon_key": "freeze_tower"
-    },
     "attack_speed_overdrive": {
         "title": "Форсаж Атаки",
         "branch": "tech",
-        "branch_title": "Вооружение",
-        "x": -80, "y": 395,
+        "branch_title": "Башни Оазиса",
+        "x": -60, "y": 430,
         "max_lvl": 5,
         "costs": [3, 6, 12, 20, 32],
-        "requires": {"sniper_optics": 2},
+        "requires": {'start_tower_level': 2},
         "desc": [
             "Механизмы ускоренной перезарядки.",
             "Ускоряет перезарядку атак всех башен",
@@ -1807,14 +1728,137 @@ UPGRADE_TREE_NODES = {
         "stat_nxt": lambda lvl: f"+{(lvl + 1) * 4}% к скорости атаки всех башен",
         "icon_key": "speed"
     },
+    "magic_tower": {
+        "title": "Магическая Башня",
+        "branch": "tech",
+        "branch_title": "Башни Оазиса",
+        "scale": 1.8,
+        "x": 100, "y": 280,
+        "max_lvl": 1,
+        "costs": [0],
+        "requires": {"oasis_core": 1},
+        "desc": [
+            "Открывает Магическую Башню [1].",
+            "Стреляет базовыми магическими зарядами.",
+            "Разблокирована по умолчанию для защиты оазиса!"
+        ],
+        "stat_cur": lambda lvl: "Магическая Башня доступна [1]" if lvl >= 1 else "Заблокирована",
+        "stat_nxt": lambda lvl: "Открыть Магическую Башню [1]",
+        "icon_key": "magic_tower"
+    },
+    "magic_power": {
+        "title": "Магический Резонанс",
+        "branch": "tech",
+        "branch_title": "Башни Оазиса",
+        "x": 100, "y": 430,
+        "max_lvl": 4,
+        "costs": [8, 18, 35, 60],
+        "requires": {'magic_tower': 1},
+        "desc": [
+            "Усиливает магический урон за уровень.",
+            "Увеличивает прирост урона Магической",
+            "Башни: +0.1 / +0.2 / +0.3 / +0.4 за ур.!"
+        ],
+        "stat_cur": lambda lvl: f"+{round(lvl * 0.1, 1)} к урону за ур. башни ({round(0.75 + lvl * 0.1, 2)}/ур.)" if lvl > 0 else "Базовый прирост (+0.75 урона/ур.)",
+        "stat_nxt": lambda lvl: f"+{round((lvl + 1) * 0.1, 1)} к урону за ур. башни ({round(0.85 + lvl * 0.1, 2)}/ур.)",
+        "icon_key": "magic_tower"
+    },
+    "sniper_optics": {
+        "title": "Оптика Дальнобоя",
+        "branch": "tech",
+        "branch_title": "Башни Оазиса",
+        "x": 100, "y": 570,
+        "max_lvl": 4,
+        "costs": [3, 7, 14, 25],
+        "requires": {'magic_power': 1},
+        "desc": [
+            "Прицельные линзы высокой точности.",
+            "+8px к дальности атаки всех стрелковых",
+            "башен (Магия, Огонь, Заморозка) за ур.!"
+        ],
+        "stat_cur": lambda lvl: f"+{lvl * 8}px к радиусу башен" if lvl > 0 else "Базовый радиус атаки башен",
+        "stat_nxt": lambda lvl: f"+{(lvl + 1) * 8}px к радиусу башен",
+        "icon_key": "magic_tower"
+    },
+    "rock_tower": {
+        "title": "Огненная Башня",
+        "branch": "tech",
+        "branch_title": "Башни Оазиса",
+        "scale": 1.8,
+        "x": 300, "y": 280,
+        "max_lvl": 1,
+        "costs": [1],
+        "requires": {"magic_tower": 1},
+        "desc": [
+            "Открывает Огненную Башню [2].",
+            "Стреляет раскалёнными снарядами по площади.",
+            "Начальное орудие обороны оазиса от групп слаймов!"
+        ],
+        "stat_cur": lambda lvl: "Огненная Башня доступна [2]" if lvl >= 1 else "Заблокирована",
+        "stat_nxt": lambda lvl: "Открыть Огненную Башню [2]",
+        "icon_key": "rock_tower"
+    },
+    "inferno_mastery": {
+        "title": "Адский Жар",
+        "branch": "tech",
+        "branch_title": "Башни Оазиса",
+        "x": 300, "y": 430,
+        "max_lvl": 5,
+        "costs": [4, 8, 15, 25, 38],
+        "requires": {'rock_tower': 'max'},
+        "desc": [
+            "Заряжает снаряды вулканической лавой.",
+            "+10% урона огня, +6px сплэш-радиус",
+            "и повышенный урон по заморозке (+10%/ур.)!"
+        ],
+        "stat_cur": lambda lvl: f"+{lvl * 10}% урона огня, +{lvl * 6}px сплэш, +{lvl * 10}% по льду" if lvl > 0 else "Базовый сплэш 50px (без бонусов)",
+        "stat_nxt": lambda lvl: f"+{(lvl + 1) * 10}% урона огня, +{(lvl + 1) * 6}px сплэш, +{(lvl + 1) * 10}% по льду",
+        "icon_key": "rock_tower"
+    },
+    "freeze_tower": {
+        "title": "Заморозка",
+        "branch": "tech",
+        "branch_title": "Башни Оазиса",
+        "scale": 1.8,
+        "x": 500, "y": 280,
+        "max_lvl": 1,
+        "costs": [10],
+        "requires": {'rock_tower': 'max'},
+        "desc": [
+            "Открывает Ледяную Башню [3].",
+            "Замедляет толпы мобов на тропе.",
+            "Огненная башня бьёт по льду +40%!"
+        ],
+        "stat_cur": lambda lvl: "Ледяная Башня разблокирована [3]" if lvl >= 1 else "Заблокирована (требуется покупка)",
+        "stat_nxt": lambda lvl: "Открыть доступ к Ледяной Башне [3]",
+        "icon_key": "freeze_tower"
+    },
+    "frost_nova": {
+        "title": "Ледяная Нова",
+        "branch": "tech",
+        "branch_title": "Башни Оазиса",
+        "x": 500, "y": 430,
+        "max_lvl": 3,
+        "costs": [7, 16, 28],
+        "requires": {'freeze_tower': 'max'},
+        "desc": [
+            "Глубокая абсолютная заморозка.",
+            "Замедление сильнее на +4%, длительность +10%",
+            "и периодический урон обморожения!"
+        ],
+        "stat_cur": lambda lvl: f"+{lvl * 4}% замедления, +{lvl * 10}% время действия" if lvl > 0 else "Базовый мороз (без бонусов)",
+        "stat_nxt": lambda lvl: f"+{(lvl + 1) * 4}% замедления, +{(lvl + 1) * 10}% время действия",
+        "icon_key": "freeze_tower"
+    },
     "tent_tower": {
         "title": "Палатка Солдат",
         "branch": "tech",
-        "branch_title": "Вооружение",
-        "x": 120, "y": 545,
+        "branch_title": "Башни Оазиса",
+        "scale": 1.8,
+        "x": 700, "y": 280,
         "max_lvl": 1,
         "costs": [15],
-        "requires": {"freeze_tower": "max"},
+        "requires": {'freeze_tower': 'max'},
         "desc": [
             "Открывает Палатку Воинов [4].",
             "Призывает двух верных солдат-кактусов,",
@@ -1827,11 +1871,11 @@ UPGRADE_TREE_NODES = {
     "knight_training": {
         "title": "Латы Воинов",
         "branch": "tech",
-        "branch_title": "Вооружение",
-        "x": 30, "y": 545,
+        "branch_title": "Башни Оазиса",
+        "x": 650, "y": 430,
         "max_lvl": 3,
         "costs": [6, 12, 24],
-        "requires": {"tent_tower": "max"},
+        "requires": {'tent_tower': 'max'},
         "desc": [
             "Защитная экипировка для гарнизона.",
             "+10% HP солдатам казармы и -6% урона",
@@ -1844,11 +1888,11 @@ UPGRADE_TREE_NODES = {
     "shield_wall": {
         "title": "Стена Щитов",
         "branch": "tech",
-        "branch_title": "Вооружение",
-        "x": -80, "y": 545,
+        "branch_title": "Башни Оазиса",
+        "x": 650, "y": 570,
         "max_lvl": 3,
         "costs": [8, 18, 32],
-        "requires": {"knight_training": 2},
+        "requires": {'knight_training': 2},
         "desc": [
             "Тактический защитный строй казармы.",
             "+1 дополнительный боец гарнизона",
@@ -1861,11 +1905,11 @@ UPGRADE_TREE_NODES = {
     "tent_thorns": {
         "title": "Шипы Кактуса",
         "branch": "tech",
-        "branch_title": "Вооружение",
-        "x": 230, "y": 545,
+        "branch_title": "Башни Оазиса",
+        "x": 750, "y": 430,
         "max_lvl": 5,
         "costs": [4, 8, 14, 22, 35],
-        "requires": {"tent_tower": "max"},
+        "requires": {'tent_tower': 'max'},
         "desc": [
             "Острые кактусовые шипы на доспехах гарнизона.",
             "При атаке на воинов возвращают атакующему слайму",
@@ -1878,11 +1922,12 @@ UPGRADE_TREE_NODES = {
     "tesla_tower": {
         "title": "Башня Тесла",
         "branch": "tech",
-        "branch_title": "Вооружение",
-        "x": 120, "y": 695,
+        "branch_title": "Башни Оазиса",
+        "scale": 1.8,
+        "x": 900, "y": 280,
         "max_lvl": 1,
         "costs": [25],
-        "requires": {"tent_tower": "max"},
+        "requires": {'tent_tower': 'max'},
         "desc": [
             "Открывает Башню Тесла [5].",
             "Выпускает сокрушительные цепные молнии,",
@@ -1892,31 +1937,14 @@ UPGRADE_TREE_NODES = {
         "stat_nxt": lambda lvl: "Открыть доступ к Башне Тесла [5]",
         "icon_key": "tesla_tower"
     },
-    "overcharge": {
-        "title": "Перегрузка Цепи",
-        "branch": "tech",
-        "branch_title": "Вооружение",
-        "x": 120, "y": 840,
-        "max_lvl": 3,
-        "costs": [10, 20, 35],
-        "requires": {"tesla_tower": "max", "global_damage": 3},
-        "desc": [
-            "Накачивает цепи Теслы перегрузкой.",
-            "+1 дополнительная пораженная цель",
-            "в каждой вспышке цепной молнии!"
-        ],
-        "stat_cur": lambda lvl: f"+{lvl} доп. цель цепи ({3 + lvl} целей молнии)" if lvl > 0 else "Базовые 3 цели цепной молнии",
-        "stat_nxt": lambda lvl: f"+{lvl + 1} доп. цель цепи ({4 + lvl} целей молнии)",
-        "icon_key": "sword"
-    },
     "ball_lightning": {
         "title": "Шаровая Молния",
         "branch": "tech",
-        "branch_title": "Вооружение",
-        "x": 230, "y": 840,
+        "branch_title": "Башни Оазиса",
+        "x": 850, "y": 430,
         "max_lvl": 3,
         "costs": [8, 18, 30],
-        "requires": {"tesla_tower": "max"},
+        "requires": {'tesla_tower': 'max'},
         "desc": [
             "Плазменная дуга высокого напряжения.",
             "+12% урона молнии и +18px дальность",
@@ -1926,31 +1954,32 @@ UPGRADE_TREE_NODES = {
         "stat_nxt": lambda lvl: f"+{(lvl + 1) * 12}% урона молнии, +{(lvl + 1) * 18}px к дальности прыжка",
         "icon_key": "tesla_tower"
     },
-    "max_tower_level": {
-        "title": "Предельный Кап",
+    "overcharge": {
+        "title": "Перегрузка Цепи",
         "branch": "tech",
-        "branch_title": "Вооружение",
-        "x": 340, "y": 840,
-        "max_lvl": 10,
-        "costs": [2, 5, 9, 15, 23, 33, 46, 62, 81, 105],
-        "requires": {"tesla_tower": "max", "start_tower_level": 3},
+        "branch_title": "Башни Оазиса",
+        "x": 950, "y": 430,
+        "max_lvl": 3,
+        "costs": [10, 20, 35],
+        "requires": {'tesla_tower': 'max'},
         "desc": [
-            "Повышает максимальный лимит прокачки",
-            "для всех видов башен в бою.",
-            "Колоссальный DPS на поздних волнах!"
+            "Накачивает цепи Теслы перегрузкой.",
+            "+1 дополнительная пораженная цель",
+            "в каждой вспышке цепной молнии!"
         ],
-        "stat_cur": lambda lvl: f"Предельный кап: {15 + lvl} ур. башен (+{lvl})" if lvl > 0 else "Базовый предел: 15 ур. башен",
-        "stat_nxt": lambda lvl: f"Предельный кап: {16 + lvl} ур. башен (+{lvl + 1})",
-        "icon_key": "crown"
+        "stat_cur": lambda lvl: f"+{lvl} доп. цель цепи ({3 + lvl} целей молнии)" if lvl > 0 else "Базовые 3 цели цепной молнии",
+        "stat_nxt": lambda lvl: f"+{lvl + 1} доп. цель цепи ({4 + lvl} целей молнии)",
+        "icon_key": "sword"
     },
     "superconductor": {
         "title": "Сверхпроводник",
         "branch": "tech",
-        "branch_title": "Вооружение",
-        "x": 230, "y": 980,
+        "branch_title": "Башни Оазиса",
+        "x": 900, "y": 570,
         "max_lvl": 3,
         "costs": [14, 28, 55],
-        "requires": {"ball_lightning": 2, "overcharge": 2},
+        "requires": {'ball_lightning': 2, 'overcharge': 2},
+        "meta_requires": {'global_damage': 3},
         "desc": [
             "Сверхпроводящие катушки Теслы.",
             "Цепная молния сохраняет больше урона при",
@@ -1961,15 +1990,141 @@ UPGRADE_TREE_NODES = {
         "icon_key": "tesla_tower"
     },
 
-    # ---------------- ВЕТКА 2: ВЫЖИВАНИЕ И СИЛА (КРАСНЫЙ) ----------------
+    # ---------------- ВЕТКА 2: ВЫЖИВАНИЕ И СИЛА (КРАСНЫЙ) ----------------,
+    "farm_tower": {
+        "title": "Башня-Ферма",
+        "branch": "tech",
+        "branch_title": "Башни Оазиса",
+        "scale": 1.8,
+        "x": 1100, "y": 280,
+        "max_lvl": 1,
+        "costs": [14],
+        "requires": {'tesla_tower': 'max'},
+        "meta_requires": {'cacti_bounty': 2},
+        "desc": [
+            "Открывает Кактусовую Ферму [6].",
+            "Пассивно приносит кактусы в конце волны.",
+            "Ключевая аграрная башня и путь к Оранжерее!"
+        ],
+        "stat_cur": lambda lvl: "Кактусовая Ферма разблокирована [6]" if lvl >= 1 else "Заблокирована (требуется покупка)",
+        "stat_nxt": lambda lvl: "Открыть доступ к Кактусовой Ферме [6]",
+        "icon_key": "farm"
+    },
+    "fertile_soil": {
+        "title": "Плодородная Почва",
+        "branch": "tech",
+        "branch_title": "Башни Оазиса",
+        "x": 1050, "y": 430,
+        "max_lvl": 3,
+        "costs": [8, 18, 32],
+        "requires": {'farm_tower': 'max'},
+        "desc": [
+            "Обогащает почву для Кактусовых Ферм.",
+            "+10% к пассивному доходу всех Ферм",
+            "в конце каждой завершенной волны!"
+        ],
+        "stat_cur": lambda lvl: f"+{lvl * 10}% к доходу Кактусовых Ферм" if lvl > 0 else "Базовый урожай Ферм",
+        "stat_nxt": lambda lvl: f"+{(lvl + 1) * 10}% к доходу Кактусовых Ферм (+10%)",
+        "icon_key": "farm"
+    },
+    "farm_irrigation": {
+        "title": "Система Орошения",
+        "branch": "tech",
+        "branch_title": "Башни Оазиса",
+        "x": 1150, "y": 430,
+        "max_lvl": 3,
+        "costs": [20, 42, 75],
+        "requires": {'farm_tower': 'max'},
+        "desc": [
+            "Оснащает Кактусовые Фермы системой полива.",
+            "Фермы создают Ауру Орошения, ускоряя башни,",
+            "и периодически сбрасывают бонусные кактусы!"
+        ],
+        "stat_cur": lambda lvl: f"Орошение (R={90 + (lvl - 1) * 40}px + 3px/ур.): +{[0, 8, 14, 20][lvl]}% темпа, полив раз в {[0, 24, 18, 14][lvl]}с" if lvl > 0 else "Пассивный полив закрыт",
+        "stat_nxt": lambda lvl: f"Орошение (R={90 + lvl * 40}px + 3px/ур.): +{[0, 8, 14, 20][lvl + 1]}% темпа, полив раз в {[0, 24, 18, 14][lvl + 1]}с",
+        "icon_key": "farm"
+    },
+    "compound_interest": {
+        "title": "Кактусовый Вклад",
+        "branch": "tech",
+        "branch_title": "Башни Оазиса",
+        "x": 1050, "y": 570,
+        "max_lvl": 4,
+        "costs": [6, 15, 30, 50],
+        "requires": {'fertile_soil': 2},
+        "desc": [
+            "Накопительный процент для оазиса.",
+            "Начисляет +3% дивидендов от текущей",
+            "казны в конце каждой волны (кап +30 🌵/ур.)!"
+        ],
+        "stat_cur": lambda lvl: f"+{lvl * 3}% дохода от казны (кап {lvl * 30} 🌵)" if lvl > 0 else "Без дивидендов от казны",
+        "stat_nxt": lambda lvl: f"+{(lvl + 1) * 3}% дохода от казны (кап {(lvl + 1) * 30} 🌵)",
+        "icon_key": "farm"
+    },
+    "golden_fortune": {
+        "title": "Золотая Фортуна",
+        "branch": "tech",
+        "branch_title": "Башни Оазиса",
+        "x": 1150, "y": 570,
+        "max_lvl": 4,
+        "costs": [6, 14, 26, 42],
+        "requires": {'farm_irrigation': 1},
+        "meta_requires": {'cacti_bounty': 3, 'stellar_magnet': 1},
+        "desc": [
+            "Приманка для редких золотых слаймов.",
+            "Золотые слаймы спавнятся на +25% чаще",
+            "и гарантированно приносят Звёздный Кактус!"
+        ],
+        "stat_cur": lambda lvl: f"+{lvl * 25}% спавн золотых, гарантия Зв. кактуса" if lvl > 0 else "Обычный спавн золотых слаймов",
+        "stat_nxt": lambda lvl: f"+{(lvl + 1) * 25}% спавн золотых, гарантия Зв. кактуса",
+        "icon_key": "start_cacti"
+    },
+    "max_tower_level": {
+        "title": "Предельный Кап",
+        "branch": "tech",
+        "branch_title": "Башни Оазиса",
+        "x": 1260, "y": 280,
+        "max_lvl": 10,
+        "costs": [2, 5, 9, 15, 23, 33, 46, 62, 81, 105],
+        "requires": {'farm_tower': 'max'},
+        "meta_requires": {'start_tower_level': 3},
+        "desc": [
+            "Повышает максимальный лимит прокачки",
+            "для всех видов башен в бою.",
+            "Колоссальный DPS на поздних волнах!"
+        ],
+        "stat_cur": lambda lvl: f"Предельный кап: {15 + lvl} ур. башен (+{lvl})" if lvl > 0 else "Базовый предел: 15 ур. башен",
+        "stat_nxt": lambda lvl: f"Предельный кап: {16 + lvl} ур. башен (+{lvl + 1})",
+        "icon_key": "crown"
+    },
+    "bulk_upgrade": {
+        "title": "Быстрая Прокачка",
+        "branch": "tech",
+        "branch_title": "Башни Оазиса",
+        "x": 1260, "y": 430,
+        "max_lvl": 1,
+        "costs": [10],
+        "requires": {'max_tower_level': 1},
+        "toggleable": False,
+        "desc": [
+            "Мгновенная прокачка башен до максимального уровня.",
+            "Кнопка [МАКС] в карточке или зажатый [Shift]",
+            "улучшает башню сразу на все доступные кактусы в 1 клик!"
+        ],
+        "stat_cur": lambda lvl: "Прокачка на максимум [Shift / МАКС]" if lvl > 0 else "Пошаговое улучшение по 1 уровню",
+        "stat_nxt": lambda lvl: "Прокачка на максимум [Shift / МАКС]",
+        "icon_key": "crown"
+    },
+
+    # ---------------- ВЕТКА 4: ТЁМНЫЙ КОСМОС (АСТРАЛЬНЫЙ СУББЛОК) ----------------,
     "speed_limit": {
         "title": "Ускорение Времени",
         "branch": "combat",
-        "branch_title": "Сила и Время",
-        "x": 460, "y": 270,
+        "branch_title": "Оборона и Тактика",
+        "x": -500, "y": 140,
         "max_lvl": 8,
         "costs": [2, 4, 8, 14, 22, 32, 45, 60],
-        "requires": {"oasis_core": 1},
+        "requires": {'oasis_core': 1},
         "desc": [
             "Увеличивает максимальную скорость игры (+1x за ур.).",
             "0.2x: тактический режим для точного контроля!",
@@ -1989,32 +2144,14 @@ UPGRADE_TREE_NODES = {
         "stat_nxt": lambda lvl: f"Добавит {lvl + 3}x скорость" if lvl < 8 else "Максимальный уровень",
         "icon_key": "speed"
     },
-    "wave_rush": {
-        "title": "Турбо-Волны",
-        "branch": "combat",
-        "branch_title": "Сила и Время",
-        "x": 580, "y": 250,
-        "max_lvl": 3,
-        "costs": [6, 14, 25],
-        "requires": {"speed_limit": 3},
-        "toggleable": True,
-        "desc": [
-            "Управление темпом наступления врагов.",
-            "Снижает паузу между волнами до 0.5с / 0.2с / 0.0с (мгновенно).",
-            "Можно отключить в Древе [ВКЛ/ВЫКЛ] или кнопкой [T] в бою!"
-        ],
-        "stat_cur": lambda lvl: ("Пауза 0.5 сек." if lvl == 1 else ("Пауза 0.2 сек." if lvl == 2 else "Мгновенный старт (0.0 сек.)")) if lvl > 0 else "Обычная пауза (1.0 сек.)",
-        "stat_nxt": lambda lvl: "Пауза 0.5 сек." if lvl == 0 else ("Пауза 0.2 сек." if lvl == 1 else "Мгновенный старт (0.0 сек.)"),
-        "icon_key": "speed"
-    },
     "spawn_rush": {
         "title": "Плотный Спавн",
         "branch": "combat",
-        "branch_title": "Сила и Время",
-        "x": 340, "y": 250,
+        "branch_title": "Оборона и Тактика",
+        "x": -620, "y": 140,
         "max_lvl": 3,
         "costs": [5, 12, 24],
-        "requires": {"speed_limit": 3},
+        "requires": {'speed_limit': 3},
         "toggleable": True,
         "desc": [
             "Ускоряет появление слаймов из портала в бой.",
@@ -2035,14 +2172,32 @@ UPGRADE_TREE_NODES = {
         ][min(3, lvl)],
         "icon_key": "speed"
     },
+    "wave_rush": {
+        "title": "Турбо-Волны",
+        "branch": "combat",
+        "branch_title": "Оборона и Тактика",
+        "x": -380, "y": 140,
+        "max_lvl": 3,
+        "costs": [6, 14, 25],
+        "requires": {'speed_limit': 3},
+        "toggleable": True,
+        "desc": [
+            "Управление темпом наступления врагов.",
+            "Снижает паузу между волнами до 0.5с / 0.2с / 0.0с (мгновенно).",
+            "Можно отключить в Древе [ВКЛ/ВЫКЛ] или кнопкой [T] в бою!"
+        ],
+        "stat_cur": lambda lvl: ("Пауза 0.5 сек." if lvl == 1 else ("Пауза 0.2 сек." if lvl == 2 else "Мгновенный старт (0.0 сек.)")) if lvl > 0 else "Обычная пауза (1.0 сек.)",
+        "stat_nxt": lambda lvl: "Пауза 0.5 сек." if lvl == 0 else ("Пауза 0.2 сек." if lvl == 1 else "Мгновенный старт (0.0 сек.)"),
+        "icon_key": "speed"
+    },
     "base_health": {
         "title": "Крепость Базы",
         "branch": "combat",
-        "branch_title": "Сила и Время",
-        "x": 460, "y": 430,
+        "branch_title": "Оборона и Тактика",
+        "x": -500, "y": 280,
         "max_lvl": 5,
         "costs": [3, 6, 11, 18, 28],
-        "requires": {"oasis_core": 1},
+        "requires": {'oasis_core': 1},
         "desc": [
             "Укрепляет кактусовый оазис и стены базы.",
             "+3 к максимальным жизням базы за уровень.",
@@ -2055,11 +2210,11 @@ UPGRADE_TREE_NODES = {
     "global_damage": {
         "title": "Острые Шипы",
         "branch": "combat",
-        "branch_title": "Сила и Время",
-        "x": 340, "y": 570,
+        "branch_title": "Оборона и Тактика",
+        "x": -620, "y": 430,
         "max_lvl": 5,
         "costs": [4, 8, 16, 28, 44],
-        "requires": {"base_health": 1},
+        "requires": {'base_health': 1},
         "desc": [
             "Заостряет колючки всех кактусов.",
             "+4% базового урона для всех видов башен,",
@@ -2072,11 +2227,11 @@ UPGRADE_TREE_NODES = {
     "critical_mastery": {
         "title": "Критический Удар",
         "branch": "combat",
-        "branch_title": "Сила и Время",
-        "x": 460, "y": 570,
+        "branch_title": "Оборона и Тактика",
+        "x": -500, "y": 430,
         "max_lvl": 10,
         "costs": [3, 6, 11, 18, 27, 38, 51, 66, 83, 102],
-        "requires": {"base_health": 2},
+        "requires": {'base_health': 2},
         "desc": [
             "Изучение уязвимых точек слаймов.",
             "+2.5% шанс нанести сокрушительный КРИТ (x2.0 урона)",
@@ -2089,11 +2244,11 @@ UPGRADE_TREE_NODES = {
     "thorn_armor": {
         "title": "Шипованный Оазис",
         "branch": "combat",
-        "branch_title": "Сила и Время",
-        "x": 580, "y": 570,
+        "branch_title": "Оборона и Тактика",
+        "x": -380, "y": 430,
         "max_lvl": 3,
         "costs": [7, 16, 32],
-        "requires": {"base_health": 2},
+        "requires": {'base_health': 2},
         "desc": [
             "Шипы базы защищают от рядовых мобов (боссы не отражаются!).",
             "Шанс 8% / 15% / 22% отразить моба БЕЗ потери жизни.",
@@ -2106,11 +2261,11 @@ UPGRADE_TREE_NODES = {
     "regeneration": {
         "title": "Регенерация Оазиса",
         "branch": "combat",
-        "branch_title": "Сила и Время",
-        "x": 340, "y": 710,
+        "branch_title": "Оборона и Тактика",
+        "x": -620, "y": 570,
         "max_lvl": 3,
         "costs": [6, 15, 30],
-        "requires": {"global_damage": 2, "base_health": 3},
+        "requires": {'global_damage': 2, 'base_health': 3},
         "desc": [
             "Живительные кактусовые соки.",
             "Восстанавливает +1 HP базы за ур. каждые",
@@ -2123,11 +2278,11 @@ UPGRADE_TREE_NODES = {
     "giant_hunter": {
         "title": "Охотник на Боссов",
         "branch": "combat",
-        "branch_title": "Сила и Время",
-        "x": 460, "y": 710,
+        "branch_title": "Оборона и Тактика",
+        "x": -500, "y": 570,
         "max_lvl": 3,
         "costs": [10, 22, 42],
-        "requires": {"critical_mastery": 2},
+        "requires": {'critical_mastery': 2},
         "desc": [
             "Специализация на уничтожении гигантов.",
             "+10% урона по Боссам (25, 50, 75 волны)",
@@ -2140,11 +2295,11 @@ UPGRADE_TREE_NODES = {
     "range_grid": {
         "title": "Тактическая Сетка",
         "branch": "combat",
-        "branch_title": "Сила и Время",
-        "x": 580, "y": 710,
+        "branch_title": "Оборона и Тактика",
+        "x": -380, "y": 570,
         "max_lvl": 1,
         "costs": [3],
-        "requires": {"thorn_armor": 1},
+        "requires": {'thorn_armor': 1},
         "toggleable": True,
         "desc": [
             "Подсвечивает радиусы всех башен одновременно.",
@@ -2158,11 +2313,11 @@ UPGRADE_TREE_NODES = {
     "smart_targeting": {
         "title": "Умный Прицел",
         "branch": "combat",
-        "branch_title": "Сила и Время",
-        "x": 460, "y": 840,
+        "branch_title": "Оборона и Тактика",
+        "x": -500, "y": 710,
         "max_lvl": 2,
         "costs": [5, 12],
-        "requires": {"critical_mastery": 1},
+        "requires": {'critical_mastery': 1},
         "toggleable": False,
         "desc": [
             "Тактический протокол наведения всех башен.",
@@ -2176,11 +2331,12 @@ UPGRADE_TREE_NODES = {
     "elemental_focus": {
         "title": "Элементный Фокус",
         "branch": "combat",
-        "branch_title": "Сила и Время",
-        "x": 580, "y": 840,
+        "branch_title": "Оборона и Тактика",
+        "x": -380, "y": 710,
         "max_lvl": 1,
         "costs": [12],
-        "requires": {"range_grid": 1},
+        "requires": {'range_grid': 1},
+        "meta_requires": {'freeze_tower': 'max', 'inferno_mastery': 1},
         "toggleable": True,
         "desc": [
             "Тактическая синергия стихий льда и огня.",
@@ -2192,15 +2348,15 @@ UPGRADE_TREE_NODES = {
         "icon_key": "magic_tower"
     },
 
-    # ---------------- ВЕТКА 3: ЭКОНОМИКА И ПРОЦВЕТАНИЕ (ЖЕЛТЫЙ) ----------------
+    # ---------------- ВЕТКА 3: ЭКОНОМИКА И ПРОЦВЕТАНИЕ (ЖЕЛТЫЙ) ----------------,
     "start_cacti": {
         "title": "Стартовая Казна",
         "branch": "econ",
-        "branch_title": "Экономика",
-        "x": 800, "y": 250,
+        "branch_title": "Экономика Оазиса",
+        "x": 1620, "y": 200,
         "max_lvl": 10,
         "costs": [1, 2, 4, 7, 11, 16, 22, 29, 37, 46],
-        "requires": {"oasis_core": 1},
+        "requires": {'oasis_core': 1},
         "desc": [
             "Начальный капитал кактусов при старте боя.",
             "+75 кактусов в начале каждой игры за ур.",
@@ -2213,11 +2369,11 @@ UPGRADE_TREE_NODES = {
     "wave_clearing_bounty": {
         "title": "Премия за Волну",
         "branch": "econ",
-        "branch_title": "Экономика",
-        "x": 690, "y": 395,
+        "branch_title": "Экономика Оазиса",
+        "x": 1500, "y": 350,
         "max_lvl": 5,
         "costs": [3, 7, 13, 21, 32],
-        "requires": {"start_cacti": 1},
+        "requires": {'start_cacti': 1},
         "desc": [
             "Награда за успешное отражение волны.",
             "+25 кактусов в казну после зачистки",
@@ -2230,11 +2386,12 @@ UPGRADE_TREE_NODES = {
     "start_wave_step": {
         "title": "Выбор Волны",
         "branch": "econ",
-        "branch_title": "Экономика",
-        "x": 580, "y": 395,
+        "branch_title": "Экономика Оазиса",
+        "x": 1620, "y": 350,
         "max_lvl": 20,
         "costs": [2 + i * 2 for i in range(20)],
-        "requires": {"start_cacti": 1, "speed_limit": 1},
+        "requires": {'start_cacti': 1},
+        "meta_requires": {'speed_limit': 1},
         "desc": [
             "Старт боя сразу с шагом +5 волн за ур.",
             "(до текущего рекорда карты).",
@@ -2247,11 +2404,11 @@ UPGRADE_TREE_NODES = {
     "cacti_bounty": {
         "title": "Сбор Урожая",
         "branch": "econ",
-        "branch_title": "Экономика",
-        "x": 800, "y": 395,
+        "branch_title": "Экономика Оазиса",
+        "x": 1740, "y": 350,
         "max_lvl": 5,
         "costs": [3, 6, 10, 16, 25],
-        "requires": {"start_cacti": 2},
+        "requires": {'start_cacti': 2},
         "desc": [
             "Больше кактусов за поверженных слаймов.",
             "+10% к награде за каждого уничтоженного",
@@ -2261,66 +2418,51 @@ UPGRADE_TREE_NODES = {
         "stat_nxt": lambda lvl: f"+{(lvl + 1) * 10}% кактусов за поверженных врагов (+10%)",
         "icon_key": "bounty"
     },
-    "farm_tower": {
-        "title": "Башня-Ферма",
+    "stellar_magnet": {
+        "title": "Звёздный Магнит",
         "branch": "econ",
-        "branch_title": "Экономика",
-        "x": 800, "y": 545,
-        "max_lvl": 1,
-        "costs": [14],
-        "requires": {"cacti_bounty": 2, "start_cacti": 2},
+        "branch_title": "Экономика Оазиса",
+        "x": 1620, "y": 500,
+        "max_lvl": 5,
+        "costs": [4, 8, 14, 22, 32],
+        "requires": {'cacti_bounty': 3},
+        "meta_requires": {'base_health': 2},
         "desc": [
-            "Открывает Кактусовую Ферму [6].",
-            "Пассивно приносит кактусы в конце волны.",
-            "Ключевая аграрная башня и путь к Оранжерее!"
+            "Притягивает космическую пыль и звёзды.",
+            "+10% к шансу дропа Звёздных Кактусов",
+            "с мобов за каждый уровень таланта!"
         ],
-        "stat_cur": lambda lvl: "Кактусовая Ферма разблокирована [6]" if lvl >= 1 else "Заблокирована (требуется покупка)",
-        "stat_nxt": lambda lvl: "Открыть доступ к Кактусовой Ферме [6]",
-        "icon_key": "farm"
+        "stat_cur": lambda lvl: f"+{lvl * 10}% к шансу выпадения Звёзд" if lvl > 0 else "Базовый шанс выпадения Звёзд",
+        "stat_nxt": lambda lvl: f"+{(lvl + 1) * 10}% к шансу выпадения Звёзд (+10%)",
+        "icon_key": "magnet"
     },
-    "fertile_soil": {
-        "title": "Плодородная Почва",
+    "star_alchemy": {
+        "title": "Звёздная Алхимия",
         "branch": "econ",
-        "branch_title": "Экономика",
-        "x": 690, "y": 545,
+        "branch_title": "Экономика Оазиса",
+        "x": 1620, "y": 650,
         "max_lvl": 3,
-        "costs": [8, 18, 32],
-        "requires": {"farm_tower": "max"},
+        "costs": [8, 20, 40],
+        "requires": {'stellar_magnet': 2},
+        "meta_requires": {'compound_interest': 1},
         "desc": [
-            "Обогащает почву для Кактусовых Ферм.",
-            "+10% к пассивному доходу всех Ферм",
-            "в конце каждой завершенной волны!"
+            "Космический синтез древних кактусов.",
+            "Синтезирует +1 Звёздный Кактус каждые",
+            "5 / 4 / 3 завершенных волн прямо в копилку!"
         ],
-        "stat_cur": lambda lvl: f"+{lvl * 10}% к доходу Кактусовых Ферм" if lvl > 0 else "Базовый урожай Ферм",
-        "stat_nxt": lambda lvl: f"+{(lvl + 1) * 10}% к доходу Кактусовых Ферм (+10%)",
-        "icon_key": "farm"
-    },
-    "farm_irrigation": {
-        "title": "Система Орошения",
-        "branch": "econ",
-        "branch_title": "Экономика",
-        "x": 910, "y": 545,
-        "max_lvl": 3,
-        "costs": [20, 42, 75],
-        "requires": {"farm_tower": "max"},
-        "desc": [
-            "Оснащает Кактусовые Фермы системой полива.",
-            "Фермы создают Ауру Орошения, ускоряя башни,",
-            "и периодически сбрасывают бонусные кактусы!"
-        ],
-        "stat_cur": lambda lvl: f"Орошение (R={90 + (lvl - 1) * 40}px + 3px/ур.): +{[0, 8, 14, 20][lvl]}% темпа, полив раз в {[0, 24, 18, 14][lvl]}с" if lvl > 0 else "Пассивный полив закрыт",
-        "stat_nxt": lambda lvl: f"Орошение (R={90 + lvl * 40}px + 3px/ур.): +{[0, 8, 14, 20][lvl + 1]}% темпа, полив раз в {[0, 24, 18, 14][lvl + 1]}с",
-        "icon_key": "farm"
+        "stat_cur": lambda lvl: f"+1 Зв. Кактус каждые {6 - lvl} волн" if lvl > 0 else "Без алхимии Звёзд",
+        "stat_nxt": lambda lvl: f"+1 Зв. Кактус каждые {6 - (lvl + 1)} волн",
+        "icon_key": "magnet"
     },
     "greenhouse_unlock": {
         "title": "Оранжерея Оазиса",
-        "branch": "econ",
-        "branch_title": "Флора Оазиса",
-        "x": 1050, "y": 545,
+        "branch": "flora",
+        "branch_title": "Оранжерея и Флора",
+        "x": 1150, "y": 770,
         "scale": 2.0,
         "max_lvl": 1,
         "costs": [20],
-        "requires": {"farm_irrigation": 1},
+        "requires": {'farm_irrigation': 1},
         "desc": [
             "Открывает Оранжерею [G] и коллекцию",
             "редких кактусов с постоянными бонусами."
@@ -2331,12 +2473,12 @@ UPGRADE_TREE_NODES = {
     },
     "botanical_expeditions": {
         "title": "Экспедиции",
-        "branch": "econ",
-        "branch_title": "Флора Оазиса",
-        "x": 1050, "y": 395,
+        "branch": "flora",
+        "branch_title": "Оранжерея и Флора",
+        "x": 1000, "y": 920,
         "max_lvl": 3,
         "costs": [8, 18, 32],
-        "requires": {"greenhouse_unlock": "max"},
+        "requires": {'greenhouse_unlock': 'max'},
         "desc": [
             "Поиск редких ростков в дикой пустыне.",
             "+15% к шансу найти саженец редкого вида",
@@ -2348,12 +2490,12 @@ UPGRADE_TREE_NODES = {
     },
     "fertile_compost": {
         "title": "Живой Компост",
-        "branch": "econ",
-        "branch_title": "Флора Оазиса",
-        "x": 1210, "y": 470,
+        "branch": "flora",
+        "branch_title": "Оранжерея и Флора",
+        "x": 1150, "y": 920,
         "max_lvl": 5,
         "costs": [8, 16, 26, 38, 52],
-        "requires": {"greenhouse_unlock": "max"},
+        "requires": {'greenhouse_unlock': 'max'},
         "desc": [
             "Питательный гумус на основе кактусовой золы.",
             "+0.2% урона за уровень таланта ВСЕМ башням на",
@@ -2365,12 +2507,12 @@ UPGRADE_TREE_NODES = {
     },
     "sprout_harvest": {
         "title": "Обильный Урожай",
-        "branch": "econ",
-        "branch_title": "Флора Оазиса",
-        "x": 1210, "y": 620,
+        "branch": "flora",
+        "branch_title": "Оранжерея и Флора",
+        "x": 1300, "y": 920,
         "max_lvl": 3,
         "costs": [12, 25, 45],
-        "requires": {"greenhouse_unlock": "max"},
+        "requires": {'greenhouse_unlock': 'max'},
         "desc": [
             "Мастерство черенкования и прививки флоры.",
             "+50% к шансу получить доп. саженец",
@@ -2382,12 +2524,12 @@ UPGRADE_TREE_NODES = {
     },
     "flora_resonance": {
         "title": "Резонанс Флоры",
-        "branch": "econ",
-        "branch_title": "Флора Оазиса",
-        "x": 1050, "y": 695,
+        "branch": "flora",
+        "branch_title": "Оранжерея и Флора",
+        "x": 1150, "y": 1070,
         "max_lvl": 4,
         "costs": [12, 24, 40, 60],
-        "requires": {"greenhouse_unlock": "max"},
+        "requires": {'greenhouse_unlock': 'max'},
         "desc": [
             "Симбиоз Оазиса и редкой растительности.",
             "Усиливает ВСЕ пассивные эффекты кактусов",
@@ -2397,105 +2539,160 @@ UPGRADE_TREE_NODES = {
         "stat_nxt": lambda lvl: f"+{10 * (lvl + 1)}% к силе всех эффектов Оранжереи",
         "icon_key": "crown"
     },
-    "stellar_magnet": {
-        "title": "Звёздный Магнит",
-        "branch": "econ",
-        "branch_title": "Экономика",
-        "x": 800, "y": 695,
-        "max_lvl": 5,
-        "costs": [4, 8, 14, 22, 32],
-        "requires": {"cacti_bounty": 3, "base_health": 2},
-        "desc": [
-            "Притягивает космическую пыль и звёзды.",
-            "+10% к шансу дропа Звёздных Кактусов",
-            "с мобов за каждый уровень таланта!"
-        ],
-        "stat_cur": lambda lvl: f"+{lvl * 10}% к шансу выпадения Звёзд" if lvl > 0 else "Базовый шанс выпадения Звёзд",
-        "stat_nxt": lambda lvl: f"+{(lvl + 1) * 10}% к шансу выпадения Звёзд (+10%)",
-        "icon_key": "magnet"
-    },
-    "compound_interest": {
-        "title": "Кактусовый Вклад",
-        "branch": "econ",
-        "branch_title": "Экономика",
-        "x": 690, "y": 695,
-        "max_lvl": 4,
-        "costs": [6, 15, 30, 50],
-        "requires": {"fertile_soil": 2},
-        "desc": [
-            "Накопительный процент для оазиса.",
-            "Начисляет +3% дивидендов от текущей",
-            "казны в конце каждой волны (кап +30 🌵/ур.)!"
-        ],
-        "stat_cur": lambda lvl: f"+{lvl * 3}% дохода от казны (кап {lvl * 30} 🌵)" if lvl > 0 else "Без дивидендов от казны",
-        "stat_nxt": lambda lvl: f"+{(lvl + 1) * 3}% дохода от казны (кап {(lvl + 1) * 30} 🌵)",
-        "icon_key": "farm"
-    },
-    "golden_fortune": {
-        "title": "Золотая Фортуна",
-        "branch": "econ",
-        "branch_title": "Экономика",
-        "x": 910, "y": 695,
-        "max_lvl": 4,
-        "costs": [6, 14, 26, 42],
-        "requires": {"cacti_bounty": 3, "stellar_magnet": 1},
-        "desc": [
-            "Приманка для редких золотых слаймов.",
-            "Золотые слаймы спавнятся на +25% чаще",
-            "и гарантированно приносят Звёздный Кактус!"
-        ],
-        "stat_cur": lambda lvl: f"+{lvl * 25}% спавн золотых, гарантия Зв. кактуса" if lvl > 0 else "Обычный спавн золотых слаймов",
-        "stat_nxt": lambda lvl: f"+{(lvl + 1) * 25}% спавн золотых, гарантия Зв. кактуса",
-        "icon_key": "start_cacti"
-    },
-    "star_alchemy": {
-        "title": "Звёздная Алхимия",
-        "branch": "econ",
-        "branch_title": "Экономика",
-        "x": 910, "y": 840,
-        "max_lvl": 3,
-        "costs": [8, 20, 40],
-        "requires": {"stellar_magnet": 2, "compound_interest": 1},
-        "desc": [
-            "Космический синтез древних кактусов.",
-            "Синтезирует +1 Звёздный Кактус каждые",
-            "5 / 4 / 3 завершенных волн прямо в копилку!"
-        ],
-        "stat_cur": lambda lvl: f"+1 Зв. Кактус каждые {6 - lvl} волн" if lvl > 0 else "Без алхимии Звёзд",
-        "stat_nxt": lambda lvl: f"+1 Зв. Кактус каждые {6 - (lvl + 1)} волн",
-        "icon_key": "magnet"
-    },
-    "bulk_upgrade": {
-        "title": "Быстрая Прокачка",
-        "branch": "tech",
-        "branch_title": "Вооружение",
-        "x": 340, "y": 980,
+    "archaeology_unlock": {
+        "title": "Археология Оазиса",
+        "branch": "relics",
+        "branch_title": "Музей Реликвий",
+        "x": 1800, "y": 770,
+        "scale": 2.0,
         "max_lvl": 1,
-        "costs": [10],
-        "requires": {"max_tower_level": 1},
-        "toggleable": False,
+        "costs": [8],
+        "requires": {'start_cacti': 1},
         "desc": [
-            "Мгновенная прокачка башен до максимального уровня.",
-            "Кнопка [МАКС] в карточке или зажатый [Shift]",
-            "улучшает башню сразу на все доступные кактусы в 1 клик!"
+            "Открывает появление зон раскопок на картах (шанс 2%)",
+            "и доступ к Музею Реликвий [R]."
         ],
-        "stat_cur": lambda lvl: "Прокачка на максимум [Shift / МАКС]" if lvl > 0 else "Пошаговое улучшение по 1 уровню",
-        "stat_nxt": lambda lvl: "Прокачка на максимум [Shift / МАКС]",
+        "stat_cur": lambda lvl: "Археология открыта, Музей доступен по [R]" if lvl > 0 else "Раскопки закрыты",
+        "stat_nxt": lambda lvl: "Открыть Археологию и Музей Реликвий [R]",
+        "icon_key": "shovel"
+    },
+    "dig_site_duration": {
+        "title": "Стойкий Раскоп",
+        "branch": "relics",
+        "branch_title": "Музей Реликвий",
+        "x": 1660, "y": 920,
+        "max_lvl": 3,
+        "costs": [5, 12, 22],
+        "requires": {'archaeology_unlock': 'max'},
+        "desc": [
+            "Укрепляет песчаные насыпи от осыпания ветром.",
+            "+10 секунд к времени жизни кургана",
+            "на поле боя за уровень таланта (до 60 секунд)!"
+        ],
+        "stat_cur": lambda lvl: f"Время жизни зоны: {30 + lvl * 10} секунд" if lvl > 0 else "Базовое время: 30 секунд",
+        "stat_nxt": lambda lvl: f"Время жизни зоны: {30 + (lvl + 1) * 10} секунд",
+        "icon_key": "speed"
+    },
+    "dig_minigame_buff": {
+        "title": "Опыт Раскопок",
+        "branch": "relics",
+        "branch_title": "Музей Реликвий",
+        "x": 1800, "y": 920,
+        "max_lvl": 5,
+        "costs": [4, 8, 15, 25, 40],
+        "requires": {'archaeology_unlock': 'max'},
+        "desc": [
+            "Искусная техника аккуратного снятия слоев песка.",
+            "+2 дополнительных хода/вскопки в мини-игре",
+            "Морского Боя 5х5 за каждый уровень таланта!"
+        ],
+        "stat_cur": lambda lvl: f"Вскопок в мини-игре: {12 + lvl * 2} (база 12 + {lvl * 2})" if lvl > 0 else "Базовые 12 вскопок",
+        "stat_nxt": lambda lvl: f"Вскопок в мини-игре: {12 + (lvl + 1) * 2}",
+        "icon_key": "bounty"
+    },
+    "dig_site_chance": {
+        "title": "Гео-Разведка",
+        "branch": "relics",
+        "branch_title": "Музей Реликвий",
+        "x": 1940, "y": 920,
+        "max_lvl": 3,
+        "costs": [6, 14, 25],
+        "requires": {'archaeology_unlock': 'max'},
+        "desc": [
+            "Песчаные радары древних культур.",
+            "+1% к шансу появления зоны раскопок",
+            "в начале каждой волны за уровень таланта (до 5%)!"
+        ],
+        "stat_cur": lambda lvl: f"Шанс раскопок: {2 + lvl}% за волну" if lvl > 0 else "Базовый шанс: 2%",
+        "stat_nxt": lambda lvl: f"Шанс раскопок: {2 + lvl + 1}% за волну",
+        "icon_key": "shovel"
+    },
+    "relic_pedestals": {
+        "title": "Пьедесталы Мощи",
+        "branch": "relics",
+        "branch_title": "Музей Реликвий",
+        "x": 1660, "y": 1070,
+        "max_lvl": 3,
+        "costs": [15, 35, 65],
+        "requires": {'archaeology_unlock': 'max'},
+        "desc": [
+            "Увеличивает число активных пьедесталов в Музее",
+            "с базовых 2 до 5 слотов (по +1 за уровень)!",
+            "Позволяет активировать больше древних реликвий одновременно."
+        ],
+        "stat_cur": lambda lvl: f"Пьедесталов в Музее: {2 + lvl}/5" if lvl > 0 else "Базовые 2 пьедестала",
+        "stat_nxt": lambda lvl: f"Пьедесталов в Музее: {2 + lvl + 1}/5",
+        "icon_key": "relic"
+    },
+    "relic_max_level": {
+        "title": "Древние Знания",
+        "branch": "relics",
+        "branch_title": "Музей Реликвий",
+        "x": 1800, "y": 1070,
+        "max_lvl": 4,
+        "costs": [12, 25, 45, 75],
+        "requires": {'archaeology_unlock': 'max'},
+        "desc": [
+            "Расшифровка старинных папирусов и рун оазиса.",
+            "Повышает макс. предел прокачки реликвий",
+            "с 1 до 5 уровня (каждый ур. удваивает силу бонуса)!"
+        ],
+        "stat_cur": lambda lvl: f"Предел уровня реликвий: {1 + lvl} ур." if lvl > 0 else "Базовый предел: 1 ур. реликвий",
+        "stat_nxt": lambda lvl: f"Предел уровня реликвий: {2 + lvl} ур.",
+        "icon_key": "relic"
+    },
+    "relic_double_drop": {
+        "title": "Астральный Землекоп",
+        "branch": "relics",
+        "branch_title": "Музей Реликвий",
+        "currency": "hybrid",
+        "x": 1940, "y": 1070,
+        "scale": 1.1,
+        "max_lvl": 1,
+        "costs": [50],
+        "dark_costs": [4],
+        "requires": {'relic_max_level': 2},
+        "desc": [
+            "Космический резонанс удваивает находки Бездны.",
+            "Каждая успешная раскопка на поле боя",
+            "приносит сразу +2 копии найденной реликвии!"
+        ],
+        "stat_cur": lambda lvl: "Двойная добыча реликвий (+1 доп. копия) активна!" if lvl > 0 else "Обычная добыча по 1 реликвии",
+        "stat_nxt": lambda lvl: "Открыть удвоение добываемых реликвий",
         "icon_key": "crown"
     },
-
-    # ---------------- ВЕТКА 4: ТЁМНЫЙ КОСМОС (АСТРАЛЬНЫЙ СУББЛОК) ----------------
+    "dark_relic_resonance": {
+        "title": "Тёмный Резонанс",
+        "branch": "relics",
+        "branch_title": "Музей Реликвий",
+        "currency": "hybrid",
+        "x": 1800, "y": 1220,
+        "scale": 1.2,
+        "max_lvl": 4,
+        "costs": [65, 110, 165, 230],
+        "dark_costs": [5, 9, 15, 24],
+        "requires": {'relic_pedestals': 2, 'relic_max_level': 2},
+        "desc": [
+            "Тёмная энергия Бездны связывает все залы Музея.",
+            "Неэкипированные реликвии действуют пассивно",
+            "на +5% силы за уровень прокачки (до 20% на 4 ур.)!"
+        ],
+        "stat_cur": lambda lvl: f"Пассивная сила реликвий вне пьедесталов: +{lvl * 5}%" if lvl > 0 else "Неэкипированные реликвии не активны",
+        "stat_nxt": lambda lvl: f"Пассивная сила реликвий вне пьедесталов: +{(lvl + 1) * 5}%",
+        "icon_key": "relic"
+    },
     "astral_beacon": {
         "title": "Тёмный Космос",
         "branch": "astral",
         "branch_title": "Тёмный Космос",
         "scale": 2.0,
-        "x": 460, "y": 1175,
+        "x": 600, "y": 770,
         "max_lvl": 1,
         "costs": [25],
         "dark_costs": [0],
         "currency": "stellar",
-        "requires": {"smart_targeting": 1},
+        "requires": {'oasis_core': 1},
+        "meta_requires": {'smart_targeting': 1},
         "desc": [
             "Открывает появление Тёмных кактусов,",
             "падение Астральных Метеоритов",
@@ -2510,11 +2707,11 @@ UPGRADE_TREE_NODES = {
         "branch": "astral",
         "branch_title": "Тёмный Космос",
         "currency": "hybrid",
-        "x": 280, "y": 1175,
+        "x": 460, "y": 920,
         "max_lvl": 2,
         "costs": [25, 45],
         "dark_costs": [1, 2],
-        "requires": {"astral_beacon": "max"},
+        "requires": {'astral_beacon': 'max'},
         "desc": [
             "Защитный барьер базы.",
             "Раз за волну поглощает 1 (на ур. 2: 2)",
@@ -2529,11 +2726,11 @@ UPGRADE_TREE_NODES = {
         "branch": "astral",
         "branch_title": "Тёмный Космос",
         "currency": "hybrid",
-        "x": 640, "y": 1175,
+        "x": 740, "y": 920,
         "max_lvl": 3,
         "costs": [20, 38, 65],
         "dark_costs": [1, 2, 3],
-        "requires": {"astral_beacon": "max"},
+        "requires": {'astral_beacon': 'max'},
         "desc": [
             "Искажает космическую гравитацию.",
             "Метеориты появляются на +20% чаще за ранг,",
@@ -2548,11 +2745,11 @@ UPGRADE_TREE_NODES = {
         "branch": "astral",
         "branch_title": "Тёмный Космос",
         "currency": "hybrid",
-        "x": 460, "y": 1315,
+        "x": 600, "y": 920,
         "max_lvl": 3,
         "costs": [30, 55, 90],
         "dark_costs": [2, 3, 5],
-        "requires": {"astral_beacon": "max"},
+        "requires": {'astral_beacon': 'max'},
         "desc": [
             "Вызывает сокрушительный лазерный луч из космоса [F].",
             "Наносит урон по площади (макс. до 75% HP слайма).",
@@ -2567,11 +2764,11 @@ UPGRADE_TREE_NODES = {
         "branch": "astral",
         "branch_title": "Тёмный Космос",
         "currency": "hybrid",
-        "x": 280, "y": 1315,
+        "x": 460, "y": 1070,
         "max_lvl": 3,
         "costs": [25, 45, 75],
         "dark_costs": [1, 2, 3],
-        "requires": {"orbital_strike": 1},
+        "requires": {'orbital_strike': 1},
         "desc": [
             "Автономный боевой дрон летает над полем боя.",
             "Непрерывно обстреливает слаймов иглами!",
@@ -2586,11 +2783,11 @@ UPGRADE_TREE_NODES = {
         "branch": "astral",
         "branch_title": "Тёмный Космос",
         "currency": "hybrid",
-        "x": 640, "y": 1315,
+        "x": 740, "y": 1070,
         "max_lvl": 3,
         "costs": [30, 50, 85],
         "dark_costs": [2, 3, 5],
-        "requires": {"orbital_strike": 1},
+        "requires": {'orbital_strike': 1},
         "desc": [
             "Абсолютный взрыв при поражении боссов и метеоритов.",
             "Замораживает и наносит колоссальный урон всем",
@@ -2605,11 +2802,11 @@ UPGRADE_TREE_NODES = {
         "branch": "astral",
         "branch_title": "Тёмный Космос",
         "currency": "hybrid",
-        "x": 460, "y": 1445,
+        "x": 600, "y": 1070,
         "max_lvl": 3,
         "costs": [35, 65, 110],
         "dark_costs": [2, 4, 6],
-        "requires": {"orbital_strike": 2},
+        "requires": {'orbital_strike': 2},
         "desc": [
             "Тёмный космический резонанс всех башен оазиса.",
             "+12% общего урона для башен, воинов и дрона за ранг!",
@@ -2624,11 +2821,11 @@ UPGRADE_TREE_NODES = {
         "branch": "astral",
         "branch_title": "Тёмный Космос",
         "currency": "hybrid",
-        "x": 280, "y": 1445,
+        "x": 460, "y": 1220,
         "max_lvl": 3,
         "costs": [35, 60, 95],
         "dark_costs": [2, 4, 6],
-        "requires": {"cactus_drone": 1, "void_amplifier": 1},
+        "requires": {'cactus_drone': 1, 'void_amplifier': 1},
         "desc": [
             "Насыщает выстрелы всех башен чистой Бездной.",
             "Критические удары игнорируют броню и наносят",
@@ -2643,11 +2840,11 @@ UPGRADE_TREE_NODES = {
         "branch": "astral",
         "branch_title": "Тёмный Космос",
         "currency": "hybrid",
-        "x": 640, "y": 1445,
+        "x": 740, "y": 1220,
         "max_lvl": 2,
         "costs": [45, 90],
         "dark_costs": [3, 5],
-        "requires": {"shatter_nova": 1, "void_amplifier": 1},
+        "requires": {'shatter_nova': 1, 'void_amplifier': 1},
         "desc": [
             "Тёмный синтез кристаллов Бездны.",
             "Победа над великими боссами (каждые 25 волн)",
@@ -2662,11 +2859,11 @@ UPGRADE_TREE_NODES = {
         "branch": "astral",
         "branch_title": "Тёмный Космос",
         "currency": "hybrid",
-        "x": 370, "y": 1575,
+        "x": 520, "y": 1370,
         "max_lvl": 2,
         "costs": [45, 85],
         "dark_costs": [3, 6],
-        "requires": {"void_infusion": 1, "void_amplifier": 2},
+        "requires": {'void_infusion': 1, 'void_amplifier': 2},
         "desc": [
             "Гравитационная сингулярность Орбитального Удара [F].",
             "В точке удара открывается чёрная дыра, которая",
@@ -2681,11 +2878,11 @@ UPGRADE_TREE_NODES = {
         "branch": "astral",
         "branch_title": "Тёмный Космос",
         "currency": "hybrid",
-        "x": 550, "y": 1575,
+        "x": 680, "y": 1370,
         "max_lvl": 2,
         "costs": [50, 95],
         "dark_costs": [4, 7],
-        "requires": {"dark_alchemy": 1, "void_amplifier": 2},
+        "requires": {'dark_alchemy': 1, 'void_amplifier': 2},
         "desc": [
             "Квантовая переработка поверженных боссов оазиса.",
             "Даёт +25% семян от текущей казны за каждого босса",
@@ -2700,11 +2897,12 @@ UPGRADE_TREE_NODES = {
         "branch": "astral",
         "branch_title": "Тёмный Космос",
         "currency": "hybrid",
-        "x": 460, "y": 1695,
+        "x": 600, "y": 1520,
         "max_lvl": 5,
         "costs": [40, 65, 95, 130, 180],
         "dark_costs": [3, 5, 8, 12, 18],
-        "requires": {"event_horizon": 1, "quantum_harvester": 1},
+        "requires": {'event_horizon': 1, 'quantum_harvester': 1},
+        "meta_requires": {'max_tower_level': 5},
         "desc": [
             "Расширяет предельный уровень прокачки",
             "всех видов башен на +1 за ранг (до +5)."
@@ -2714,149 +2912,7 @@ UPGRADE_TREE_NODES = {
         "icon_key": "crown"
     },
 
-    # ---------------- ВЕТКА 5: АРХЕОЛОГИЯ И ДРЕВНИЕ РЕЛИКВИИ ----------------
-    "archaeology_unlock": {
-        "title": "Археология Оазиса",
-        "branch": "econ",
-        "branch_title": "Археология",
-        "x": 1240, "y": 300,
-        "scale": 2.0,
-        "max_lvl": 1,
-        "costs": [8],
-        "requires": {"start_cacti": 1},
-        "desc": [
-            "Открывает появление зон раскопок на картах (шанс 2%)",
-            "и доступ к Музею Реликвий [R]."
-        ],
-        "stat_cur": lambda lvl: "Археология открыта, Музей доступен по [R]" if lvl > 0 else "Раскопки закрыты",
-        "stat_nxt": lambda lvl: "Открыть Археологию и Музей Реликвий [R]",
-        "icon_key": "shovel"
-    },
-    "dig_site_duration": {
-        "title": "Стойкий Раскоп",
-        "branch": "econ",
-        "branch_title": "Археология",
-        "x": 1420, "y": 190,
-        "max_lvl": 3,
-        "costs": [5, 12, 22],
-        "requires": {"archaeology_unlock": "max"},
-        "desc": [
-            "Укрепляет песчаные насыпи от осыпания ветром.",
-            "+10 секунд к времени жизни кургана",
-            "на поле боя за уровень таланта (до 60 секунд)!"
-        ],
-        "stat_cur": lambda lvl: f"Время жизни зоны: {30 + lvl * 10} секунд" if lvl > 0 else "Базовое время: 30 секунд",
-        "stat_nxt": lambda lvl: f"Время жизни зоны: {30 + (lvl + 1) * 10} секунд",
-        "icon_key": "speed"
-    },
-    "dig_site_chance": {
-        "title": "Гео-Разведка",
-        "branch": "econ",
-        "branch_title": "Археология",
-        "x": 1420, "y": 410,
-        "max_lvl": 3,
-        "costs": [6, 14, 25],
-        "requires": {"archaeology_unlock": "max"},
-        "desc": [
-            "Песчаные радары древних культур.",
-            "+1% к шансу появления зоны раскопок",
-            "в начале каждой волны за уровень таланта (до 5%)!"
-        ],
-        "stat_cur": lambda lvl: f"Шанс раскопок: {2 + lvl}% за волну" if lvl > 0 else "Базовый шанс: 2%",
-        "stat_nxt": lambda lvl: f"Шанс раскопок: {2 + lvl + 1}% за волну",
-        "icon_key": "shovel"
-    },
-    "dig_minigame_buff": {
-        "title": "Опыт Раскопок",
-        "branch": "econ",
-        "branch_title": "Археология",
-        "x": 1440, "y": 300,
-        "max_lvl": 5,
-        "costs": [4, 8, 15, 25, 40],
-        "requires": {"archaeology_unlock": "max"},
-        "desc": [
-            "Искусная техника аккуратного снятия слоев песка.",
-            "+2 дополнительных хода/вскопки в мини-игре",
-            "Морского Боя 5х5 за каждый уровень таланта!"
-        ],
-        "stat_cur": lambda lvl: f"Вскопок в мини-игре: {12 + lvl * 2} (база 12 + {lvl * 2})" if lvl > 0 else "Базовые 12 вскопок",
-        "stat_nxt": lambda lvl: f"Вскопок в мини-игре: {12 + (lvl + 1) * 2}",
-        "icon_key": "bounty"
-    },
-    "relic_max_level": {
-        "title": "Древние Знания",
-        "branch": "econ",
-        "branch_title": "Археология",
-        "x": 1600, "y": 245,
-        "max_lvl": 4,
-        "costs": [12, 25, 45, 75],
-        "requires": {"archaeology_unlock": "max"},
-        "desc": [
-            "Расшифровка старинных папирусов и рун оазиса.",
-            "Повышает макс. предел прокачки реликвий",
-            "с 1 до 5 уровня (каждый ур. удваивает силу бонуса)!"
-        ],
-        "stat_cur": lambda lvl: f"Предел уровня реликвий: {1 + lvl} ур." if lvl > 0 else "Базовый предел: 1 ур. реликвий",
-        "stat_nxt": lambda lvl: f"Предел уровня реликвий: {2 + lvl} ур.",
-        "icon_key": "relic"
-    },
-    "relic_double_drop": {
-        "title": "Астральный Землекоп",
-        "branch": "econ",
-        "branch_title": "Археология",
-        "currency": "hybrid",
-        "x": 1600, "y": 355,
-        "scale": 1.1,
-        "max_lvl": 1,
-        "costs": [50],
-        "dark_costs": [4],
-        "requires": {"relic_max_level": 2},
-        "desc": [
-            "Космический резонанс удваивает находки Бездны.",
-            "Каждая успешная раскопка на поле боя",
-            "приносит сразу +2 копии найденной реликвии!"
-        ],
-        "stat_cur": lambda lvl: "Двойная добыча реликвий (+1 доп. копия) активна!" if lvl > 0 else "Обычная добыча по 1 реликвии",
-        "stat_nxt": lambda lvl: "Открыть удвоение добываемых реликвий",
-        "icon_key": "crown"
-    },
-    "relic_pedestals": {
-        "title": "Пьедесталы Мощи",
-        "branch": "econ",
-        "branch_title": "Археология",
-        "x": 1600, "y": 135,
-        "max_lvl": 3,
-        "costs": [15, 35, 65],
-        "requires": {"archaeology_unlock": "max"},
-        "desc": [
-            "Увеличивает число активных пьедесталов в Музее",
-            "с базовых 2 до 5 слотов (по +1 за уровень)!",
-            "Позволяет активировать больше древних реликвий одновременно."
-        ],
-        "stat_cur": lambda lvl: f"Пьедесталов в Музее: {2 + lvl}/5" if lvl > 0 else "Базовые 2 пьедестала",
-        "stat_nxt": lambda lvl: f"Пьедесталов в Музее: {2 + lvl + 1}/5",
-        "icon_key": "relic"
-    },
-    "dark_relic_resonance": {
-        "title": "Тёмный Резонанс",
-        "branch": "econ",
-        "branch_title": "Археология",
-        "currency": "hybrid",
-        "x": 1780, "y": 245,
-        "scale": 1.2,
-        "max_lvl": 4,
-        "costs": [65, 110, 165, 230],
-        "dark_costs": [5, 9, 15, 24],
-        "requires": {"relic_pedestals": 2, "relic_max_level": 2},
-        "desc": [
-            "Тёмная энергия Бездны связывает все залы Музея.",
-            "Неэкипированные реликвии действуют пассивно",
-            "на +5% силы за уровень прокачки (до 20% на 4 ур.)!"
-        ],
-        "stat_cur": lambda lvl: f"Пассивная сила реликвий вне пьедесталов: +{lvl * 5}%" if lvl > 0 else "Неэкипированные реликвии не активны",
-        "stat_nxt": lambda lvl: f"Пассивная сила реликвий вне пьедесталов: +{(lvl + 1) * 5}%",
-        "icon_key": "relic"
-    }
+    # ---------------- ВЕТКА 5: АРХЕОЛОГИЯ И ДРЕВНИЕ РЕЛИКВИИ ----------------,
 }
 
 def check_node_requirements(node_id, savedata):
@@ -2864,13 +2920,15 @@ def check_node_requirements(node_id, savedata):
     if not node:
         return False, []
     reqs = node.get("requires", {})
-    if not reqs:
+    meta_reqs = node.get("meta_requires", {})
+    if not reqs and not meta_reqs:
         return True, []
 
     upgrades = savedata.get("Upgrades", {})
     all_met = True
     details = []
 
+    # 1. Прямые зависимости по линиям древа
     for parent_id, req_val in reqs.items():
         parent_node = UPGRADE_TREE_NODES.get(parent_id)
         if not parent_node:
@@ -2887,7 +2945,8 @@ def check_node_requirements(node_id, savedata):
                 "req_str": f"{parent_title} (МАКС: {max_lvl} ур.)",
                 "cur_lvl": cur_lvl,
                 "max_lvl": max_lvl,
-                "met": met
+                "met": met,
+                "is_meta": False
             })
         else:
             met = (cur_lvl >= req_val)
@@ -2897,7 +2956,42 @@ def check_node_requirements(node_id, savedata):
                 "req_str": f"{parent_title} ур. {req_val}",
                 "cur_lvl": cur_lvl,
                 "max_lvl": max_lvl,
-                "met": met
+                "met": met,
+                "is_meta": False
+            })
+        if not met:
+            all_met = False
+
+    # 2. Мета-зависимости (без длинных линий, с быстрым переходом по клику)
+    for parent_id, req_val in meta_reqs.items():
+        parent_node = UPGRADE_TREE_NODES.get(parent_id)
+        if not parent_node:
+            continue
+        parent_title = parent_node["title"]
+        cur_lvl = upgrades.get(parent_id, 0)
+        max_lvl = parent_node["max_lvl"]
+
+        if req_val == "max":
+            met = (cur_lvl >= max_lvl)
+            details.append({
+                "parent_id": parent_id,
+                "title": parent_title,
+                "req_str": f"{parent_title} (МАКС: {max_lvl} ур.)",
+                "cur_lvl": cur_lvl,
+                "max_lvl": max_lvl,
+                "met": met,
+                "is_meta": True
+            })
+        else:
+            met = (cur_lvl >= req_val)
+            details.append({
+                "parent_id": parent_id,
+                "title": parent_title,
+                "req_str": f"{parent_title} ур. {req_val}",
+                "cur_lvl": cur_lvl,
+                "max_lvl": max_lvl,
+                "met": met,
+                "is_meta": True
             })
         if not met:
             all_met = False
@@ -3850,24 +3944,24 @@ GLOBAL_ACHIEVEMENTS_DATA = [
         "category": "global",
         "cat_name": "Глобальные",
         "title": "Архитектор Древа",
-        "desc": "Изучите абсолютно все 65 узлов в Древе улучшений Оазиса",
+        "desc": "Изучите абсолютно все 67 узлов в Древе улучшений Оазиса",
         "reward": 0,
-        "max_val": 65,
+        "max_val": 67,
         "icon": trophy_icon,
-        "check": lambda s: sum(1 for nid in globals().get("UPGRADE_TREE_NODES", {}) if nid != "oasis_core" and s.get("Upgrades", {}).get(nid, 0) >= 1) >= 65,
-        "progress": lambda s: (min(65, sum(1 for nid in globals().get("UPGRADE_TREE_NODES", {}) if nid != "oasis_core" and s.get("Upgrades", {}).get(nid, 0) >= 1)), 65)
+        "check": lambda s: sum(1 for nid in globals().get("UPGRADE_TREE_NODES", {}) if nid != "oasis_core" and s.get("Upgrades", {}).get(nid, 0) >= 1) >= 67,
+        "progress": lambda s: (min(67, sum(1 for nid in globals().get("UPGRADE_TREE_NODES", {}) if nid != "oasis_core" and s.get("Upgrades", {}).get(nid, 0) >= 1)), 67)
     },
     {
         "id": "global_tree_levels_max",
         "category": "global",
         "cat_name": "Глобальные",
         "title": "Венец Эволюции",
-        "desc": "Прокачайте все 65 улучшений Древа до абсолютного максимума",
+        "desc": "Прокачайте все 67 улучшений Древа до абсолютного максимума",
         "reward": 0,
-        "max_val": 247,
+        "max_val": 249,
         "icon": crown_upg_icon,
-        "check": lambda s: sum(min(n.get("max_lvl", 1), s.get("Upgrades", {}).get(nid, 0)) for nid, n in globals().get("UPGRADE_TREE_NODES", {}).items() if nid != "oasis_core") >= 247,
-        "progress": lambda s: (min(247, sum(min(n.get("max_lvl", 1), s.get("Upgrades", {}).get(nid, 0)) for nid, n in globals().get("UPGRADE_TREE_NODES", {}).items() if nid != "oasis_core")), 247)
+        "check": lambda s: sum(min(n.get("max_lvl", 1), s.get("Upgrades", {}).get(nid, 0)) for nid, n in globals().get("UPGRADE_TREE_NODES", {}).items() if nid != "oasis_core") >= 249,
+        "progress": lambda s: (min(249, sum(min(n.get("max_lvl", 1), s.get("Upgrades", {}).get(nid, 0)) for nid, n in globals().get("UPGRADE_TREE_NODES", {}).items() if nid != "oasis_core")), 249)
     },
 
     # --- ПРОХОЖДЕНИЕ ИГРЫ ---

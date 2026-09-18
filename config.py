@@ -26,7 +26,7 @@ if sys.platform == "win32":
                 pass
 
 IS_ANDROID = hasattr(sys, 'getandroidapilevel') or 'ANDROID_ARGUMENT' in os.environ or 'ANDROID_PRIVATE' in os.environ
-GAME_VERSION = "0.1.3"
+GAME_VERSION = "0.2.0"
 
 if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
     BASE_DIR = sys._MEIPASS

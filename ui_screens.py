@@ -1757,12 +1757,96 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
 
     upgrades = savedata.get("Upgrades", {})
 
+    # 1.5. Тематические зоны древа (полупрозрачные подложки с неоновыми заголовками)
+    tree_zones = [
+        {
+            "id": "towers",
+            "title": "БАШНИ ОАЗИСА",
+            "sub": "Специализация и боевые модули 6 типов башен",
+            "bounds": (-150, 190, 1500, 480),
+            "color": (80, 190, 255),
+            "bg": (12, 22, 38, 105),
+            "border": (45, 95, 165, 140)
+        },
+        {
+            "id": "combat",
+            "title": "ОБОРОНА И ТАКТИКА",
+            "sub": "Крепость стен, криты и управление темпом боя",
+            "bounds": (-710, 50, 420, 750),
+            "color": (255, 115, 95),
+            "bg": (34, 16, 20, 105),
+            "border": (150, 55, 65, 140)
+        },
+        {
+            "id": "econ",
+            "title": "ЭКОНОМИКА ОАЗИСА",
+            "sub": "Стартовая казна, премии за волны и алхимия",
+            "bounds": (1420, 110, 410, 620),
+            "color": (85, 230, 135),
+            "bg": (14, 34, 22, 105),
+            "border": (40, 135, 80, 140)
+        },
+        {
+            "id": "flora",
+            "title": "ОРАНЖЕРЕЯ И ФЛОРА",
+            "sub": "Селекция кактусов, экспедиции и живой компост",
+            "bounds": (910, 670, 480, 480),
+            "color": (145, 245, 125),
+            "bg": (16, 36, 22, 105),
+            "border": (60, 155, 75, 140)
+        },
+        {
+            "id": "relics",
+            "title": "МУЗЕЙ РЕЛИКВИЙ",
+            "sub": "Раскопки в песках, пьедесталы и древние руны",
+            "bounds": (1570, 670, 470, 630),
+            "color": (255, 200, 75),
+            "bg": (34, 26, 14, 105),
+            "border": (155, 115, 45, 140)
+        },
+        {
+            "id": "astral",
+            "title": "ТЁМНЫЙ КОСМОС",
+            "sub": "Астральные метеориты, орбита и мощь Бездны",
+            "bounds": (360, 670, 480, 940),
+            "color": (215, 120, 255),
+            "bg": (28, 14, 38, 105),
+            "border": (140, 60, 180, 140)
+        }
+    ]
+
+    for zone in tree_zones:
+        zx, zy, zw, zh = zone["bounds"]
+        zsx = int((zx - cam_x) * zoom)
+        zsy = int((zy - cam_y) * zoom)
+        zsw = int(zw * zoom)
+        zsh = int(zh * zoom)
+        z_rect = pygame.Rect(zsx, zsy, zsw, zsh)
+
+        if z_rect.colliderect(viewport_rect):
+            draw_w = max(10, zsw)
+            draw_h = max(10, zsh)
+            z_surf = pygame.Surface((draw_w, draw_h), pygame.SRCALPHA)
+            b_rad = max(6, int(14 * zoom))
+            pygame.draw.rect(z_surf, zone["bg"], (0, 0, draw_w, draw_h), border_radius=b_rad)
+            pygame.draw.rect(z_surf, zone["border"], (0, 0, draw_w, draw_h), width=max(1, int(1.5 * zoom)), border_radius=b_rad)
+            surface.blit(z_surf, (zsx, zsy))
+
+            if zoom >= 0.45:
+                zt_font = font if zoom >= 0.75 else small_font
+                zt_surf = zt_font.render(zone["title"], True, zone["color"])
+                surface.blit(zt_surf, (zsx + max(12, int(18 * zoom)), zsy + max(8, int(12 * zoom))))
+                if zoom >= 0.7:
+                    zs_surf = tiny_font.render(zone["sub"], True, (160, 175, 195))
+                    surface.blit(zs_surf, (zsx + max(12, int(18 * zoom)), zsy + max(8, int(12 * zoom)) + zt_surf.get_height() + 2))
+
     # 2. Отрисовка соединительных линий (ребер графа)
+    t_ticks = pygame.time.get_ticks()
     for node_id, node in UPGRADE_TREE_NODES.items():
         csx = int((node["x"] - cam_x) * zoom)
         csy = int((node["y"] - cam_y) * zoom)
 
-        for parent_id, req_val in node["requires"].items():
+        for parent_id, req_val in node.get("requires", {}).items():
             parent = UPGRADE_TREE_NODES.get(parent_id)
             if not parent:
                 continue
@@ -1773,24 +1857,48 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
             p_max = parent["max_lvl"]
             req_met = (p_lvl >= p_max) if req_val == "max" else (p_lvl >= req_val)
 
-            # Определение цвета линии
+            # Определение цвета и свечения линии
             if req_met:
                 if p_lvl >= p_max:
-                    line_col = (255, 215, 75)
+                    line_col = (255, 220, 85)
+                    glow_col = (180, 140, 30)
                     line_w = max(1, int(3 * zoom))
                 else:
-                    line_col = (50, 210, 140)
-                    line_w = max(1, int(2 * zoom))
+                    line_col = (55, 230, 150)
+                    glow_col = (25, 115, 75)
+                    line_w = max(1, int(2.5 * zoom))
             else:
-                line_col = (48, 58, 70)
-                line_w = 1
+                line_col = (45, 55, 68)
+                glow_col = None
+                line_w = max(1, int(1.2 * zoom))
 
             mid_y = (psy + csy) // 2
-            pygame.draw.lines(surface, line_col, False, [(psx, psy), (psx, mid_y), (csx, mid_y), (csx, csy)], line_w)
+            pts = [(psx, psy), (psx, mid_y), (csx, mid_y), (csx, csy)]
+
+            if req_met and glow_col and zoom >= 0.55:
+                pygame.draw.lines(surface, glow_col, False, pts, line_w + max(2, int(2 * zoom)))
+            pygame.draw.lines(surface, line_col, False, pts, line_w)
 
             if req_met:
                 mx = (psx + csx) // 2
                 pygame.draw.circle(surface, line_col, (mx, mid_y), max(2, int(3 * zoom)))
+
+                # Анимированный импульс энергии по активной ветке
+                if zoom >= 0.5:
+                    t_pulse = ((t_ticks / 1400.0) + (psx + csy) * 0.0015) % 1.0
+                    if t_pulse < 0.33:
+                        frac = t_pulse / 0.33
+                        px_pulse = psx
+                        py_pulse = int(psy + (mid_y - psy) * frac)
+                    elif t_pulse < 0.66:
+                        frac = (t_pulse - 0.33) / 0.33
+                        px_pulse = int(psx + (csx - psx) * frac)
+                        py_pulse = mid_y
+                    else:
+                        frac = (t_pulse - 0.66) / 0.34
+                        px_pulse = csx
+                        py_pulse = int(mid_y + (csy - mid_y) * frac)
+                    pygame.draw.circle(surface, (255, 255, 255), (px_pulse, py_pulse), max(2, int(2.2 * zoom)))
 
     # 3. Отрисовка нод графа
     node_screen_rects = {}
@@ -1874,6 +1982,8 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
                 "tech": (140, 215, 255),
                 "combat": (255, 150, 130),
                 "econ": (150, 240, 160),
+                "flora": (150, 245, 130),
+                "relics": (255, 210, 80),
                 "core": GOLD,
                 "astral": (210, 110, 255)
             }
@@ -2070,8 +2180,8 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
     upg_pct = int(round(bought_upgrades / max(1, total_upgrades) * 100))
 
     stat_str = f"Куплено нод: {bought_nodes}/{total_nodes}   •   Куплено улучшений: {bought_upgrades}/{total_upgrades} ({upg_pct}%)"
-    stat_surf = font.render(stat_str, True, (160, 245, 195))
-    surface.blit(stat_surf, (hdr_center_x - stat_surf.get_width() // 2, 36))
+    stat_surf = small_font.render(stat_str, True, (160, 245, 195))
+    surface.blit(stat_surf, (hdr_center_x - stat_surf.get_width() // 2, 38))
 
     # 5. Боковой Инспектор выбранной ноды
     inspector_rect = pygame.Rect(SCREEN_WIDTH - 340, 72, 325, SCREEN_HEIGHT - 82)
@@ -2090,6 +2200,8 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
         "tech": ((30, 70, 120), (120, 200, 255)),
         "combat": ((110, 40, 35), (255, 160, 140)),
         "econ": ((30, 90, 50), (140, 240, 160)),
+        "flora": ((25, 80, 45), (140, 245, 120)),
+        "relics": ((85, 65, 20), (255, 205, 80)),
         "core": ((100, 80, 20), GOLD),
         "astral": ((60, 25, 85), (225, 160, 255))
     }
@@ -2207,18 +2319,51 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
     surface.blit(req_title, (inspector_rect.left + 14, iy))
     iy += 22
 
-    if not sel_node["requires"]:
+    jump_btn_rects = []
+    if not sel_node.get("requires") and not sel_node.get("meta_requires"):
         r_txt = tiny_font.render("Доступно со старта оазиса", True, GREEN)
         surface.blit(r_txt, (inspector_rect.left + 14, iy))
-        iy += 20
+        iy += 22
     else:
         for r_item in req_details:
-            if r_item["met"]:
-                r_txt = tiny_font.render(f"{r_item['req_str']} (Выполнено)", True, GREEN)
+            is_meta = r_item.get("is_meta", False)
+            met = r_item["met"]
+            col = GREEN if met else (255, 105, 105)
+
+            # Кнопка быстрого перехода к родительскому узлу
+            btn_w, btn_h = 74, 20
+            btn_rect = pygame.Rect(inspector_rect.right - 14 - btn_w, iy - 1, btn_w, btn_h)
+            jump_btn_rects.append((btn_rect, r_item["parent_id"]))
+            j_hov = btn_rect.collidepoint(mouse_pos)
+
+            if is_meta:
+                btn_bg = (60, 25, 85) if not j_hov else (85, 35, 120)
+                btn_border = (215, 115, 255) if j_hov else (160, 75, 200)
+                btn_txt_col = (245, 215, 255) if j_hov else (225, 175, 255)
             else:
-                r_txt = tiny_font.render(f"{r_item['req_str']} (Сейчас: {r_item['cur_lvl']})", True, (255, 105, 105))
-            surface.blit(r_txt, (inspector_rect.left + 14, iy))
-            iy += 20
+                btn_bg = (24, 45, 68) if not j_hov else (38, 68, 105)
+                btn_border = (90, 180, 255) if j_hov else (55, 110, 160)
+                btn_txt_col = (220, 240, 255) if j_hov else (170, 205, 235)
+
+            pygame.draw.rect(surface, btn_bg, btn_rect, border_radius=4)
+            pygame.draw.rect(surface, btn_border, btn_rect, width=1, border_radius=4)
+            j_txt = tiny_font.render("К УЗЛУ >>", True, btn_txt_col)
+            surface.blit(j_txt, (btn_rect.centerx - j_txt.get_width() // 2, btn_rect.centery - j_txt.get_height() // 2))
+
+            # Текст требования с обрезкой по ширине
+            meta_tag = "[МЕТА] " if is_meta else ""
+            status_tag = "(OK)" if met else f"({r_item['cur_lvl']}/{r_item['max_lvl'] if r_item['max_lvl'] < 90 else 'МАКС'})"
+            row_txt = f"{meta_tag}{r_item['title']} {status_tag}"
+
+            max_txt_w = btn_rect.left - (inspector_rect.left + 14) - 6
+            r_surf = tiny_font.render(row_txt, True, (225, 165, 255) if is_meta and not met else col)
+            if r_surf.get_width() > max_txt_w:
+                short_title = r_item['title'][:11] + ".."
+                row_txt = f"{meta_tag}{short_title} {status_tag}"
+                r_surf = tiny_font.render(row_txt, True, (225, 165, 255) if is_meta and not met else col)
+
+            surface.blit(r_surf, (inspector_rect.left + 14, iy))
+            iy += 22
 
     toggle_btn_rect = None
     if sel_node.get("toggleable", False) and cur_lvl > 0:
@@ -2349,7 +2494,7 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
                 surface.blit(b_txt, (start_bx, buy_btn_rect.centery - b_txt.get_height() // 2))
                 surface.blit(stellar_cactus_img_s, (start_bx + b_txt.get_width() + 4, buy_btn_rect.centery - 12))
 
-    return back_btn_rect, center_btn_rect, buy_btn_rect, toggle_btn_rect, node_screen_rects, dark_bal_rect, zoom_in_rect, zoom_out_rect, zoom_reset_rect, info_btn_rect
+    return back_btn_rect, center_btn_rect, buy_btn_rect, toggle_btn_rect, node_screen_rects, dark_bal_rect, zoom_in_rect, zoom_out_rect, zoom_reset_rect, info_btn_rect, jump_btn_rects
 
 draw_upgrades_screen = draw_upgrade_tree_screen
 
