@@ -315,7 +315,7 @@ def run_game():
         gh_buffs = get_greenhouse_buffs(savedata)
         relic_buffs = get_all_relic_buffs(savedata)
         diff = savedata.get("difficulty", "normal")
-        base_lives = 10 + savedata["Upgrades"].get("base_health", 0) * 3 + gh_buffs.get("base_hp", 0) + relic_buffs.get("base_hp_bonus", 0)
+        base_lives = 10 + savedata["Upgrades"].get("base_health", 0) * 3 + gh_buffs.get("base_hp", 0) + relic_buffs.get("base_hp_bonus", 0) + savedata["Upgrades"].get("dark_vitality", 0) * 5
         if diff == "casual":
             max_lives = base_lives + 10
         elif diff == "hardcore":
@@ -2529,6 +2529,11 @@ def run_game():
                             selected_tower_type = "farm"
                             upgrade_mode = False
                             inspected_tower = None
+                    elif event.key == pygame.K_7:
+                        if savedata["Upgrades"].get("sun_tower", 0) > 0:
+                            selected_tower_type = "sun"
+                            upgrade_mode = False
+                            inspected_tower = None
                     elif event.key == pygame.K_t and not is_paused:
                         if savedata.get("Upgrades", {}).get("wave_rush", 0) > 0:
                             curr = savedata.get("Toggles", {}).get("wave_rush", True)
@@ -3465,6 +3470,17 @@ def run_game():
                                 effects.append(FloatingText(SCREEN_WIDTH // 2, 260, "+1 ЗВЁЗДНЫЙ КАКТУС", GOLD))
                                 effects.append(RingEffect(SCREEN_WIDTH // 2, 260, 50, GOLD))
 
+                        # Талант «Ботанический Сбор»: каждые 20 / 15 / 10 волн дарит +1 росток для Оранжереи
+                        if is_greenhouse_unlocked(savedata):
+                            botanic_lvl = savedata["Upgrades"].get("botanic_harvest", 0)
+                            if botanic_lvl > 0:
+                                bh_interval = [0, 20, 15, 10][botanic_lvl]
+                                if completed_wave % bh_interval == 0:
+                                    s_cid, s_name = grant_cactus_sprout(savedata, count=1)
+                                    save_data(savedata)
+                                    effects.append(FloatingText(SCREEN_WIDTH // 2, 230, f"+1 РОСТОК: {s_name} (СБОР)", (110, 255, 170)))
+                                    effects.append(RingEffect(SCREEN_WIDTH // 2, 230, 50, (110, 255, 170)))
+
                         # Талант «Регенерация Оазиса»: +1 HP базы за ур. каждые 5 волн
                         regen_lvl = savedata["Upgrades"].get("regeneration", 0)
                         if regen_lvl > 0 and completed_wave % 5 == 0 and lives < max_lives:
@@ -3625,8 +3641,13 @@ def run_game():
                             if lives <= 0:
                                 game_over = True
                     elif e.health <= 0:
+                        bk = savedata.setdefault("BestiaryKills", {})
+                        bk[str(e.type)] = bk.get(str(e.type), 0) + 1
                         gh_buffs = get_greenhouse_buffs(savedata)
-                        bounty_mult = (1.0 + savedata["Upgrades"].get("cacti_bounty", 0) * 0.10) * (1.0 + gh_buffs.get("bounty_mult", 0.0)) * get_wave_cacti_multiplier(wave)
+                        b_cacti_lvl = savedata["Upgrades"].get("bestiary_cacti", 0)
+                        mob_tier = get_mob_bestiary_tier(e.type, savedata.get("BestiaryKills", {}).get(str(e.type), 0))
+                        bestiary_c_bonus = (b_cacti_lvl * 0.01 * mob_tier) if (b_cacti_lvl > 0 and mob_tier > 0) else 0.0
+                        bounty_mult = (1.0 + savedata["Upgrades"].get("cacti_bounty", 0) * 0.10 + bestiary_c_bonus) * (1.0 + gh_buffs.get("bounty_mult", 0.0)) * get_wave_cacti_multiplier(wave)
                         rew = max(1, int(e.reward * bounty_mult))
                         cacti += rew
                         session_kills += 1
@@ -3770,7 +3791,9 @@ def run_game():
                         mob_star_base = raw_mob_chance * wave_decay
 
                         map_mob_mult = 1.0 + (map_stellar_mult - 1.0) * 0.5
-                        base_star_chance = mob_star_base * magnet_mult * map_mob_mult
+                        b_stars_lvl = savedata["Upgrades"].get("bestiary_stars", 0)
+                        bestiary_s_bonus = (b_stars_lvl * 0.01 * mob_tier) if (b_stars_lvl > 0 and mob_tier > 0) else 0.0
+                        base_star_chance = mob_star_base * magnet_mult * map_mob_mult * (1.0 + bestiary_s_bonus)
                         if not getattr(e, "is_golden", False) and e.type < 1000:
                             guar_stars = int(base_star_chance)
                             rem_star_chance = base_star_chance - guar_stars
@@ -3882,7 +3905,8 @@ def run_game():
                         "freeze": (70, 200, 255),
                         "tesla": (100, 235, 255),
                         "tent": (80, 215, 125),
-                        "farm": (245, 215, 45)
+                        "farm": (245, 215, 45),
+                        "sun": (255, 215, 80)
                     }
                     for t in towers:
                         if getattr(t, "range", 0) > 0:
@@ -3915,7 +3939,7 @@ def run_game():
                                 break
 
                     preview_x, preview_y = near_slot if near_slot else mouse_pos
-                    t_ranges = {"magic": 150, "rock": 125, "freeze": 135, "tent": 165, "tesla": 145, "farm": 60}
+                    t_ranges = {"magic": 150, "rock": 125, "freeze": 135, "tent": 105, "tesla": 145, "farm": 60, "sun": 140}
                     pr_range = t_ranges.get(selected_tower_type, 130)
 
                     # Радиус установки с полупрозрачным кругом (кэшированный, 0 аллокаций)
@@ -3936,7 +3960,8 @@ def run_game():
                         "freeze": freeze_tower_img,
                         "tent": tent_tower_img,
                         "tesla": tesla_tower_img,
-                        "farm": farm_tower_img
+                        "farm": farm_tower_img,
+                        "sun": sun_tower_img
                     }
                     p_img = t_imgs.get(selected_tower_type, magic_tower_img).copy()
                     p_img.set_alpha(170)
@@ -4212,15 +4237,20 @@ def run_game():
                 has_tent = savedata["Upgrades"].get("tent_tower", 0) > 0
                 has_tesla = savedata["Upgrades"].get("tesla_tower", 0) > 0
                 has_farm = savedata["Upgrades"].get("farm_tower", 0) > 0
+                has_sun = savedata["Upgrades"].get("sun_tower", 0) > 0
 
+                btn_w = 120
+                btn_gap = 12
+                start_x = 18
                 buttons_data = [
-                    ("1", "Маг", get_tower_build_cost("magic", towers, savedata=savedata, game_map=game_map, session_towers_bought=session_towers_bought), magic_tower_img, (18, SCREEN_HEIGHT - 70, 136, 58), "magic", has_magic),
-                    ("2", "Огонь", get_tower_build_cost("rock", towers, savedata=savedata, game_map=game_map, session_towers_bought=session_towers_bought), rock_tower_img, (166, SCREEN_HEIGHT - 70, 136, 58), "rock", has_rock),
-                    ("3", "Мороз", get_tower_build_cost("freeze", towers, savedata=savedata, game_map=game_map, session_towers_bought=session_towers_bought), freeze_tower_img, (314, SCREEN_HEIGHT - 70, 136, 58), "freeze", has_freeze),
-                    ("4", "Палатка", get_tower_build_cost("tent", towers, savedata=savedata, game_map=game_map, session_towers_bought=session_towers_bought), tent_tower_img, (462, SCREEN_HEIGHT - 70, 136, 58), "tent", has_tent),
-                    ("5", "Тесла", get_tower_build_cost("tesla", towers, savedata=savedata, game_map=game_map, session_towers_bought=session_towers_bought), tesla_tower_img, (610, SCREEN_HEIGHT - 70, 136, 58), "tesla", has_tesla),
-                    ("6", "Ферма", get_tower_build_cost("farm", towers, savedata=savedata, game_map=game_map, session_towers_bought=session_towers_bought), farm_tower_img, (758, SCREEN_HEIGHT - 70, 136, 58), "farm", has_farm),
-                    ("U", "Прокачка", None, upgrade_dock_icon, (906, SCREEN_HEIGHT - 70, 136, 58), "upgrade", True),
+                    ("1", "Маг", get_tower_build_cost("magic", towers, savedata=savedata, game_map=game_map, session_towers_bought=session_towers_bought), magic_tower_img, (start_x + 0 * (btn_w + btn_gap), SCREEN_HEIGHT - 70, btn_w, 58), "magic", has_magic),
+                    ("2", "Огонь", get_tower_build_cost("rock", towers, savedata=savedata, game_map=game_map, session_towers_bought=session_towers_bought), rock_tower_img, (start_x + 1 * (btn_w + btn_gap), SCREEN_HEIGHT - 70, btn_w, 58), "rock", has_rock),
+                    ("3", "Мороз", get_tower_build_cost("freeze", towers, savedata=savedata, game_map=game_map, session_towers_bought=session_towers_bought), freeze_tower_img, (start_x + 2 * (btn_w + btn_gap), SCREEN_HEIGHT - 70, btn_w, 58), "freeze", has_freeze),
+                    ("4", "Палатка", get_tower_build_cost("tent", towers, savedata=savedata, game_map=game_map, session_towers_bought=session_towers_bought), tent_tower_img, (start_x + 3 * (btn_w + btn_gap), SCREEN_HEIGHT - 70, btn_w, 58), "tent", has_tent),
+                    ("5", "Тесла", get_tower_build_cost("tesla", towers, savedata=savedata, game_map=game_map, session_towers_bought=session_towers_bought), tesla_tower_img, (start_x + 4 * (btn_w + btn_gap), SCREEN_HEIGHT - 70, btn_w, 58), "tesla", has_tesla),
+                    ("6", "Ферма", get_tower_build_cost("farm", towers, savedata=savedata, game_map=game_map, session_towers_bought=session_towers_bought), farm_tower_img, (start_x + 5 * (btn_w + btn_gap), SCREEN_HEIGHT - 70, btn_w, 58), "farm", has_farm),
+                    ("7", "Обелиск", get_tower_build_cost("sun", towers, savedata=savedata, game_map=game_map, session_towers_bought=session_towers_bought), sun_tower_img, (start_x + 6 * (btn_w + btn_gap), SCREEN_HEIGHT - 70, btn_w, 58), "sun", has_sun),
+                    ("U", "Прокачка", None, upgrade_dock_icon, (start_x + 7 * (btn_w + btn_gap), SCREEN_HEIGHT - 70, btn_w, 58), "upgrade", True),
                 ]
 
                 hovered_dock_btn = None
@@ -4301,7 +4331,8 @@ def run_game():
                             "freeze": ("Ледяная Башня", (90, 230, 255), "Урон: 0.5 (Лёд)  |  Замедление: 45%", "Аура: Замедляет толпы и тушит огонь"),
                             "tent": ("Палатка Солдат", (130, 235, 130), "Гарнизон: 2 воина (30 HP) | Урон: 2.0", "Тактика: Блокирует мобов на тропе"),
                             "tesla": ("Башня Тесла", (100, 225, 255), "Урон: 2.0 (Электро) | Рикошет: 3 цели", "Эффект: Цепной электрический разряд"),
-                            "farm": ("Кактусовая Ферма", (255, 215, 60), "Доход: +35 какт. в конце волны", "Экономика: Чистая пассивная прибыль")
+                            "farm": ("Кактусовая Ферма", (255, 215, 60), "Доход: +35 какт. в конце волны", "Экономика: Чистая пассивная прибыль"),
+                            "sun": ("Обелиск Солнца", (255, 215, 80), "Урон: 1.8..15 (Солнце) | Потолок: до x5.0", "Эффект: Непрерывный разгоняющийся луч")
                         }
                         info = tip_info.get(hb_action, ("Башня", WHITE, "", ""))
                         pygame.draw.rect(tip_surf, info[1], (0, 0, tip_w, tip_h), width=1, border_radius=8)
@@ -4531,7 +4562,7 @@ def run_game():
                 mvp_str = "Нет построенных башен"
                 if towers:
                     mvp_t = max(towers, key=lambda t: t.damage_dealt)
-                    t_names = {"magic": "Маг", "rock": "Огонь", "freeze": "Мороз", "tent": "Палатка", "tesla": "Тесла"}
+                    t_names = {"magic": "Маг", "rock": "Огонь", "freeze": "Мороз", "tent": "Палатка", "tesla": "Тесла", "farm": "Ферма", "sun": "Обелиск"}
                     mvp_str = f"{t_names.get(mvp_t.type, 'Башня')} (Ур. {mvp_t.level}) - {mvp_t.damage_dealt:.0f} урона"
 
                 stats_lines = [

@@ -699,6 +699,7 @@ freeze_tower_img = load_texture("freeze_tower.png", target_size=(60, 60))
 tent_tower_img = load_texture("tent_tower.png", target_size=(60, 60))
 tesla_tower_img = load_texture("tesla_tower.png", target_size=(60, 60))
 farm_tower_img = load_texture("farm_tower.png", target_size=(60, 60))
+sun_tower_img = load_texture("sun_tower.png", target_size=(60, 60))
 soldier_img = load_texture("soldier.png", target_size=(34, 34))
 slot_img = load_texture("slot.png", target_size=(44, 44))
 

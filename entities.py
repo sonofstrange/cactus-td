@@ -8,6 +8,7 @@ import time
 import pygame
 
 from config import *
+from tree_data_v02 import get_mob_bestiary_tier, get_bestiary_tier_thresholds
 from game_data import *
 
 # АНИМАЦИИ ВЫПАДЕНИЯ РЕСУРСОВ (Звёздный, Тёмный кактус, Росток)
@@ -498,6 +499,13 @@ class Tower:
             self.base_max_level = 15
             self.cost = 120
             self.income = 35
+        elif tower_type == "sun":
+            self.image = sun_tower_img
+            self.base_max_level = 10
+            self.cost = 200
+            self.current_beam_target = None
+            self.beam_multiplier = 0.5
+            self.beam_tick_timer = 0.0
 
         # Базовые характеристики напрямую из формул нулевого уровня
         base_s = self.get_stats_at_level(0)
@@ -520,6 +528,9 @@ class Tower:
             self.max_chains = base_s["chains"]
         elif tower_type == "farm":
             self.income = base_s["income"]
+        elif tower_type == "sun":
+            self.max_multiplier = base_s.get("max_multiplier", 2.5)
+            self.ramp_time = base_s.get("ramp_time", 1.0)
 
         max_level_bonus_final = max_level_bonus
         self.max_level = self.base_max_level + max_level_bonus_final
@@ -640,7 +651,8 @@ class Tower:
             cost = max(5, int((75 * (1.18 ** lvl) + 25 * lvl) * cost_mult))
             map6_crit = 8 if g_map == 6 else 0  # Лабиринт: крит-шанс +8%
             crit_bonus = int(relic_buffs.get("crit_chance_bonus", 0.0) * 100)
-            crit_chance = min(100, 5 + 1 * lvl + magic_focus_lvl * 4 + crit_mast_lvl * 2.5 + map6_crit + crit_bonus)
+            arcane_precision_lvl = savedata.get("Upgrades", {}).get("arcane_precision", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
+            crit_chance = min(100, 5 + 1 * lvl + magic_focus_lvl * 4 + crit_mast_lvl * 2.5 + map6_crit + crit_bonus + arcane_precision_lvl * 2)
             crit_mult = round(2.0 + magic_focus_lvl * 0.25 + crit_mast_lvl * 0.15 + relic_buffs.get("crit_dmg_bonus", 0.0), 2)
             return {
                 "damage": dmg,
@@ -692,7 +704,8 @@ class Tower:
             total_slow_pct = min(80.0, base_slow + diminishing_lvl_slow + talent_bonus)
             slow_ratio = max(0.20, round(1.0 - (total_slow_pct / 100.0), 2))
             slow_pct = int(round((1.0 - slow_ratio) * 100))
-            slow_dur = round((2.4 + lvl * 0.12) * (1.0 + frost_lvl * 0.10) * (1.0 + relic_buffs.get("freeze_duration_mult", 0.0)), 1)
+            frost_linger_lvl = savedata.get("Upgrades", {}).get("frost_linger", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
+            slow_dur = round((2.4 + lvl * 0.12 + frost_linger_lvl * 0.15) * (1.0 + frost_lvl * 0.10) * (1.0 + relic_buffs.get("freeze_duration_mult", 0.0)), 2)
             if g_map == 1:  # Круговорот: Заморозка длится +15% дольше
                 slow_dur = round(slow_dur * 1.15, 1)
             raw_cd = max(0.55, 1.30 - lvl * 0.045)
@@ -713,7 +726,8 @@ class Tower:
             }
         elif self.type == "tent":
             knight_lvl = savedata.get("Upgrades", {}).get("knight_training", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
-            rng = int((165 + 6 * lvl) * rng_relic_mult)
+            rally_range_lvl = savedata.get("Upgrades", {}).get("rally_range", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
+            rng = int((105 + 6 * lvl + rally_range_lvl * 25) * rng_relic_mult)
             raw_cd = max(4.0, 8.0 - lvl * 0.22)
             cd = max(2.8, round(raw_cd / (1.0 + atk_spd_lvl * 0.04 + relic_atk_spd), 2))
             soldiers = 4 if lvl >= 8 else (3 if lvl >= 4 else 2)
@@ -792,6 +806,28 @@ class Tower:
                 "special_val": f"+{speed_boost}% скор. башен" if irrig_lvl > 0 else f"+{income} какт.",
                 "passive_desc": f"Орошение (R={aura_range}): +{speed_boost}% темпа, полив раз в {int(drop_interval)}с" if irrig_lvl > 0 else "Требуется талант Система Орошения в Древе"
             }
+        elif self.type == "sun":
+            solar_focus_lvl = savedata.get("Upgrades", {}).get("solar_focus", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
+            beam_limit_lvl = savedata.get("Upgrades", {}).get("beam_limit", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
+            solar_trail_lvl = savedata.get("Upgrades", {}).get("solar_trail", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
+
+            rng = int((140 + 4 * lvl + sniper_lvl * 8) * rng_relic_mult)
+            dmg_per_tick = round((0.18 + 0.05 * lvl) * mult, 2)
+            max_mult = 2.5 + beam_limit_lvl * 0.5
+            ramp_time = max(0.20, 1.0 - solar_focus_lvl * 0.05 - lvl * 0.01)
+            cost = max(5, int((110 * (1.18 ** lvl) + 25 * lvl) * cost_mult))
+            return {
+                "damage": dmg_per_tick,
+                "range": rng,
+                "cooldown": 0.10,
+                "max_multiplier": max_mult,
+                "ramp_time": ramp_time,
+                "dps": round((dmg_per_tick * 10.0) * ((0.5 + max_mult) / 2.0), 1),
+                "upgrade_cost": cost,
+                "special_name": "Предел Луча",
+                "special_val": f"x{max_mult:.1f} (разгон {ramp_time:.2f}с/x)",
+                "passive_desc": f"Сфокусированный луч: урон растёт до x{max_mult:.1f}" + (f", вспышка {solar_trail_lvl*2.5:.1f}% HP" if solar_trail_lvl > 0 else "")
+            }
         return {}
 
     def _apply_level_stats(self):
@@ -828,6 +864,9 @@ class Tower:
             self.income = stats["income"]
             self.speed_boost = stats.get("speed_boost", 0)
             self.drop_interval = stats.get("cooldown", 18.0)
+        elif self.type == "sun":
+            self.max_multiplier = stats.get("max_multiplier", 2.5)
+            self.ramp_time = stats.get("ramp_time", 1.0)
 
     def upgrade(self, current_cacti):
         if self.level < self.max_level and current_cacti >= self.upgrade_cost:
@@ -862,6 +901,82 @@ class Tower:
         # Ускорение перезарядки от ауры соседних ферм
         eff_dt = dt * (1.0 + farm_boost)
         self.timer += eff_dt
+
+        if self.type == "sun":
+            tgt = None
+            if active_meteorite and active_meteorite.active and active_meteorite.targeted:
+                d_met = math.hypot(self.x - active_meteorite.x, self.y - active_meteorite.y)
+                if d_met <= self.range * 1.25:
+                    tgt = active_meteorite
+
+            if tgt is None:
+                cur_tgt = getattr(self, "current_beam_target", None)
+                if cur_tgt and getattr(cur_tgt, "active", False) and cur_tgt != active_meteorite:
+                    d_cur = math.hypot(self.x - cur_tgt.x, self.y - cur_tgt.y)
+                    if d_cur <= self.range:
+                        tgt = cur_tgt
+
+                if tgt is None:
+                    in_range = []
+                    for enemy in enemies:
+                        if not enemy.active: continue
+                        d_e = math.hypot(self.x - enemy.x, self.y - enemy.y)
+                        if d_e <= self.range:
+                            in_range.append((enemy, d_e))
+
+                    if in_range:
+                        if self.target_priority == "FIRST":
+                            tgt = max(in_range, key=lambda p: p[0].progress)[0]
+                        elif self.target_priority == "LAST":
+                            tgt = min(in_range, key=lambda p: p[0].progress)[0]
+                        elif self.target_priority == "STRONGEST":
+                            tgt = max(in_range, key=lambda p: p[0].health)[0]
+                        elif self.target_priority == "WEAKEST":
+                            tgt = min(in_range, key=lambda p: p[0].health)[0]
+                        elif self.target_priority == "CLOSEST":
+                            tgt = min(in_range, key=lambda p: p[1])[0]
+                        else:
+                            tgt = in_range[0][0]
+
+            if tgt != getattr(self, "current_beam_target", None):
+                self.current_beam_target = tgt
+                self.beam_multiplier = 0.5
+                self.beam_tick_timer = 0.0
+
+            if tgt:
+                stats = self.get_stats_at_level(self.level)
+                ramp_t = stats.get("ramp_time", 1.0)
+                max_m = stats.get("max_multiplier", 2.5)
+                self.beam_multiplier = min(max_m, self.beam_multiplier + (1.0 / max(0.1, ramp_t)) * eff_dt)
+
+                self.beam_tick_timer += eff_dt
+                if self.beam_tick_timer >= 0.10:
+                    self.beam_tick_timer -= 0.10
+                    tick_dmg = round(self.damage * self.beam_multiplier, 2)
+                    tgt_max_hp = getattr(tgt, "max_health", tgt.health)
+                    tgt.take_damage(tick_dmg, damage_type="sun")
+                    self.record_damage(tick_dmg)
+
+                    if not tgt.active or tgt.health <= 0:
+                        solar_trail_lvl = savedata.get("Upgrades", {}).get("solar_trail", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
+                        if solar_trail_lvl > 0:
+                            pct = solar_trail_lvl * 0.025
+                            explode_dmg = round(tgt_max_hp * pct, 1)
+                            if explode_dmg > 0:
+                                for other in enemies:
+                                    if other.active and other != tgt:
+                                        if math.hypot(tgt.x - other.x, tgt.y - other.y) <= 50:
+                                            other.take_damage(explode_dmg, damage_type="sun_aoe")
+                                            self.record_damage(explode_dmg)
+                                if effects is not None:
+                                    effects.append(RingEffect(tgt.x, tgt.y, 50, (255, 200, 50)))
+                                    effects.append(FloatingText(tgt.x, tgt.y - 16, f"ВСПЫШКА -{explode_dmg:g}", (255, 230, 100)))
+                        self.current_beam_target = None
+                        self.beam_multiplier = 0.5
+            else:
+                self.current_beam_target = None
+                self.beam_multiplier = 0.5
+            return 0
 
         # Метеорит: если игрок выбрал метеорит целью, башни в радиусе range * 1.25 атакуют его!
         if active_meteorite and active_meteorite.active and active_meteorite.targeted and self.type != "tent":
@@ -1074,6 +1189,33 @@ class Tower:
             self._cached_lvl_text = tiny_font.render(f"L{self.level}", True, WHITE)
         upg_text = self._cached_lvl_text
         surface.blit(upg_text, (lvl_badge.centerx - upg_text.get_width() // 2, lvl_badge.centery - upg_text.get_height() // 2))
+
+        if self.type == "sun":
+            sun_y = self.y - 28 + math.sin(ticks * 0.005) * 2
+            s_ang = ticks * 0.002
+            for ray_i in range(6):
+                ra = s_ang + ray_i * (math.pi / 3)
+                rx1 = self.x + math.cos(ra) * 7
+                ry1 = sun_y + math.sin(ra) * 7
+                rx2 = self.x + math.cos(ra) * 13
+                ry2 = sun_y + math.sin(ra) * 13
+                pygame.draw.line(surface, (255, 220, 80), (int(rx1), int(ry1)), (int(rx2), int(ry2)), 2)
+            pygame.draw.circle(surface, (255, 190, 40), (int(self.x), int(sun_y)), 9)
+            pygame.draw.circle(surface, (255, 245, 140), (int(self.x), int(sun_y)), 6)
+            pygame.draw.circle(surface, WHITE, (int(self.x), int(sun_y)), 3)
+
+            tgt = getattr(self, "current_beam_target", None)
+            if tgt and getattr(tgt, "active", False):
+                b_mult = getattr(self, "beam_multiplier", 0.5)
+                tx, ty = int(tgt.x), int(tgt.y)
+                sx, sy = int(self.x), int(sun_y)
+                glow_w = max(4, int(3 + b_mult * 2.2))
+                core_w = max(2, int(1 + b_mult * 1.2))
+                pygame.draw.line(surface, (255, 170, 30), (sx, sy), (tx, ty), glow_w)
+                pygame.draw.line(surface, (255, 240, 160), (sx, sy), (tx, ty), core_w)
+                pygame.draw.line(surface, WHITE, (sx, sy), (tx, ty), 1)
+                pygame.draw.circle(surface, (255, 210, 60), (tx, ty), max(4, int(3 + b_mult * 1.5)))
+                pygame.draw.circle(surface, WHITE, (tx, ty), max(2, int(1 + b_mult)))
 
         if self.type == "tent":
             for s in self.soldiers:
@@ -2000,6 +2142,15 @@ class Enemy:
             giant_lvl = s_data.get("Upgrades", {}).get("giant_hunter", 0)
             if giant_lvl > 0:
                 amount *= (1.0 + giant_lvl * 0.10)
+        # Талант «Анатомия Слаймов» (Бестиарий): +1%/+2%/+3% урона за каждый тир бестиария
+        if s_data and isinstance(s_data, dict):
+            b_dmg_lvl = s_data.get("Upgrades", {}).get("bestiary_damage", 0)
+            if b_dmg_lvl > 0:
+                mob_kills = s_data.get("BestiaryKills", {}).get(str(self.type), 0)
+                mob_tier = get_mob_bestiary_tier(self.type, mob_kills)
+                if mob_tier > 0:
+                    amount *= (1.0 + (b_dmg_lvl * 0.01) * mob_tier)
+
         # Талант «Эссенция Бездны»: чистый урон Бездны (+10% за ранг)
         if s_data and isinstance(s_data, dict):
             vi_lvl = s_data.get("Upgrades", {}).get("void_infusion", 0)
@@ -2397,6 +2548,11 @@ class DigMinigameSession:
                 return "hit"
         else:
             sfx_dig_miss.play()
+            if self.savedata.get("Upgrades", {}).get("sonar_ping", 0) > 0:
+                remaining = self.relic_cells - self.uncovered_cells
+                if remaining:
+                    nearest = min(remaining, key=lambda c: math.hypot(c[0] - gx, c[1] - gy))
+                    self.last_sonar_hint = ((gx, gy), nearest)
             if self.moves_left <= 0:
                 self.is_lost = True
                 self.status_text = "Вскопки закончились! Раскоп обвалился."

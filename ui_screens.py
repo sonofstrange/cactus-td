@@ -1,3 +1,10 @@
+from tree_data_v02 import (
+    ROMAN_TIERS,
+    get_mob_bestiary_tier,
+    get_mob_bestiary_progress,
+    get_metro_route,
+    get_fillet_points,
+)
 # =========================================================================
 # ЭКРАНЫ И ИНТЕРФЕЙС ИГРЫ (UI SCREENS)
 # =========================================================================
@@ -1079,6 +1086,17 @@ def draw_bestiary_screen(surface, savedata, mouse_pos, scroll_y=0, bg_time=None)
             surface.blit(spec_surf, (cx + 104, cy + 54))
             surface.blit(desc_surf, (cx + 104, cy + 74))
 
+            # 10 Тиров Бестиария: бейдж ранга (I..X) и шкала прогресса убийств
+            kills = savedata.get("BestiaryKills", {}).get(str(slime["id"]), 0)
+            cur_tier = get_mob_bestiary_tier(slime["id"], kills)
+            t_str = f"ТИР {ROMAN_TIERS[cur_tier]}" if cur_tier > 0 else "ТИР 0"
+            t_col = GOLD if cur_tier == 10 else ((120, 240, 255) if cur_tier >= 5 else (180, 195, 210))
+            t_surf = tiny_font.render(t_str, True, t_col)
+            t_badge_rect = pygame.Rect(btn_rect.right - t_surf.get_width() - 10, cy + 8, t_surf.get_width() + 10, 18)
+            pygame.draw.rect(surface, (20, 28, 38), t_badge_rect, border_radius=4)
+            pygame.draw.rect(surface, t_col, t_badge_rect, width=1, border_radius=4)
+            surface.blit(t_surf, (t_badge_rect.centerx - t_surf.get_width() // 2, t_badge_rect.centery - t_surf.get_height() // 2))
+
             if is_claimed:
                 pygame.draw.rect(surface, (28, 42, 34), btn_rect, border_radius=6)
                 pygame.draw.rect(surface, (50, 95, 65), btn_rect, width=1, border_radius=6)
@@ -1096,6 +1114,19 @@ def draw_bestiary_screen(surface, savedata, mouse_pos, scroll_y=0, bg_time=None)
                     c_lbl = _get_bestiary_btn_label("normal_reward")
                 surface.blit(c_lbl, (btn_rect.centerx - c_lbl.get_width() // 2, btn_rect.centery - c_lbl.get_height() // 2))
                 claim_buttons.append((slime["id"], btn_rect, 5 if is_boss else 2, 1 if is_boss else 0))
+
+            # Полоска прогресса убийств до следующего тира под кнопкой
+            _, in_t, needed, ratio = get_mob_bestiary_progress(slime["id"], kills)
+            bar_rect = pygame.Rect(btn_rect.left, cy + 76, btn_w, 14)
+            pygame.draw.rect(surface, (16, 20, 28), bar_rect, border_radius=3)
+            fill_w = max(0, int(btn_w * ratio))
+            if fill_w > 0:
+                fill_c = GOLD if cur_tier == 10 else (80, 210, 140)
+                pygame.draw.rect(surface, fill_c, (bar_rect.left, bar_rect.top, fill_w, 14), border_radius=3)
+            pygame.draw.rect(surface, (55, 65, 80), bar_rect, width=1, border_radius=3)
+            prog_str = "МАКСИМУМ" if cur_tier == 10 else f"{in_t}/{needed}"
+            prog_txt = tiny_font.render(prog_str, True, WHITE)
+            surface.blit(prog_txt, (bar_rect.centerx - prog_txt.get_width() // 2, bar_rect.centery - prog_txt.get_height() // 2))
         else:
             q_txt, nm_surf, un_desc, c_lbl = _get_unknown_slime_texts()
             surface.blit(q_txt, (p_box.centerx - q_txt.get_width() // 2, p_box.centery - q_txt.get_height() // 2))
@@ -1638,6 +1669,7 @@ _TREE_ICON_FILES = {
     "sword": "sword_icon.png",
     "tent_tower": "tent_tower.png",
     "tesla_tower": "tesla_tower.png",
+    "sun_tower": "sun_tower.png",
     "wave": "wave_upg_icon.png",
     "lock": "lock_icon.png",
     "shovel": "shovel_icon.png",
@@ -1723,6 +1755,8 @@ def get_node_texture(icon_key):
         "wave": wave_upg_icon,
         "bounty": bounty_upg_icon,
         "farm": farm_tower_img,
+        "sun_tower": sun_tower_img,
+        "farm_tower": farm_tower_img,
         "magnet": magnet_upg_icon,
         "sword": sword_icon,
         "soldier": soldier_img if "soldier_img" in globals() else cactus_img,
@@ -1762,8 +1796,8 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
         {
             "id": "towers",
             "title": "БАШНИ ОАЗИСА",
-            "sub": "Специализация и боевые модули 6 типов башен",
-            "bounds": (-150, 190, 1500, 480),
+            "sub": "Специализация и боевые модули 7 типов башен",
+            "bounds": (-50, -20, 820, 1380),
             "color": (80, 190, 255),
             "bg": (12, 22, 38, 105),
             "border": (45, 95, 165, 140)
@@ -1772,7 +1806,7 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
             "id": "combat",
             "title": "ОБОРОНА И ТАКТИКА",
             "sub": "Крепость стен, криты и управление темпом боя",
-            "bounds": (-710, 50, 420, 750),
+            "bounds": (-750, 40, 480, 770),
             "color": (255, 115, 95),
             "bg": (34, 16, 20, 105),
             "border": (150, 55, 65, 140)
@@ -1781,7 +1815,7 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
             "id": "econ",
             "title": "ЭКОНОМИКА ОАЗИСА",
             "sub": "Стартовая казна, премии за волны и алхимия",
-            "bounds": (1420, 110, 410, 620),
+            "bounds": (870, 100, 450, 650),
             "color": (85, 230, 135),
             "bg": (14, 34, 22, 105),
             "border": (40, 135, 80, 140)
@@ -1790,7 +1824,7 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
             "id": "flora",
             "title": "ОРАНЖЕРЕЯ И ФЛОРА",
             "sub": "Селекция кактусов, экспедиции и живой компост",
-            "bounds": (910, 670, 480, 480),
+            "bounds": (870, 780, 450, 560),
             "color": (145, 245, 125),
             "bg": (16, 36, 22, 105),
             "border": (60, 155, 75, 140)
@@ -1799,7 +1833,7 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
             "id": "relics",
             "title": "МУЗЕЙ РЕЛИКВИЙ",
             "sub": "Раскопки в песках, пьедесталы и древние руны",
-            "bounds": (1570, 670, 470, 630),
+            "bounds": (1530, 250, 460, 650),
             "color": (255, 200, 75),
             "bg": (34, 26, 14, 105),
             "border": (155, 115, 45, 140)
@@ -1808,7 +1842,7 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
             "id": "astral",
             "title": "ТЁМНЫЙ КОСМОС",
             "sub": "Астральные метеориты, орбита и мощь Бездны",
-            "bounds": (360, 670, 480, 940),
+            "bounds": (0, 1440, 600, 920),
             "color": (215, 120, 255),
             "bg": (28, 14, 38, 105),
             "border": (140, 60, 180, 140)
@@ -1872,33 +1906,42 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
                 glow_col = None
                 line_w = max(1, int(1.2 * zoom))
 
-            mid_y = (psy + csy) // 2
-            pts = [(psx, psy), (psx, mid_y), (csx, mid_y), (csx, csy)]
+            # Metro-маршрутизация: строго 0, 90, 45 градусов со скруглением углов
+            raw_route = get_metro_route((psx, psy), (csx, csy))
+            fillet_r = max(4.0, 8.0 * zoom)
+            pts = get_fillet_points(raw_route, radius=fillet_r)
 
             if req_met and glow_col and zoom >= 0.55:
                 pygame.draw.lines(surface, glow_col, False, pts, line_w + max(2, int(2 * zoom)))
             pygame.draw.lines(surface, line_col, False, pts, line_w)
 
             if req_met:
-                mx = (psx + csx) // 2
-                pygame.draw.circle(surface, line_col, (mx, mid_y), max(2, int(3 * zoom)))
+                mid_idx = len(pts) // 2
+                mx, my = int(pts[mid_idx][0]), int(pts[mid_idx][1])
+                pygame.draw.circle(surface, line_col, (mx, my), max(2, int(2.8 * zoom)))
 
-                # Анимированный импульс энергии по активной ветке
-                if zoom >= 0.5:
-                    t_pulse = ((t_ticks / 1400.0) + (psx + csy) * 0.0015) % 1.0
-                    if t_pulse < 0.33:
-                        frac = t_pulse / 0.33
-                        px_pulse = psx
-                        py_pulse = int(psy + (mid_y - psy) * frac)
-                    elif t_pulse < 0.66:
-                        frac = (t_pulse - 0.33) / 0.33
-                        px_pulse = int(psx + (csx - psx) * frac)
-                        py_pulse = mid_y
-                    else:
-                        frac = (t_pulse - 0.66) / 0.34
-                        px_pulse = csx
-                        py_pulse = int(mid_y + (csy - mid_y) * frac)
-                    pygame.draw.circle(surface, (255, 255, 255), (px_pulse, py_pulse), max(2, int(2.2 * zoom)))
+                # Анимированный импульс энергии по Metro-линии
+                if zoom >= 0.5 and len(pts) >= 2:
+                    seg_lens = []
+                    tot_len = 0.0
+                    for pi in range(len(pts) - 1):
+                        sl = math.hypot(pts[pi+1][0] - pts[pi][0], pts[pi+1][1] - pts[pi][1])
+                        seg_lens.append(sl)
+                        tot_len += sl
+
+                    if tot_len > 1.0:
+                        t_pulse = ((t_ticks / 1300.0) + (psx + csy) * 0.0015) % 1.0
+                        target_dist = t_pulse * tot_len
+                        cur_dist = 0.0
+                        px_pulse, py_pulse = pts[0]
+                        for pi, sl in enumerate(seg_lens):
+                            if cur_dist + sl >= target_dist:
+                                frac = (target_dist - cur_dist) / max(0.1, sl)
+                                px_pulse = int(pts[pi][0] + (pts[pi+1][0] - pts[pi][0]) * frac)
+                                py_pulse = int(pts[pi][1] + (pts[pi+1][1] - pts[pi][1]) * frac)
+                                break
+                            cur_dist += sl
+                        pygame.draw.circle(surface, WHITE, (px_pulse, py_pulse), max(2, int(2.4 * zoom)))
 
     # 3. Отрисовка нод графа
     node_screen_rects = {}
@@ -3104,7 +3147,8 @@ def _get_tower_inspect_static_surf(tower, upgrade_mode):
         "freeze": ("ЛЕДЯНАЯ БАШНЯ", (90, 230, 255)),
         "tent": ("ПАЛАТКА СОЛДАТ", (130, 235, 130)),
         "tesla": ("БАШНЯ ТЕСЛА", (100, 225, 255)),
-        "farm": ("КАКТУСОВАЯ ФЕРМА", (255, 215, 60))
+        "farm": ("КАКТУСОВАЯ ФЕРМА", (255, 215, 60)),
+        "sun": ("ОБЕЛИСК СОЛНЦА", (255, 215, 80))
     }
     t_title, t_color = t_titles.get(tower.type, ("БАШНЯ", WHITE))
     title_lbl = small_font.render(t_title, True, t_color)
@@ -3350,6 +3394,9 @@ def _get_tower_inspect_static_surf(tower, upgrade_mode):
                 else:
                     s_cur_str = f"{cur.get('chains', 0)} цели"
                     s_nxt_str = f"{nxt.get('chains', 0)} цели (макс.)"
+            elif tower.type == "sun":
+                s_cur_str = f"x{cur.get('max_multiplier', 2.5):.1f} ({cur.get('ramp_time', 1.0):.2f}с/x)"
+                s_nxt_str = f"x{nxt.get('max_multiplier', 2.5):.1f} ({nxt.get('ramp_time', 1.0):.2f}с/x)"
             else:
                 s_cur_str = "-"
                 s_nxt_str = "-"
@@ -5968,6 +6015,24 @@ def draw_dig_window(surface, dig_session, mouse_pos):
                 pygame.draw.rect(surface, (45, 35, 28), cell_rect, border_radius=6)
                 pygame.draw.rect(surface, (30, 22, 18), cell_rect, width=1, border_radius=6)
                 pygame.draw.circle(surface, (70, 58, 48), (cx + 18, cy + 24), 3)
+
+                # Око Бездны: стрелка к ближайшему скрытому артефакту
+                if dig_session.savedata.get("Upgrades", {}).get("sonar_ping", 0) > 0 and not dig_session.is_won and not dig_session.is_lost:
+                    rem = dig_session.relic_cells - dig_session.uncovered_cells
+                    if rem:
+                        near = min(rem, key=lambda c: math.hypot(c[0] - gx, c[1] - gy))
+                        ang = math.atan2(near[1] - gy, near[0] - gx)
+                        cen_x = cx + 24
+                        cen_y = cy + 24
+                        arr_len = 14
+                        tip_x = cen_x + math.cos(ang) * arr_len
+                        tip_y = cen_y + math.sin(ang) * arr_len
+                        pygame.draw.line(surface, (210, 120, 255), (cen_x, cen_y), (tip_x, tip_y), 3)
+                        a1 = ang + 2.5
+                        a2 = ang - 2.5
+                        pygame.draw.line(surface, (230, 160, 255), (tip_x, tip_y), (tip_x + math.cos(a1) * 6, tip_y + math.sin(a1) * 6), 2)
+                        pygame.draw.line(surface, (230, 160, 255), (tip_x, tip_y), (tip_x + math.cos(a2) * 6, tip_y + math.sin(a2) * 6), 2)
+                        pygame.draw.circle(surface, (245, 200, 255), (int(cen_x), int(cen_y)), 2)
                 pygame.draw.circle(surface, (60, 50, 42), (cx + 30, cy + 28), 2)
 
     # Статусный блок внизу
