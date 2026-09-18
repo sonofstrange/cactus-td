@@ -2652,6 +2652,22 @@ def run_game():
                             win_mgr.reset_position()
                             start_battle_session()
                             sfx_click.play()
+                        elif not is_paused:
+                            tent_target = None
+                            if hovered_tower and getattr(hovered_tower, "type", "") == "tent":
+                                tent_target = hovered_tower
+                            elif inspected_tower and getattr(inspected_tower, "type", "") == "tent":
+                                tent_target = inspected_tower
+
+                            if tent_target:
+                                if rally_targeting_tent == tent_target:
+                                    rally_targeting_tent._rally_selecting = False
+                                    rally_targeting_tent = None
+                                else:
+                                    inspected_tower = tent_target
+                                    rally_targeting_tent = tent_target
+                                    tent_target._rally_selecting = True
+                                sfx_click.play()
                     elif event.key == pygame.K_b:
                         if not game_over:
                             if not is_paused:
@@ -2732,21 +2748,6 @@ def run_game():
                                 current_speed_index = (current_speed_index + 1) % len(speed_levels)
                             game_speed = speed_levels[current_speed_index]
                             sfx_click.play()
-                    elif event.key == pygame.K_r:
-                        if inspected_tower and inspected_tower.type == "tent" and not is_paused and not game_over:
-                            if rally_targeting_tent == inspected_tower:
-                                rally_targeting_tent._rally_selecting = False
-                                rally_targeting_tent = None
-                            else:
-                                rally_targeting_tent = inspected_tower
-                                inspected_tower._rally_selecting = True
-                            sfx_click.play()
-                        elif game_over or is_paused:
-                            start_battle_session()
-                            sfx_click.play()
-                        else:
-                            save_data(savedata)
-                            current_state = STATE_MAP_SELECT
 
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     ctrl_dock_x = 1052
@@ -3859,6 +3860,8 @@ def run_game():
                             pygame.draw.circle(field_surf, col, (int(t.x), int(t.y)), rad, width=1)
 
                 if active_meteorite: active_meteorite.draw(field_surf)
+                if active_dig_site: active_dig_site.draw(field_surf)
+                for e in sorted(enemies, key=lambda m: m.y): e.draw(field_surf)
                 is_rg_active = (savedata.get("Upgrades", {}).get("range_grid", 0) > 0 and savedata.get("Toggles", {}).get("range_grid", False))
                 any_tent_selected = (inspected_tower is not None and getattr(inspected_tower, "type", "") == "tent") or (rally_targeting_tent is not None)
                 show_all_tent_flags = is_rg_active or any_tent_selected
