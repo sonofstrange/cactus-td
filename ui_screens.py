@@ -4419,7 +4419,7 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
         p_sharp_bd = (110, 215, 255) if is_sharp else ((70, 105, 140) if ssh_hov else (45, 60, 80))
         pygame.draw.rect(surface, p_sharp_bg, scale_sharp_rect, border_radius=6)
         pygame.draw.rect(surface, p_sharp_bd, scale_sharp_rect, width=2 if is_sharp else 1, border_radius=6)
-        t_sharp = nav_font.render("ЧЁТКИЙ (100%)", True, WHITE if is_sharp else (160, 185, 210))
+        t_sharp = nav_font.render("ПИКСЕЛЬНЫЙ", True, WHITE if is_sharp else (160, 185, 210))
         surface.blit(t_sharp, (scale_sharp_rect.centerx - t_sharp.get_width() // 2, scale_sharp_rect.centery - t_sharp.get_height() // 2))
 
         p_smooth_bg = (35, 125, 65) if is_smooth else ((28, 40, 56) if ssm_hov else (20, 26, 36))

@@ -40,11 +40,8 @@ class WindowManager:
         self.base_pos = None
         self.is_shaking = False
         self.last_title = ""
-        try:
-            self.win = pygame.Window.from_display_module()
-            self.base_pos = self.win.position
-        except Exception:
-            self.win = None
+        self.win = None
+        self.base_pos = None
 
     def update_shake(self, shake_amount, raw_dt, enabled=True):
         pass  # Тряска физического окна ОС полностью отключена
@@ -92,7 +89,6 @@ def run_game():
 
     apply_audio_settings(savedata)
     set_graphics_preset(savedata.get("Settings", {}).get("graphics_preset", "normal"))
-    screen = set_scale_quality(savedata.get("Settings", {}).get("scale_quality", "sharp"))
     if not is_dark_cacti_unlocked(savedata) and savedata.get("DarkCactuses", 0) > 0:
         savedata["DarkCactuses"] = 0
         save_data(savedata)
@@ -1869,12 +1865,14 @@ def run_game():
                                 screen = set_scale_quality("sharp")
                                 save_data(savedata)
                                 sfx_click.play()
+                                break
 
                             elif ui_rects.get("scale_smooth") and ui_rects["scale_smooth"].collidepoint(mouse_pos):
                                 savedata.setdefault("Settings", {})["scale_quality"] = "smooth"
                                 screen = set_scale_quality("smooth")
                                 save_data(savedata)
                                 sfx_click.play()
+                                break
 
                             elif ui_rects.get("window_shake_toggle") and ui_rects["window_shake_toggle"].collidepoint(mouse_pos):
                                 cur_wsh = savedata.setdefault("Settings", {}).get("window_shake", True)
