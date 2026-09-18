@@ -3724,16 +3724,16 @@ def get_tower_cost_multiplier(existing_count):
     return mult
 
 MAP_TOWER_PRICE_STEP = {
-    0: 1.10,
-    1: 1.11,
-    2: 1.12,
-    3: 1.13,
-    4: 1.14,
-    5: 1.15,
-    6: 1.16,
-    7: 1.18,
-    8: 1.20,
-    9: 1.20
+    0: 1.05,
+    1: 1.055,
+    2: 1.06,
+    3: 1.065,
+    4: 1.07,
+    5: 1.075,
+    6: 1.08,
+    7: 1.09,
+    8: 1.10,
+    9: 1.10
 }
 
 def get_tower_build_cost(tower_type, towers, savedata=None, game_map=0, session_towers_bought=0):
@@ -3741,8 +3741,8 @@ def get_tower_build_cost(tower_type, towers, savedata=None, game_map=0, session_
     base = base_costs.get(tower_type, 100)
     cnt = sum(1 for t in towers if t.type == tower_type)
 
-    # Модификатор цены за каждую покупку башни в текущем забеге (х1.10 на карте 0 .. х1.20 на карте 8/9)
-    step = MAP_TOWER_PRICE_STEP.get(game_map, 1.10)
+    # Модификатор цены за каждую покупку башни в текущем забеге (х1.05 на карте 0 .. х1.10 на карте 8/9)
+    step = MAP_TOWER_PRICE_STEP.get(game_map, 1.05)
     session_mult = step ** max(0, session_towers_bought)
 
     cost = int(base * get_tower_cost_multiplier(cnt) * session_mult)
