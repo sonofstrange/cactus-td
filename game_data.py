@@ -1032,6 +1032,21 @@ def import_save_string(cipher_str: str) -> dict:
         raise ValueError("Формат данных сохранения повреждён")
     return data
 
+def read_save_file(filepath: str) -> dict:
+    """Читает файл сохранения с диска, поддерживая как зашифрованный (CTD1_...), так и открытый JSON."""
+    with open(filepath, 'r', encoding='utf-8') as f:
+        content = f.read().strip()
+    return import_save_string(content)
+
+def write_save_file(filepath: str, data: dict):
+    """Записывает данные сохранения на диск в зашифрованном виде (CTD1_...)."""
+    cipher_str = export_save_string(data)
+    dirpath = os.path.dirname(filepath)
+    if dirpath:
+        os.makedirs(dirpath, exist_ok=True)
+    with open(filepath, 'w', encoding='utf-8') as f:
+        f.write(cipher_str)
+
 def set_clipboard_text(text: str) -> bool:
     """Копирует строку в буфер обмена операционной системы (ПК + Android)."""
     # 1. Попытка через Android ClipboardManager (pyjnius)
@@ -1198,8 +1213,7 @@ def _init_saves_system():
     if not slot_files:
         if os.path.exists(LEGACY_SAVE_PATH):
             try:
-                with open(LEGACY_SAVE_PATH, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
+                data = read_save_file(LEGACY_SAVE_PATH)
             except Exception:
                 data = json.loads(json.dumps(DEFAULT_SAVE))
         else:
@@ -1213,8 +1227,7 @@ def _init_saves_system():
 
         main_slot_path = os.path.join(SAVES_DIR, "slot_main.json")
         try:
-            with open(main_slot_path, 'w', encoding='utf-8') as f:
-                json.dump(data, f, ensure_ascii=False, indent=4)
+            write_save_file(main_slot_path, data)
         except Exception as e:
             print(f"Error initializing slot_main: {e}")
         active_id = "slot_main"
@@ -1255,8 +1268,7 @@ def list_save_profiles():
         sid = fname[:-5]
         fpath = os.path.join(SAVES_DIR, fname)
         try:
-            with open(fpath, 'r', encoding='utf-8') as f:
-                data = json.load(f)
+            data = read_save_file(fpath)
             records = data.get("LevelsRecords", [])
             max_wave = max(records) if records else 0
             gh = data.get("Greenhouse", {})
@@ -1319,8 +1331,7 @@ def create_save_profile(name=None, make_active=True):
 
     slot_path = os.path.join(SAVES_DIR, f"{sid}.json")
     try:
-        with open(slot_path, 'w', encoding='utf-8') as f:
-            json.dump(new_data, f, ensure_ascii=False, indent=4)
+        write_save_file(slot_path, new_data)
     except Exception as e:
         print(f"Error creating save profile: {e}")
 
@@ -1334,12 +1345,10 @@ def rename_save_profile(save_id, new_name):
     if not os.path.exists(slot_path):
         return False
     try:
-        with open(slot_path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
+        data = read_save_file(slot_path)
         data["SaveName"] = new_name.strip() if (new_name and new_name.strip()) else "Без названия"
         data["UpdatedAt"] = datetime.now().strftime("%Y-%m-%d %H:%M")
-        with open(slot_path, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=4)
+        write_save_file(slot_path, data)
         if save_id == get_active_save_id():
             savedata["SaveName"] = data["SaveName"]
             save_data(savedata)
@@ -1353,8 +1362,7 @@ def duplicate_save_profile(save_id):
     if not os.path.exists(slot_path):
         return None
     try:
-        with open(slot_path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
+        data = read_save_file(slot_path)
         new_sid = f"slot_{int(time.time())}_{random.randint(100, 999)}"
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
         data["SaveId"] = new_sid
@@ -1362,8 +1370,7 @@ def duplicate_save_profile(save_id):
         data["CreatedAt"] = now_str
         data["UpdatedAt"] = now_str
         new_slot_path = os.path.join(SAVES_DIR, f"{new_sid}.json")
-        with open(new_slot_path, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=4)
+        write_save_file(new_slot_path, data)
         return new_sid
     except Exception as e:
         print(f"Error duplicating profile: {e}")
@@ -1377,8 +1384,7 @@ def export_save_profile(save_id=None):
     data = None
     if os.path.exists(slot_path):
         try:
-            with open(slot_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
+            data = read_save_file(slot_path)
         except Exception:
             pass
     if data is None:
@@ -1412,8 +1418,7 @@ def import_save_profile(cipher_or_json_str, as_new_slot=True, make_active=True):
     data["UpdatedAt"] = now_str
 
     slot_path = os.path.join(SAVES_DIR, f"{sid}.json")
-    with open(slot_path, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=4)
+    write_save_file(slot_path, data)
 
     if make_active:
         set_active_save_id(sid)
@@ -1460,8 +1465,7 @@ def load_data(save_id=None):
         d["SaveId"] = save_id
         return d
     try:
-        with open(slot_path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
+        data = read_save_file(slot_path)
         if "SaveId" not in data:
             data["SaveId"] = save_id
         if "SaveName" not in data:
@@ -1561,10 +1565,8 @@ def save_data(data):
         data["UpdatedAt"] = now_str
         save_id = data.get("SaveId") or get_active_save_id()
         slot_path = os.path.join(SAVES_DIR, f"{save_id}.json")
-        with open(slot_path, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=4)
-        with open(LEGACY_SAVE_PATH, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=4)
+        write_save_file(slot_path, data)
+        write_save_file(LEGACY_SAVE_PATH, data)
     except Exception as e:
         print(f"Save error: {e}")
 

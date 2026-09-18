@@ -51,6 +51,9 @@ else:
 _init_scale_val = "0"
 try:
     import json
+    import zlib
+    import base64
+    _CIPHER_KEY = b"CactusTD_Remastered_Key_2026"
     _candidates = []
     _act_p = os.path.join(SAVE_BASE_DIR, "saves", "active_profile.json")
     if os.path.exists(_act_p):
@@ -69,14 +72,24 @@ try:
         if os.path.exists(_p):
             try:
                 with open(_p, "r", encoding="utf-8") as _f:
-                    _s_data = json.load(_f)
-                    _sq = _s_data.get("Settings", {}).get("scale_quality")
-                    if _sq == "smooth":
-                        _init_scale_val = "1"
-                        break
-                    elif _sq == "sharp":
-                        _init_scale_val = "0"
-                        break
+                    _raw = _f.read().strip()
+                if not _raw:
+                    continue
+                if _raw.startswith("CTD1_"):
+                    _b64 = _raw[5:].strip()
+                    _enc = base64.b64decode(_b64.encode('ascii'))
+                    _klen = len(_CIPHER_KEY)
+                    _dec = bytes([b ^ _CIPHER_KEY[i % _klen] for i, b in enumerate(_enc)])
+                    _s_data = json.loads(zlib.decompress(_dec).decode('utf-8'))
+                else:
+                    _s_data = json.loads(_raw)
+                _sq = _s_data.get("Settings", {}).get("scale_quality")
+                if _sq == "smooth":
+                    _init_scale_val = "1"
+                    break
+                elif _sq == "sharp":
+                    _init_scale_val = "0"
+                    break
             except Exception:
                 pass
 except Exception:
