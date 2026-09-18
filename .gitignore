@@ -31,3 +31,6 @@ ai_symbols_report.txt
 /*.png
 /*.jpg
 *_backup.py
+
+# Local Knowledge Base
+PROJECT_INFO.md
