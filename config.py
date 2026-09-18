@@ -293,15 +293,15 @@ else:
     def set_scale_quality(mode_name):
         """
         mode_name: 'sharp' (0 - nearest, pixel-perfect 100% clarity) or 'smooth' (1 - bilinear).
-        Мгновенное переключение масштабирования на лету без краша и без необходимости перезапуска.
+        Мгновенное переключение масштабирования на лету с гарантированным сохранением
+        pygame.SCALED | pygame.RESIZABLE (предотвращает смещение элементов в угол экрана).
         """
         global screen
         val = "1" if mode_name == "smooth" else "0"
         os.environ["SDL_RENDER_SCALE_QUALITY"] = val
         if not IS_ANDROID and screen is not None:
             try:
-                flags = screen.get_flags()
-                screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), flags)
+                screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SCALED | pygame.RESIZABLE)
             except Exception as e:
                 print(f"[DISPLAY] Failed to reapply scale quality: {e}", flush=True)
         return screen
