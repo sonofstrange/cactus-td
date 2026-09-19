@@ -312,18 +312,18 @@ GREENHOUSE_CACTI = [
         "req_sprouts": [1, 3, 8, 18, 35],
         "buff_name": "Каменная кора Оазиса",
         "buff_desc": [
-            "+2 к максимальным жизням базы",
-            "+4 к жизням базы, +15% урона шипов",
-            "+7 к жизням базы, +30% урона шипов",
-            "+10 к жизням базы, +45% урона шипов, 5% блок урона",
-            "+15 к жизням базы, +60% урона шипов, 10% блок урона"
+            "+1 к максимальным жизням базы",
+            "+2 к жизням базы, +10% урона шипов",
+            "+4 к жизням базы, +20% урона шипов",
+            "+6 к жизням базы, +30% урона шипов, 3% блок урона",
+            "+8 к жизням базы, +40% урона шипов, 5% блок урона"
         ],
         "stats": [
-            {"base_hp": 2, "thorn_mult": 0.0, "block_chance": 0.0},
-            {"base_hp": 4, "thorn_mult": 0.15, "block_chance": 0.0},
-            {"base_hp": 7, "thorn_mult": 0.30, "block_chance": 0.0},
-            {"base_hp": 10, "thorn_mult": 0.45, "block_chance": 0.05},
-            {"base_hp": 15, "thorn_mult": 0.60, "block_chance": 0.10},
+            {"base_hp": 1, "thorn_mult": 0.0, "block_chance": 0.0},
+            {"base_hp": 2, "thorn_mult": 0.10, "block_chance": 0.0},
+            {"base_hp": 4, "thorn_mult": 0.20, "block_chance": 0.0},
+            {"base_hp": 6, "thorn_mult": 0.30, "block_chance": 0.03},
+            {"base_hp": 8, "thorn_mult": 0.40, "block_chance": 0.05},
         ]
     },
     {
@@ -335,18 +335,18 @@ GREENHOUSE_CACTI = [
         "req_sprouts": [1, 3, 8, 18, 35],
         "buff_name": "Щедрый урожай",
         "buff_desc": [
-            "+40 кактусов на старте боя",
-            "+80 кактусов, +5% семян за слаймов",
-            "+120 кактусов, +10% семян за слаймов",
-            "+160 кактусов, +15% семян, +10% дохода ферм",
-            "+220 кактусов, +20% семян, +20% дохода ферм"
+            "+25 кактусов на старте боя",
+            "+50 кактусов, +3% семян за слаймов",
+            "+75 кактусов, +6% семян за слаймов",
+            "+100 кактусов, +10% семян, +6% дохода ферм",
+            "+140 кактусов, +14% семян, +12% дохода ферм"
         ],
         "stats": [
-            {"start_gold": 40, "bounty_mult": 0.0, "farm_mult": 0.0},
-            {"start_gold": 80, "bounty_mult": 0.05, "farm_mult": 0.0},
-            {"start_gold": 120, "bounty_mult": 0.10, "farm_mult": 0.0},
-            {"start_gold": 160, "bounty_mult": 0.15, "farm_mult": 0.10},
-            {"start_gold": 220, "bounty_mult": 0.20, "farm_mult": 0.20},
+            {"start_gold": 25, "bounty_mult": 0.0, "farm_mult": 0.0},
+            {"start_gold": 50, "bounty_mult": 0.03, "farm_mult": 0.0},
+            {"start_gold": 75, "bounty_mult": 0.06, "farm_mult": 0.0},
+            {"start_gold": 100, "bounty_mult": 0.10, "farm_mult": 0.06},
+            {"start_gold": 140, "bounty_mult": 0.14, "farm_mult": 0.12},
         ]
     },
     {
@@ -358,18 +358,18 @@ GREENHOUSE_CACTI = [
         "req_sprouts": [1, 3, 8, 18, 35],
         "buff_name": "Негасимое пламя",
         "buff_desc": [
-            "+5% урона Огненной башни",
-            "+10% урона Огненной башни, горение длится +1 сек.",
-            "+16% урона Огненной башни, горение длится +2 сек.",
-            "+22% урона Огня, горящие мобы получают +10% от всех башен",
-            "+30% урона Огня, взрыв магмы при гибели горящего моба"
+            "+3% урона Огненной башни",
+            "+6% урона Огненной башни, горение длится +0.5 сек.",
+            "+10% урона Огненной башни, горение длится +1.0 сек.",
+            "+14% урона Огня, горящие мобы получают +5% от всех башен",
+            "+18% урона Огня, взрыв магмы при гибели горящего моба"
         ],
         "stats": [
-            {"fire_dmg_mult": 0.05, "burn_extra_sec": 0.0, "burn_vuln": 0.0, "magma_burst": False},
+            {"fire_dmg_mult": 0.03, "burn_extra_sec": 0.0, "burn_vuln": 0.0, "magma_burst": False},
+            {"fire_dmg_mult": 0.06, "burn_extra_sec": 0.5, "burn_vuln": 0.0, "magma_burst": False},
             {"fire_dmg_mult": 0.10, "burn_extra_sec": 1.0, "burn_vuln": 0.0, "magma_burst": False},
-            {"fire_dmg_mult": 0.16, "burn_extra_sec": 2.0, "burn_vuln": 0.0, "magma_burst": False},
-            {"fire_dmg_mult": 0.22, "burn_extra_sec": 2.0, "burn_vuln": 0.10, "magma_burst": False},
-            {"fire_dmg_mult": 0.30, "burn_extra_sec": 2.5, "burn_vuln": 0.15, "magma_burst": True},
+            {"fire_dmg_mult": 0.14, "burn_extra_sec": 1.2, "burn_vuln": 0.05, "magma_burst": False},
+            {"fire_dmg_mult": 0.18, "burn_extra_sec": 1.5, "burn_vuln": 0.08, "magma_burst": True},
         ]
     },
     {
@@ -381,18 +381,18 @@ GREENHOUSE_CACTI = [
         "req_sprouts": [1, 3, 8, 18, 35],
         "buff_name": "Глубокая заморозка",
         "buff_desc": [
-            "+7% к силе замедления Ледяной башни",
-            "+12% к замедлению, +10% к радиусу действия",
-            "+17% к замедлению, +15% к радиусу действия",
-            "+23% к замедлению, замороженные враги теряют 15% брони",
-            "+30% к замедлению, 10% шанс вморозить моба в глыбу на 1.5 с."
+            "+4% к силе замедления Ледяной башни",
+            "+7% к замедлению, +6% к радиусу действия",
+            "+11% к замедлению, +10% к радиусу действия",
+            "+15% к замедлению, замороженные враги теряют 8% брони",
+            "+20% к замедлению, 6% шанс вморозить моба в глыбу на 1.0 с."
         ],
         "stats": [
-            {"frost_slow_mult": 0.07, "frost_range_mult": 0.0, "armor_shred": 0.0, "permafrost": False},
-            {"frost_slow_mult": 0.12, "frost_range_mult": 0.10, "armor_shred": 0.0, "permafrost": False},
-            {"frost_slow_mult": 0.17, "frost_range_mult": 0.15, "armor_shred": 0.0, "permafrost": False},
-            {"frost_slow_mult": 0.23, "frost_range_mult": 0.20, "armor_shred": 0.15, "permafrost": False},
-            {"frost_slow_mult": 0.30, "frost_range_mult": 0.25, "armor_shred": 0.25, "permafrost": True},
+            {"frost_slow_mult": 0.04, "frost_range_mult": 0.0, "armor_shred": 0.0, "permafrost": False},
+            {"frost_slow_mult": 0.07, "frost_range_mult": 0.06, "armor_shred": 0.0, "permafrost": False},
+            {"frost_slow_mult": 0.11, "frost_range_mult": 0.10, "armor_shred": 0.0, "permafrost": False},
+            {"frost_slow_mult": 0.15, "frost_range_mult": 0.14, "armor_shred": 0.08, "permafrost": False},
+            {"frost_slow_mult": 0.20, "frost_range_mult": 0.18, "armor_shred": 0.12, "permafrost": True},
         ]
     },
     {
@@ -405,17 +405,17 @@ GREENHOUSE_CACTI = [
         "buff_name": "Ионизация воздуха",
         "buff_desc": [
             "+1 рикошет цепной молнии Башни Тесла",
-            "+1 рикошет, +8% к урону молний",
-            "+1 рикошет, +15% к урону молний",
-            "+2 рикошета, +20% к урону, 6% шанс оглушить на 0.6 с.",
-            "+2 рикошета, +28% к урону, 10% шанс оглушить на 0.6 с."
+            "+1 рикошет, +5% к урону молний",
+            "+1 рикошет, +9% к урону молний",
+            "+2 рикошета, +13% к урону, 3% шанс оглушить на 0.5 с.",
+            "+2 рикошета, +18% к урону, 6% шанс оглушить на 0.5 с."
         ],
         "stats": [
             {"extra_jumps": 1, "tesla_dmg_mult": 0.0, "stun_chance": 0.0},
-            {"extra_jumps": 1, "tesla_dmg_mult": 0.08, "stun_chance": 0.0},
-            {"extra_jumps": 1, "tesla_dmg_mult": 0.15, "stun_chance": 0.0},
-            {"extra_jumps": 2, "tesla_dmg_mult": 0.20, "stun_chance": 0.06},
-            {"extra_jumps": 2, "tesla_dmg_mult": 0.28, "stun_chance": 0.10},
+            {"extra_jumps": 1, "tesla_dmg_mult": 0.05, "stun_chance": 0.0},
+            {"extra_jumps": 1, "tesla_dmg_mult": 0.09, "stun_chance": 0.0},
+            {"extra_jumps": 2, "tesla_dmg_mult": 0.13, "stun_chance": 0.03},
+            {"extra_jumps": 2, "tesla_dmg_mult": 0.18, "stun_chance": 0.06},
         ]
     },
     {
@@ -427,18 +427,18 @@ GREENHOUSE_CACTI = [
         "req_sprouts": [1, 3, 8, 18, 35],
         "buff_name": "Анти-Энтропия",
         "buff_desc": [
-            "+10% урона всех башен по Теневым слаймам и боссам",
-            "+18% урона по ним, игнорирует 15% маг. защиты",
-            "+26% урона по ним, игнорирует 25% маг. защиты",
-            "+35% урона, +15% урона Орбитального удара",
-            "+45% урона, +25% урона Орбиталки, 2% дроп Зв. кактуса с элиты"
+            "+6% урона всех башен по Теневым слаймам и боссам",
+            "+11% урона по ним, игнорирует 10% маг. защиты",
+            "+16% урона по ним, игнорирует 16% маг. защиты",
+            "+22% урона, +8% урона Орбитального удара",
+            "+28% урона, +15% урона Орбиталки, 1% дроп Зв. кактуса с элиты"
         ],
         "stats": [
-            {"void_dmg_mult": 0.10, "pierce_magic": 0.0, "orbital_mult": 0.0, "elite_star_drop": False},
-            {"void_dmg_mult": 0.18, "pierce_magic": 0.15, "orbital_mult": 0.0, "elite_star_drop": False},
-            {"void_dmg_mult": 0.26, "pierce_magic": 0.25, "orbital_mult": 0.0, "elite_star_drop": False},
-            {"void_dmg_mult": 0.35, "pierce_magic": 0.35, "orbital_mult": 0.15, "elite_star_drop": False},
-            {"void_dmg_mult": 0.45, "pierce_magic": 0.50, "orbital_mult": 0.25, "elite_star_drop": True},
+            {"void_dmg_mult": 0.06, "pierce_magic": 0.0, "orbital_mult": 0.0, "elite_star_drop": False},
+            {"void_dmg_mult": 0.11, "pierce_magic": 0.10, "orbital_mult": 0.0, "elite_star_drop": False},
+            {"void_dmg_mult": 0.16, "pierce_magic": 0.16, "orbital_mult": 0.0, "elite_star_drop": False},
+            {"void_dmg_mult": 0.22, "pierce_magic": 0.22, "orbital_mult": 0.08, "elite_star_drop": False},
+            {"void_dmg_mult": 0.28, "pierce_magic": 0.30, "orbital_mult": 0.15, "elite_star_drop": True},
         ]
     },
     {
@@ -450,18 +450,18 @@ GREENHOUSE_CACTI = [
         "req_sprouts": [1, 3, 8, 18, 35],
         "buff_name": "Астральный резонанс",
         "buff_desc": [
-            "+15% урона Боевого Дрона",
-            "+30% урона Дрона, +5% шанс дропа Звёздных кактусов",
-            "+45% урона Дрона, +10% шанс дропа Звёздных кактусов",
-            "Дрон атакует на 20% быстрее, +15% шанс дропа звёзд",
-            "Дрон атакует сразу ДВЕ цели одновременно!"
+            "+10% урона Боевого Дрона",
+            "+20% урона Дрона, +3% шанс дропа Звёздных кактусов",
+            "+30% урона Дрона, +6% шанс дропа Звёздных кактусов",
+            "+40% урона Дрона, +10% скорость атаки, +9% шанс дропа звёзд",
+            "+50% урона Дрона, +15% скорость атаки, Дрон атакует 2 цели!"
         ],
         "stats": [
-            {"drone_dmg_mult": 0.15, "star_drop_bonus": 0.0, "drone_spd_mult": 0.0, "dual_drone": False},
-            {"drone_dmg_mult": 0.30, "star_drop_bonus": 0.05, "drone_spd_mult": 0.0, "dual_drone": False},
-            {"drone_dmg_mult": 0.45, "star_drop_bonus": 0.10, "drone_spd_mult": 0.0, "dual_drone": False},
-            {"drone_dmg_mult": 0.60, "star_drop_bonus": 0.15, "drone_spd_mult": 0.20, "dual_drone": False},
-            {"drone_dmg_mult": 0.80, "star_drop_bonus": 0.20, "drone_spd_mult": 0.25, "dual_drone": True},
+            {"drone_dmg_mult": 0.10, "star_drop_bonus": 0.0, "drone_spd_mult": 0.0, "dual_drone": False},
+            {"drone_dmg_mult": 0.20, "star_drop_bonus": 0.03, "drone_spd_mult": 0.0, "dual_drone": False},
+            {"drone_dmg_mult": 0.30, "star_drop_bonus": 0.06, "drone_spd_mult": 0.0, "dual_drone": False},
+            {"drone_dmg_mult": 0.40, "star_drop_bonus": 0.09, "drone_spd_mult": 0.10, "dual_drone": False},
+            {"drone_dmg_mult": 0.50, "star_drop_bonus": 0.12, "drone_spd_mult": 0.15, "dual_drone": True},
         ]
     },
     {
@@ -473,18 +473,18 @@ GREENHOUSE_CACTI = [
         "req_sprouts": [1, 3, 8, 18, 35],
         "buff_name": "Боевое братство",
         "buff_desc": [
-            "Воины в Палатке возрождаются на 15% быстрее",
-            "Возрождение на 25% быстрее, +20% HP воинам",
-            "Возрождение на 35% быстрее, +40% HP, +15% урона",
-            "Воины получают прочный щит, поглощающий первый удар",
+            "Воины в Палатке возрождаются на 10% быстрее",
+            "Возрождение на 16% быстрее, +15% HP воинам",
+            "Возрождение на 22% быстрее, +28% HP, +10% урона",
+            "Воины получают щит, поглощающий первый удар",
             "Воины контратакуют залпом шипов при получении урона!"
         ],
         "stats": [
-            {"respawn_mult": 0.15, "soldier_hp_mult": 0.0, "soldier_dmg_mult": 0.0, "soldier_shield": False, "soldier_thorns": False},
-            {"respawn_mult": 0.25, "soldier_hp_mult": 0.20, "soldier_dmg_mult": 0.0, "soldier_shield": False, "soldier_thorns": False},
-            {"respawn_mult": 0.35, "soldier_hp_mult": 0.40, "soldier_dmg_mult": 0.15, "soldier_shield": False, "soldier_thorns": False},
-            {"respawn_mult": 0.45, "soldier_hp_mult": 0.60, "soldier_dmg_mult": 0.25, "soldier_shield": True, "soldier_thorns": False},
-            {"respawn_mult": 0.55, "soldier_hp_mult": 0.80, "soldier_dmg_mult": 0.35, "soldier_shield": True, "soldier_thorns": True},
+            {"respawn_mult": 0.10, "soldier_hp_mult": 0.0, "soldier_dmg_mult": 0.0, "soldier_shield": False, "soldier_thorns": False},
+            {"respawn_mult": 0.16, "soldier_hp_mult": 0.15, "soldier_dmg_mult": 0.0, "soldier_shield": False, "soldier_thorns": False},
+            {"respawn_mult": 0.22, "soldier_hp_mult": 0.28, "soldier_dmg_mult": 0.10, "soldier_shield": False, "soldier_thorns": False},
+            {"respawn_mult": 0.30, "soldier_hp_mult": 0.42, "soldier_dmg_mult": 0.16, "soldier_shield": True, "soldier_thorns": False},
+            {"respawn_mult": 0.38, "soldier_hp_mult": 0.55, "soldier_dmg_mult": 0.22, "soldier_shield": True, "soldier_thorns": True},
         ]
     }
 ]
@@ -1711,7 +1711,7 @@ def check_node_requirements(node_id, savedata):
         return False, []
     reqs = node.get("requires", {})
     meta_reqs = node.get("meta_requires", {})
-    if not reqs and not meta_reqs:
+    if not reqs and not meta_reqs and not node.get("gameplay_req"):
         return True, []
 
     upgrades = savedata.get("Upgrades", {})
@@ -1783,6 +1783,47 @@ def check_node_requirements(node_id, savedata):
                 "met": met,
                 "is_meta": True
             })
+        if not met:
+            all_met = False
+
+    # 3. Особые игровые условия (прохождение волн, боссы, бестиарий, сбор кактусов)
+    g_req = node.get("gameplay_req")
+    if g_req:
+        g_type = g_req.get("type")
+        g_val = g_req.get("value", 1)
+        g_desc = g_req.get("desc", "Игровое условие")
+        met = False
+        cur_val = 0
+
+        if g_type == "wave":
+            records = savedata.get("LevelsRecords", [0])
+            cur_val = max(records) if records else 0
+            met = (cur_val >= g_val)
+        elif g_type == "map_wave":
+            m_id = g_req.get("map_id", 0)
+            records = savedata.get("LevelsRecords", [0])
+            cur_val = records[m_id] if m_id < len(records) else 0
+            met = (cur_val >= g_val)
+        elif g_type == "bosses":
+            cur_val = savedata.get("Stats", {}).get("bosses_defeated", 0)
+            met = (cur_val >= g_val)
+        elif g_type == "bestiary":
+            cur_val = len(savedata.get("BestiaryDiscovered", []))
+            met = (cur_val >= g_val)
+        elif g_type == "stars":
+            cur_val = savedata.get("StellarCactuses", 0) + sum(upgrades.values())
+            met = (cur_val >= g_val)
+
+        details.append({
+            "parent_id": None,
+            "title": g_desc,
+            "req_str": g_desc,
+            "cur_lvl": cur_val,
+            "max_lvl": g_val,
+            "met": met,
+            "is_meta": False,
+            "is_gameplay": True
+        })
         if not met:
             all_met = False
 
@@ -2946,7 +2987,7 @@ MAP_TOWER_PRICE_STEP = {
 }
 
 def get_tower_build_cost(tower_type, towers, savedata=None, game_map=0, session_towers_bought=0):
-    base_costs = {"magic": 100, "rock": 200, "freeze": 150, "tent": 220, "tesla": 250, "farm": 120, "sun": 200}
+    base_costs = {"magic": 100, "rock": 200, "freeze": 150, "tent": 220, "tesla": 250, "farm": 120, "sun": 300}
     base = base_costs.get(tower_type, 100)
     cnt = sum(1 for t in towers if t.type == tower_type)
 

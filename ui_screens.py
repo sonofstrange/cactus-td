@@ -1674,12 +1674,28 @@ _TREE_ICON_FILES = {
     "wave": "wave_upg_icon.png",
     "lock": "lock_icon.png",
     "shovel": "shovel_icon.png",
+    "arcane_precision": "tree_arcane_precision.png",
+    "frost_linger": "tree_frost_linger.png",
+    "rally_range": "tree_rally_range.png",
+    "solar_power": "tree_solar_power.png",
+    "solar_trail": "tree_solar_trail.png",
+    "prism_beams": "tree_prism_beams.png",
+    "beam_limit": "tree_beam_limit.png",
+    "bestiary_damage": "tree_bestiary_damage.png",
+    "bestiary_stars": "tree_bestiary_stars.png",
+    "gravity_well": "tree_gravity_well.png",
+    "event_horizon": "tree_event_horizon.png",
+    "dark_vitality": "tree_dark_vitality.png",
 }
 
 _PIXEL_ART_KEYS = {
     "sword", "soldier", "crown", "speed", "wave", "start_lvl",
     "start_cacti", "bounty", "damage", "health", "magnet", "dark_cactus", "drone", "lock", "shovel",
-    "sun_tower", "magic_tower", "freeze_tower", "rock_tower", "tesla_tower", "tent_tower", "farm", "stellar"
+    "sun_tower", "magic_tower", "freeze_tower", "rock_tower", "tesla_tower", "tent_tower", "farm", "stellar",
+    "arcane_precision", "frost_linger", "rally_range",
+    "solar_power", "solar_trail", "prism_beams", "beam_limit",
+    "bestiary_damage", "bestiary_stars", "gravity_well",
+    "event_horizon", "dark_vitality"
 }
 
 _tree_icon_cache = {}
@@ -1833,7 +1849,7 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
             "id": "combat",
             "title": "ОБОРОНА И ТАКТИКА",
             "sub": "Крепость стен, криты и управление темпом боя",
-            "bounds": (-750, 40, 480, 770),
+            "bounds": (-750, 40, 480, 840),
             "color": (255, 115, 95),
             "bg": (34, 16, 20, 105),
             "border": (150, 55, 65, 140)
@@ -2400,44 +2416,67 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
         iy += 22
     else:
         for r_item in req_details:
+            is_gameplay = r_item.get("is_gameplay", False)
             is_meta = r_item.get("is_meta", False)
             met = r_item["met"]
             col = GREEN if met else (255, 105, 105)
 
-            # Кнопка быстрого перехода к родительскому узлу
-            btn_w, btn_h = 74, 20
-            btn_rect = pygame.Rect(inspector_rect.right - 14 - btn_w, iy - 1, btn_w, btn_h)
-            jump_btn_rects.append((btn_rect, r_item["parent_id"]))
-            j_hov = btn_rect.collidepoint(mouse_pos)
+            if is_gameplay:
+                tag_bg = (30, 60, 45) if met else (65, 30, 30)
+                tag_border = (80, 220, 120) if met else (230, 80, 80)
+                tag_txt_col = (180, 255, 200) if met else (255, 180, 180)
+                badge_w, badge_h = 74, 20
+                badge_rect = pygame.Rect(inspector_rect.right - 14 - badge_w, iy - 1, badge_w, badge_h)
+                pygame.draw.rect(surface, tag_bg, badge_rect, border_radius=4)
+                pygame.draw.rect(surface, tag_border, badge_rect, width=1, border_radius=4)
+                badge_txt = tiny_font.render("[OK]" if met else "[ИГРА]", True, tag_txt_col)
+                surface.blit(badge_txt, (badge_rect.centerx - badge_txt.get_width() // 2, badge_rect.centery - badge_txt.get_height() // 2))
 
-            if is_meta:
-                btn_bg = (60, 25, 85) if not j_hov else (85, 35, 120)
-                btn_border = (215, 115, 255) if j_hov else (160, 75, 200)
-                btn_txt_col = (245, 215, 255) if j_hov else (225, 175, 255)
+                status_tag = "(OK)" if met else f"({r_item['cur_lvl']}/{r_item['max_lvl']})"
+                row_txt = f"{r_item['title']} {status_tag}"
+                max_txt_w = badge_rect.left - (inspector_rect.left + 14) - 6
+                r_surf = tiny_font.render(row_txt, True, col)
+                if r_surf.get_width() > max_txt_w:
+                    short_title = r_item['title'][:16] + ".."
+                    row_txt = f"{short_title} {status_tag}"
+                    r_surf = tiny_font.render(row_txt, True, col)
+                surface.blit(r_surf, (inspector_rect.left + 14, iy))
+                iy += 22
             else:
-                btn_bg = (24, 45, 68) if not j_hov else (38, 68, 105)
-                btn_border = (90, 180, 255) if j_hov else (55, 110, 160)
-                btn_txt_col = (220, 240, 255) if j_hov else (170, 205, 235)
+                # Кнопка быстрого перехода к родительскому узлу
+                btn_w, btn_h = 74, 20
+                btn_rect = pygame.Rect(inspector_rect.right - 14 - btn_w, iy - 1, btn_w, btn_h)
+                jump_btn_rects.append((btn_rect, r_item["parent_id"]))
+                j_hov = btn_rect.collidepoint(mouse_pos)
 
-            pygame.draw.rect(surface, btn_bg, btn_rect, border_radius=4)
-            pygame.draw.rect(surface, btn_border, btn_rect, width=1, border_radius=4)
-            j_txt = tiny_font.render("К УЗЛУ >>", True, btn_txt_col)
-            surface.blit(j_txt, (btn_rect.centerx - j_txt.get_width() // 2, btn_rect.centery - j_txt.get_height() // 2))
+                if is_meta:
+                    btn_bg = (60, 25, 85) if not j_hov else (85, 35, 120)
+                    btn_border = (215, 115, 255) if j_hov else (160, 75, 200)
+                    btn_txt_col = (245, 215, 255) if j_hov else (225, 175, 255)
+                else:
+                    btn_bg = (24, 45, 68) if not j_hov else (38, 68, 105)
+                    btn_border = (90, 180, 255) if j_hov else (55, 110, 160)
+                    btn_txt_col = (220, 240, 255) if j_hov else (170, 205, 235)
 
-            # Текст требования с обрезкой по ширине
-            meta_tag = "[МЕТА] " if is_meta else ""
-            status_tag = "(OK)" if met else f"({r_item['cur_lvl']}/{r_item['max_lvl'] if r_item['max_lvl'] < 90 else 'МАКС'})"
-            row_txt = f"{meta_tag}{r_item['title']} {status_tag}"
+                pygame.draw.rect(surface, btn_bg, btn_rect, border_radius=4)
+                pygame.draw.rect(surface, btn_border, btn_rect, width=1, border_radius=4)
+                j_txt = tiny_font.render("К УЗЛУ >>", True, btn_txt_col)
+                surface.blit(j_txt, (btn_rect.centerx - j_txt.get_width() // 2, btn_rect.centery - j_txt.get_height() // 2))
 
-            max_txt_w = btn_rect.left - (inspector_rect.left + 14) - 6
-            r_surf = tiny_font.render(row_txt, True, (225, 165, 255) if is_meta and not met else col)
-            if r_surf.get_width() > max_txt_w:
-                short_title = r_item['title'][:11] + ".."
-                row_txt = f"{meta_tag}{short_title} {status_tag}"
+                # Текст требования с обрезкой по ширине
+                meta_tag = "[МЕТА] " if is_meta else ""
+                status_tag = "(OK)" if met else f"({r_item['cur_lvl']}/{r_item['max_lvl'] if r_item['max_lvl'] < 90 else 'МАКС'})"
+                row_txt = f"{meta_tag}{r_item['title']} {status_tag}"
+
+                max_txt_w = btn_rect.left - (inspector_rect.left + 14) - 6
                 r_surf = tiny_font.render(row_txt, True, (225, 165, 255) if is_meta and not met else col)
+                if r_surf.get_width() > max_txt_w:
+                    short_title = r_item['title'][:11] + ".."
+                    row_txt = f"{meta_tag}{short_title} {status_tag}"
+                    r_surf = tiny_font.render(row_txt, True, (225, 165, 255) if is_meta and not met else col)
 
-            surface.blit(r_surf, (inspector_rect.left + 14, iy))
-            iy += 22
+                surface.blit(r_surf, (inspector_rect.left + 14, iy))
+                iy += 22
 
     toggle_btn_rect = None
     if sel_node.get("toggleable", False) and cur_lvl > 0:

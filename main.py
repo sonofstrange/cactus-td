@@ -193,9 +193,9 @@ def run_game():
     last_sell_rect = None
     last_max_rect = None
     upgrade_mode = False
-    DOCK_BTN_W = 114
-    DOCK_BTN_GAP = 9
-    DOCK_START_X = 16
+    DOCK_BTN_W = 118
+    DOCK_BTN_GAP = 6
+    DOCK_START_X = 7
     is_paused = False
     pause_frozen_frame = None
     pause_click_rects = {}
@@ -4266,24 +4266,28 @@ def run_game():
 
                         if b_icon:
                             if b_action not in _dock_icon_cache:
-                                _dock_icon_cache[b_action] = pygame.transform.smoothscale(b_icon, (32, 32))
-                            screen.blit(_dock_icon_cache[b_action], (b_rect.left + 6, b_rect.centery - 16))
+                                _dock_icon_cache[b_action] = pygame.transform.smoothscale(b_icon, (28, 28))
+                            screen.blit(_dock_icon_cache[b_action], (b_rect.left + 5, b_rect.centery - 14))
 
                         if b_action == "upgrade":
-                            t_lbl = small_font.render("[U] Прокачка", True, WHITE)
+                            t_lbl = tiny_font.render("[U] ПРОКАЧКА", True, WHITE)
                             sub_lbl = tiny_font.render("РЕЖИМ" if not upgrade_mode else "АКТИВЕН", True, (255, 215, 80) if upgrade_mode else (180, 190, 200))
-                            screen.blit(t_lbl, (b_rect.left + 40, b_rect.top + 10))
-                            screen.blit(sub_lbl, (b_rect.left + 40, b_rect.top + 32))
+                            screen.blit(t_lbl, (b_rect.left + 35, b_rect.top + 10))
+                            screen.blit(sub_lbl, (b_rect.left + 35, b_rect.top + 32))
                         else:
                             title_str = f"[{b_key}] {b_name}"
                             t_lbl = small_font.render(title_str, True, WHITE)
-                            screen.blit(t_lbl, (b_rect.left + 40, b_rect.top + 8))
+                            if t_lbl.get_width() > (b_rect.width - 37):
+                                t_lbl = tiny_font.render(title_str, True, WHITE)
+                                screen.blit(t_lbl, (b_rect.left + 35, b_rect.top + 10))
+                            else:
+                                screen.blit(t_lbl, (b_rect.left + 35, b_rect.top + 8))
 
                             # Цена с кактусом
                             can_buy = (cacti >= b_cost)
-                            screen.blit(cactus_img_s, (b_rect.left + 40, b_rect.top + 30))
+                            screen.blit(cactus_img_s, (b_rect.left + 35, b_rect.top + 30))
                             c_lbl = small_font.render(f"{b_cost}", True, WHITE if can_buy else RED)
-                            screen.blit(c_lbl, (b_rect.left + 66, b_rect.top + 32))
+                            screen.blit(c_lbl, (b_rect.left + 55, b_rect.top + 31))
 
                 # Всплывающая подсказка над кнопкой дока при наведении (если башня на поле не инспектируется)
                 if hovered_dock_btn and not inspected_tower:
