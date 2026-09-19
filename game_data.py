@@ -1805,14 +1805,28 @@ def check_node_requirements(node_id, savedata):
             cur_val = records[m_id] if m_id < len(records) else 0
             met = (cur_val >= g_val)
         elif g_type == "bosses":
-            cur_val = savedata.get("Stats", {}).get("bosses_defeated", 0)
+            cur_val = max(
+                savedata.get("Stats", {}).get("bosses_defeated", 0),
+                sum(w // 25 for w in savedata.get("LevelsRecords", []))
+            )
             met = (cur_val >= g_val)
         elif g_type == "bestiary":
             cur_val = len(savedata.get("BestiaryDiscovered", []))
             met = (cur_val >= g_val)
-        elif g_type == "stars":
-            cur_val = savedata.get("StellarCactuses", 0) + sum(upgrades.values())
-            met = (cur_val >= g_val)
+        elif g_type in ("stars", "stars_scaling"):
+            base_val = g_req.get("base", g_val)
+            per_lvl = g_req.get("per_lvl", 0)
+            cur_node_lvl = upgrades.get(node_id, 0)
+            target_val = base_val + cur_node_lvl * per_lvl
+            total_earned = max(
+                savedata.get("Stats", {}).get("total_stellar_earned", 0),
+                savedata.get("StellarCactuses", 0) + sum(upgrades.values())
+            )
+            cur_val = total_earned
+            met = (cur_val >= target_val)
+            g_val = target_val
+            if per_lvl > 0:
+                g_desc = f"Накопить от {target_val} Зв. кактусов (+{per_lvl} за лвл)"
 
         details.append({
             "parent_id": None,
@@ -2987,7 +3001,7 @@ MAP_TOWER_PRICE_STEP = {
 }
 
 def get_tower_build_cost(tower_type, towers, savedata=None, game_map=0, session_towers_bought=0):
-    base_costs = {"magic": 100, "rock": 200, "freeze": 150, "tent": 220, "tesla": 250, "farm": 120, "sun": 300}
+    base_costs = {"magic": 100, "rock": 200, "freeze": 150, "tent": 220, "tesla": 250, "farm": 120, "sun": 200}
     base = base_costs.get(tower_type, 100)
     cnt = sum(1 for t in towers if t.type == tower_type)
 

@@ -627,7 +627,7 @@ def get_all_81_nodes():
             "x": 350,
             "y": 1260,
             "max_lvl": 1,
-            "costs": [8],
+            "costs": [20],
             "requires": {'tesla_tower': 'max'},
             "desc": [
             "Древний монумент солярной энергии.",
@@ -930,7 +930,7 @@ def get_all_81_nodes():
             "stat_cur": lambda lvl: f"+{lvl}% урона за тир бестиария цели" if lvl > 0 else "Базовый урон бестиария",
             "stat_nxt": lambda lvl: f"+{lvl + 1}% урона за тир бестиария цели",
             "icon_key": "bestiary_damage",
-            "gameplay_req": {"type": "bestiary", "value": 3, "desc": "Изучить 3 монстра в Бестиарии"},
+            "gameplay_req": {"type": "bestiary", "value": 12, "desc": "Изучить 12 монстров в Бестиарии"},
         },
         "smart_targeting": {
             "title": "Умный Прицел",
@@ -1060,7 +1060,7 @@ def get_all_81_nodes():
             "stat_cur": lambda lvl: f"+{lvl * 10}% к шансу выпадения Звёзд" if lvl > 0 else "Базовый шанс выпадения Звёзд",
             "stat_nxt": lambda lvl: f"+{(lvl + 1) * 10}% к шансу выпадения Звёзд (+10%)",
             "icon_key": "magnet",
-            "gameplay_req": {"type": "stars", "value": 10, "desc": "10 Звёздных кактусов в копилке"},
+            "gameplay_req": {"type": "stars_scaling", "base": 50, "per_lvl": 25, "desc": "Накопить от 50 Зв. кактусов (+25 за лвл)"},
         },
         "star_alchemy": {
             "title": "Звёздная Алхимия",
@@ -1098,7 +1098,7 @@ def get_all_81_nodes():
             "stat_cur": lambda lvl: f"+{lvl}% кактусов за тир бестиария моба" if lvl > 0 else "Базовые награды",
             "stat_nxt": lambda lvl: f"+{lvl + 1}% кактусов за тир бестиария моба",
             "icon_key": "bounty",
-            "gameplay_req": {"type": "bestiary", "value": 3, "desc": "Изучить 3 монстра в Бестиарии"},
+            "gameplay_req": {"type": "bestiary", "value": 12, "desc": "Изучить 12 монстров в Бестиарии"},
         },
         "bestiary_stars": {
             "title": "Звёздный Трофей",
@@ -1117,7 +1117,7 @@ def get_all_81_nodes():
             "stat_cur": lambda lvl: f"+{lvl}% к шансу звёзд за тир бестиария" if lvl > 0 else "Базовый шанс трофея",
             "stat_nxt": lambda lvl: f"+{lvl + 1}% к шансу звёзд за тир бестиария",
             "icon_key": "bestiary_stars",
-            "gameplay_req": {"type": "bestiary", "value": 3, "desc": "Изучить 3 монстра в Бестиарии"},
+            "gameplay_req": {"type": "bestiary", "value": 12, "desc": "Изучить 12 монстров в Бестиарии"},
         },
         "greenhouse_unlock": {
             "title": "Оранжерея Оазиса",
@@ -1415,7 +1415,7 @@ def get_all_81_nodes():
             "stat_cur": lambda lvl: "Тёмный Космос открыт, Тёмные кактусы активны" if lvl > 0 else "Тёмный Космос закрыт",
             "stat_nxt": lambda lvl: "Открыть ветку Тёмного Космоса",
             "icon_key": "dark_cactus",
-            "gameplay_req": {"type": "wave", "value": 25, "desc": "Достичь 25 волны на любой карте"},
+            "gameplay_req": {"type": "bosses", "value": 2, "desc": "Убить любого босса 2 раза"},
         },
         "dark_aegis": {
             "title": "Тёмный Эгис",
@@ -1657,7 +1657,7 @@ def get_all_81_nodes():
             "stat_cur": lambda lvl: f"+{lvl} к макс. уровню всех башен" if lvl > 0 else "Базовый предел башен",
             "stat_nxt": lambda lvl: f"+{lvl + 1} к макс. уровню всех башен",
             "icon_key": "crown",
-            "gameplay_req": {"type": "bosses", "value": 5, "desc": "Победить 5 великих боссов"},
+            "gameplay_req": {"type": "wave", "value": 75, "desc": "Достичь 75-й волны на любой карте"},
         }
     }
     return nodes

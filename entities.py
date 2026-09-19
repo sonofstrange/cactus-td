@@ -502,7 +502,7 @@ class Tower:
         elif tower_type == "sun":
             self.image = sun_tower_img
             self.base_max_level = 10
-            self.cost = 300
+            self.cost = 200
             self.current_beam_target = None
             self.beam_multiplier = 0.5
             self.beam_tick_timer = 0.0
