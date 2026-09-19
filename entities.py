@@ -652,7 +652,7 @@ class Tower:
             map6_crit = 8 if g_map == 6 else 0  # Лабиринт: крит-шанс +8%
             crit_bonus = int(relic_buffs.get("crit_chance_bonus", 0.0) * 100)
             arcane_precision_lvl = savedata.get("Upgrades", {}).get("arcane_precision", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
-            crit_chance = min(100, 5 + 1 * lvl + magic_focus_lvl * 4 + crit_mast_lvl * 2.5 + map6_crit + crit_bonus + arcane_precision_lvl * 2)
+            crit_chance = min(100, 5 + 1 * lvl + magic_focus_lvl * 4 + crit_mast_lvl * 1.5 + map6_crit + crit_bonus + arcane_precision_lvl * 2)
             crit_mult = round(2.0 + magic_focus_lvl * 0.25 + crit_mast_lvl * 0.15 + relic_buffs.get("crit_dmg_bonus", 0.0), 2)
             return {
                 "damage": dmg,

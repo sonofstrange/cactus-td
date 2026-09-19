@@ -1770,7 +1770,24 @@ def get_node_texture(icon_key):
         "greenhouse": greenhouse_icon,
         "sprout": sprout_icon,
         "shovel": shovel_icon,
-        "relic": relic_icon
+        "relic": relic_icon,
+        "target": tree_target_icon,
+        "frost": tree_frost_icon,
+        "optics": tree_target_icon,
+        "rally": tree_rally_icon,
+        "solar_trail": tree_solar_trail_icon,
+        "solar_power": tree_solar_trail_icon,
+        "prism": tree_prism_icon,
+        "prism_beams": tree_prism_icon,
+        "beam_limit": tree_beam_limit_icon,
+        "bestiary_damage": tree_bestiary_dmg_icon,
+        "bestiary_cacti": tree_bestiary_cacti_icon,
+        "bestiary_stars": tree_bestiary_stars_icon,
+        "dark_heart": tree_dark_heart_icon,
+        "heart": tree_dark_heart_icon,
+        "astral_beacon": tree_astral_beacon_icon,
+        "event_horizon": tree_event_horizon_icon,
+        "gravity_well": tree_gravity_well_icon
     }
     return mapping.get(icon_key, cactus_img)
 
@@ -1918,16 +1935,17 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
             world_pts = get_fillet_points(raw_world_route, radius=12.0)
             pts = [((wx - cam_x) * zoom, (wy - cam_y) * zoom) for wx, wy in world_pts]
 
+            int_pts = [(int(round(px)), int(round(py))) for px, py in pts]
             if req_met and glow_col and zoom >= 0.55:
                 gw = line_w + max(2, int(2 * zoom))
-                pygame.draw.lines(surface, glow_col, False, pts, gw)
-                for pt in pts:
-                    pygame.draw.circle(surface, glow_col, (int(pt[0]), int(pt[1])), gw // 2)
+                pygame.draw.lines(surface, glow_col, False, int_pts, gw)
+                pygame.draw.circle(surface, glow_col, int_pts[0], gw // 2)
+                pygame.draw.circle(surface, glow_col, int_pts[-1], gw // 2)
 
-            pygame.draw.lines(surface, line_col, False, pts, line_w)
+            pygame.draw.lines(surface, line_col, False, int_pts, line_w)
             if line_w > 1:
-                for pt in pts:
-                    pygame.draw.circle(surface, line_col, (int(pt[0]), int(pt[1])), line_w // 2)
+                pygame.draw.circle(surface, line_col, int_pts[0], line_w // 2)
+                pygame.draw.circle(surface, line_col, int_pts[-1], line_w // 2)
 
             if req_met:
                 # Анимированный импульс энергии по Metro-линии
