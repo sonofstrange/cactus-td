@@ -934,7 +934,21 @@ DEFAULT_SAVE = {
         "relic_max_level": 0,
         "relic_double_drop": 0,
         "relic_pedestals": 0,
-        "dark_relic_resonance": 0
+        "dark_relic_resonance": 0,
+        "arcane_precision": 0,
+        "frost_linger": 0,
+        "rally_range": 0,
+        "sun_tower": 0,
+        "solar_power": 0,
+        "solar_trail": 0,
+        "prism_beams": 0,
+        "beam_limit": 0,
+        "bestiary_damage": 0,
+        "bestiary_cacti": 0,
+        "bestiary_stars": 0,
+        "botanic_harvest": 0,
+        "sonar_ping": 0,
+        "dark_vitality": 0
     },
     "Toggles": {
         "wave_rush": True,
