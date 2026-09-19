@@ -2734,10 +2734,10 @@ GLOBAL_ACHIEVEMENTS_DATA = [
         "title": "Венец Эволюции",
         "desc": "Прокачайте все 80 улучшений Древа до абсолютного максимума",
         "reward": 0,
-        "max_val": 252,
+        "max_val": 256,
         "icon": crown_upg_icon,
-        "check": lambda s: sum(min(n.get("max_lvl", 1), s.get("Upgrades", {}).get(nid, 0)) for nid, n in globals().get("UPGRADE_TREE_NODES", {}).items() if nid != "oasis_core") >= 252,
-        "progress": lambda s: (min(252, sum(min(n.get("max_lvl", 1), s.get("Upgrades", {}).get(nid, 0)) for nid, n in globals().get("UPGRADE_TREE_NODES", {}).items() if nid != "oasis_core")), 252)
+        "check": lambda s: sum(min(n.get("max_lvl", 1), s.get("Upgrades", {}).get(nid, 0)) for nid, n in globals().get("UPGRADE_TREE_NODES", {}).items() if nid != "oasis_core") >= 256,
+        "progress": lambda s: (min(256, sum(min(n.get("max_lvl", 1), s.get("Upgrades", {}).get(nid, 0)) for nid, n in globals().get("UPGRADE_TREE_NODES", {}).items() if nid != "oasis_core")), 256)
     },
     {
         "id": "global_bestiary_tier5",

@@ -807,26 +807,31 @@ class Tower:
                 "passive_desc": f"Орошение (R={aura_range}): +{speed_boost}% темпа, полив раз в {int(drop_interval)}с" if irrig_lvl > 0 else "Требуется талант Система Орошения в Древе"
             }
         elif self.type == "sun":
-            solar_focus_lvl = savedata.get("Upgrades", {}).get("solar_focus", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
+            solar_power_lvl = savedata.get("Upgrades", {}).get("solar_power", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
             beam_limit_lvl = savedata.get("Upgrades", {}).get("beam_limit", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
             solar_trail_lvl = savedata.get("Upgrades", {}).get("solar_trail", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
+            prism_beams_lvl = savedata.get("Upgrades", {}).get("prism_beams", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
 
             rng = int((140 + 4 * lvl + sniper_lvl * 8) * rng_relic_mult)
-            dmg_per_tick = round((0.18 + 0.05 * lvl) * mult, 2)
+            # Базово скромный урон (фигня в начале), разгоняемый прокачкой и талантом Солнечная Мощь (+20% за ранг)
+            dmg_per_tick = round((0.20 + 0.06 * lvl) * mult * (1.0 + solar_power_lvl * 0.20), 2)
             max_mult = 2.5 + beam_limit_lvl * 0.5
-            ramp_time = max(0.20, 1.0 - solar_focus_lvl * 0.05 - lvl * 0.01)
+            max_beams = 1 + prism_beams_lvl
+            ramp_time = max(0.20, 1.0 - lvl * 0.01)
             cost = max(5, int((110 * (1.18 ** lvl) + 25 * lvl) * cost_mult))
+            beam_lbl = f"{max_beams} луча" if 2 <= max_beams <= 4 else f"{max_beams} луч"
             return {
                 "damage": dmg_per_tick,
                 "range": rng,
                 "cooldown": 0.10,
                 "max_multiplier": max_mult,
                 "ramp_time": ramp_time,
-                "dps": round((dmg_per_tick * 10.0) * ((0.5 + max_mult) / 2.0), 1),
+                "max_beams": max_beams,
+                "dps": round((dmg_per_tick * 10.0) * ((0.5 + max_mult) / 2.0) * max_beams, 1),
                 "upgrade_cost": cost,
-                "special_name": "Предел Луча",
-                "special_val": f"x{max_mult:.1f} (разгон {ramp_time:.2f}с/x)",
-                "passive_desc": f"Сфокусированный луч: урон растёт до x{max_mult:.1f}" + (f", вспышка {solar_trail_lvl*2.5:.1f}% HP" if solar_trail_lvl > 0 else "")
+                "special_name": "Потолок Лучей",
+                "special_val": f"{beam_lbl} (x{max_mult:.1f})",
+                "passive_desc": f"Солярный луч: {beam_lbl}, урон растёт до x{max_mult:.1f}" + (f", взрыв {solar_trail_lvl*2.5:.1f}% HP" if solar_trail_lvl > 0 else "")
             }
         return {}
 
@@ -903,79 +908,125 @@ class Tower:
         self.timer += eff_dt
 
         if self.type == "sun":
-            tgt = None
+            stats = self.get_stats_at_level(self.level)
+            max_beams = stats.get("max_beams", 1)
+            max_m = stats.get("max_multiplier", 2.5)
+            ramp_t = stats.get("ramp_time", 1.0)
+            solar_trail_lvl = savedata.get("Upgrades", {}).get("solar_trail", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
+
+            if not hasattr(self, "beams"):
+                self.beams = []
+
+            # 1. Фильтруем активные лучи, цели которых всё ещё живы и находятся в радиусе
+            valid_beams = []
+            assigned_targets = set()
+            for b in self.beams:
+                tgt = b.get("target")
+                if tgt and getattr(tgt, "active", False) and getattr(tgt, "health", 0) > 0:
+                    d = math.hypot(self.x - tgt.x, self.y - tgt.y)
+                    max_d = self.range * 1.25 if tgt == active_meteorite else self.range
+                    if d <= max_d:
+                        valid_beams.append(b)
+                        assigned_targets.add(tgt)
+            self.beams = valid_beams[:max_beams]
+
+            # 2. Если метеорит активен и выбран, обязательно направляем на него один из лучей
             if active_meteorite and active_meteorite.active and active_meteorite.targeted:
                 d_met = math.hypot(self.x - active_meteorite.x, self.y - active_meteorite.y)
-                if d_met <= self.range * 1.25:
-                    tgt = active_meteorite
+                if d_met <= self.range * 1.25 and active_meteorite not in assigned_targets:
+                    new_b = {
+                        "target": active_meteorite,
+                        "multiplier": 0.5,
+                        "tick_timer": 0.0,
+                        "accum_dmg": 0.0,
+                        "float_timer": 0.0
+                    }
+                    if len(self.beams) < max_beams:
+                        self.beams.append(new_b)
+                        assigned_targets.add(active_meteorite)
+                    elif self.beams:
+                        self.beams[0] = new_b
+                        assigned_targets.add(active_meteorite)
 
-            if tgt is None:
-                cur_tgt = getattr(self, "current_beam_target", None)
-                if cur_tgt and getattr(cur_tgt, "active", False) and cur_tgt != active_meteorite:
-                    d_cur = math.hypot(self.x - cur_tgt.x, self.y - cur_tgt.y)
-                    if d_cur <= self.range:
-                        tgt = cur_tgt
-
-                if tgt is None:
-                    in_range = []
-                    for enemy in enemies:
-                        if not enemy.active: continue
+            # 3. Находим новые цели для свободных слотов лучей
+            if len(self.beams) < max_beams:
+                in_range = []
+                for enemy in enemies:
+                    if enemy.active and enemy not in assigned_targets and getattr(enemy, "health", 0) > 0:
                         d_e = math.hypot(self.x - enemy.x, self.y - enemy.y)
                         if d_e <= self.range:
                             in_range.append((enemy, d_e))
 
-                    if in_range:
-                        if self.target_priority == "FIRST":
-                            tgt = max(in_range, key=lambda p: p[0].progress)[0]
-                        elif self.target_priority == "LAST":
-                            tgt = min(in_range, key=lambda p: p[0].progress)[0]
-                        elif self.target_priority == "STRONGEST":
-                            tgt = max(in_range, key=lambda p: p[0].health)[0]
-                        elif self.target_priority == "WEAKEST":
-                            tgt = min(in_range, key=lambda p: p[0].health)[0]
-                        elif self.target_priority == "CLOSEST":
-                            tgt = min(in_range, key=lambda p: p[1])[0]
-                        else:
-                            tgt = in_range[0][0]
+                if in_range:
+                    if self.target_priority == "FIRST":
+                        in_range.sort(key=lambda p: p[0].progress, reverse=True)
+                    elif self.target_priority == "LAST":
+                        in_range.sort(key=lambda p: p[0].progress)
+                    elif self.target_priority == "STRONGEST":
+                        in_range.sort(key=lambda p: p[0].health, reverse=True)
+                    elif self.target_priority == "WEAKEST":
+                        in_range.sort(key=lambda p: p[0].health)
+                    elif self.target_priority == "CLOSEST":
+                        in_range.sort(key=lambda p: p[1])
 
-            if tgt != getattr(self, "current_beam_target", None):
-                self.current_beam_target = tgt
-                self.beam_multiplier = 0.5
-                self.beam_tick_timer = 0.0
+                    needed = max_beams - len(self.beams)
+                    for candidate, _ in in_range[:needed]:
+                        self.beams.append({
+                            "target": candidate,
+                            "multiplier": 0.5,
+                            "tick_timer": 0.0,
+                            "accum_dmg": 0.0,
+                            "float_timer": 0.0
+                        })
+                        assigned_targets.add(candidate)
 
-            if tgt:
-                stats = self.get_stats_at_level(self.level)
-                ramp_t = stats.get("ramp_time", 1.0)
-                max_m = stats.get("max_multiplier", 2.5)
-                self.beam_multiplier = min(max_m, self.beam_multiplier + (1.0 / max(0.1, ramp_t)) * eff_dt)
+            # 4. Обновляем урон и плавающий текст по каждому лучу
+            active_beams_after_tick = []
+            for b in self.beams:
+                tgt = b["target"]
+                b["multiplier"] = min(max_m, b["multiplier"] + (1.0 / max(0.1, ramp_t)) * eff_dt)
+                b["tick_timer"] += eff_dt
+                b["float_timer"] += eff_dt
 
-                self.beam_tick_timer += eff_dt
-                if self.beam_tick_timer >= 0.10:
-                    self.beam_tick_timer -= 0.10
-                    tick_dmg = round(self.damage * self.beam_multiplier, 2)
+                if b["tick_timer"] >= 0.10:
+                    b["tick_timer"] -= 0.10
+                    tick_dmg = round(self.damage * b["multiplier"], 2)
                     tgt_max_hp = getattr(tgt, "max_health", tgt.health)
                     tgt.take_damage(tick_dmg, damage_type="sun")
                     self.record_damage(tick_dmg)
+                    b["accum_dmg"] += tick_dmg
 
-                    if not tgt.active or tgt.health <= 0:
-                        solar_trail_lvl = savedata.get("Upgrades", {}).get("solar_trail", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
-                        if solar_trail_lvl > 0:
-                            pct = solar_trail_lvl * 0.025
-                            explode_dmg = round(tgt_max_hp * pct, 1)
-                            if explode_dmg > 0:
-                                for other in enemies:
-                                    if other.active and other != tgt:
-                                        if math.hypot(tgt.x - other.x, tgt.y - other.y) <= 50:
-                                            other.take_damage(explode_dmg, damage_type="sun_aoe")
-                                            self.record_damage(explode_dmg)
-                                if effects is not None:
-                                    effects.append(RingEffect(tgt.x, tgt.y, 50, (255, 200, 50)))
-                                    effects.append(FloatingText(tgt.x, tgt.y - 16, f"ВСПЫШКА -{explode_dmg:g}", (255, 230, 100)))
-                        self.current_beam_target = None
-                        self.beam_multiplier = 0.5
-            else:
-                self.current_beam_target = None
-                self.beam_multiplier = 0.5
+                target_dead = (not tgt.active) or (getattr(tgt, "health", 0) <= 0)
+                if b["float_timer"] >= 0.20 or target_dead:
+                    if effects is not None and b["accum_dmg"] > 0:
+                        if b["multiplier"] >= 3.0:
+                            t_col = (255, 95, 25)   # Сверхнагрев (плазма)
+                        elif b["multiplier"] >= 1.5:
+                            t_col = (255, 185, 35)  # Нагретый луч
+                        else:
+                            t_col = (255, 235, 100) # Базовый луч
+                        effects.append(FloatingText(tgt.x, tgt.y - 14, f"-{round(b['accum_dmg'], 1):g}", t_col))
+                    b["accum_dmg"] = 0.0
+                    b["float_timer"] = 0.0
+
+                if target_dead:
+                    if solar_trail_lvl > 0:
+                        pct = solar_trail_lvl * 0.025
+                        explode_dmg = round(tgt_max_hp * pct, 1)
+                        if explode_dmg > 0:
+                            for other in enemies:
+                                if other.active and other != tgt:
+                                    if math.hypot(tgt.x - other.x, tgt.y - other.y) <= 50:
+                                        other.take_damage(explode_dmg, damage_type="sun_aoe")
+                                        self.record_damage(explode_dmg)
+                            if effects is not None:
+                                effects.append(RingEffect(tgt.x, tgt.y, 50, (255, 200, 50)))
+                                effects.append(FloatingText(tgt.x, tgt.y - 16, f"ВСПЫШКА -{explode_dmg:g}", (255, 230, 100)))
+                else:
+                    active_beams_after_tick.append(b)
+
+            self.beams = active_beams_after_tick
+            self.current_beam_target = self.beams[0]["target"] if self.beams else None
             return 0
 
         # Метеорит: если игрок выбрал метеорит целью, башни в радиусе range * 1.25 атакуют его!
@@ -1204,18 +1255,25 @@ class Tower:
             pygame.draw.circle(surface, (255, 245, 140), (int(self.x), int(sun_y)), 6)
             pygame.draw.circle(surface, WHITE, (int(self.x), int(sun_y)), 3)
 
-            tgt = getattr(self, "current_beam_target", None)
-            if tgt and getattr(tgt, "active", False):
-                b_mult = getattr(self, "beam_multiplier", 0.5)
-                tx, ty = int(tgt.x), int(tgt.y)
-                sx, sy = int(self.x), int(sun_y)
-                glow_w = max(4, int(3 + b_mult * 2.2))
-                core_w = max(2, int(1 + b_mult * 1.2))
-                pygame.draw.line(surface, (255, 170, 30), (sx, sy), (tx, ty), glow_w)
-                pygame.draw.line(surface, (255, 240, 160), (sx, sy), (tx, ty), core_w)
-                pygame.draw.line(surface, WHITE, (sx, sy), (tx, ty), 1)
-                pygame.draw.circle(surface, (255, 210, 60), (tx, ty), max(4, int(3 + b_mult * 1.5)))
-                pygame.draw.circle(surface, WHITE, (tx, ty), max(2, int(1 + b_mult)))
+            beams_to_draw = getattr(self, "beams", [])
+            if not beams_to_draw:
+                cur_t = getattr(self, "current_beam_target", None)
+                if cur_t and getattr(cur_t, "active", False):
+                    beams_to_draw = [{"target": cur_t, "multiplier": getattr(self, "beam_multiplier", 0.5)}]
+
+            for b in beams_to_draw:
+                tgt = b.get("target")
+                if tgt and getattr(tgt, "active", False):
+                    b_mult = b.get("multiplier", 0.5)
+                    tx, ty = int(tgt.x), int(tgt.y)
+                    sx, sy = int(self.x), int(sun_y)
+                    glow_w = max(4, int(3 + b_mult * 2.2))
+                    core_w = max(2, int(1 + b_mult * 1.2))
+                    pygame.draw.line(surface, (255, 170, 30), (sx, sy), (tx, ty), glow_w)
+                    pygame.draw.line(surface, (255, 240, 160), (sx, sy), (tx, ty), core_w)
+                    pygame.draw.line(surface, WHITE, (sx, sy), (tx, ty), 1)
+                    pygame.draw.circle(surface, (255, 210, 60), (tx, ty), max(4, int(3 + b_mult * 1.5)))
+                    pygame.draw.circle(surface, WHITE, (tx, ty), max(2, int(1 + b_mult)))
 
         if self.type == "tent":
             for s in self.soldiers:

@@ -1710,6 +1710,13 @@ def get_tree_node_icon(icon_key, dim, unlocked=True):
     else:
         base = get_node_texture(icon_key)
 
+    # Гарантируем, что текстура строго имеет размер (dim, dim) и не съезжает при зуме
+    if base.get_size() != (dim, dim):
+        if icon_key in _PIXEL_ART_KEYS:
+            base = pygame.transform.scale(base, (dim, dim))
+        else:
+            base = pygame.transform.smoothscale(base, (dim, dim))
+
     if not unlocked:
         res = base.copy()
         tint = pygame.Surface((dim, dim), pygame.SRCALPHA)
@@ -1906,20 +1913,23 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
                 glow_col = None
                 line_w = max(1, int(1.2 * zoom))
 
-            # Metro-маршрутизация: строго 0, 90, 45 градусов со скруглением углов
-            raw_route = get_metro_route((psx, psy), (csx, csy))
-            fillet_r = max(4.0, 8.0 * zoom)
-            pts = get_fillet_points(raw_route, radius=fillet_r)
+            # Metro-маршрутизация: строго 0, 90, 45 градусов со скруглением углов в мировых координатах
+            raw_world_route = get_metro_route((parent["x"], parent["y"]), (node["x"], node["y"]))
+            world_pts = get_fillet_points(raw_world_route, radius=12.0)
+            pts = [((wx - cam_x) * zoom, (wy - cam_y) * zoom) for wx, wy in world_pts]
 
             if req_met and glow_col and zoom >= 0.55:
-                pygame.draw.lines(surface, glow_col, False, pts, line_w + max(2, int(2 * zoom)))
+                gw = line_w + max(2, int(2 * zoom))
+                pygame.draw.lines(surface, glow_col, False, pts, gw)
+                for pt in pts:
+                    pygame.draw.circle(surface, glow_col, (int(pt[0]), int(pt[1])), gw // 2)
+
             pygame.draw.lines(surface, line_col, False, pts, line_w)
+            if line_w > 1:
+                for pt in pts:
+                    pygame.draw.circle(surface, line_col, (int(pt[0]), int(pt[1])), line_w // 2)
 
             if req_met:
-                mid_idx = len(pts) // 2
-                mx, my = int(pts[mid_idx][0]), int(pts[mid_idx][1])
-                pygame.draw.circle(surface, line_col, (mx, my), max(2, int(2.8 * zoom)))
-
                 # Анимированный импульс энергии по Metro-линии
                 if zoom >= 0.5 and len(pts) >= 2:
                     seg_lens = []
@@ -2055,11 +2065,11 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
         is_node_toggleable = node.get("toggleable", False)
         is_node_toggled_off = is_node_toggleable and (cur_lvl > 0) and not savedata.get("Toggles", {}).get(node_id, True)
 
-        icon_sz = max(9, int(14 if scale > 1.2 else 12))
+        icon_sz = max(8, int((14 if scale > 1.2 else 12) * min(1.2, max(0.7, zoom))))
         s_ic = pygame.transform.smoothscale(stellar_cactus_img_xs, (icon_sz, icon_sz))
         d_ic = pygame.transform.smoothscale(dark_cactus_img_xs, (icon_sz, icon_sz))
 
-        pill_h = max(15, int(22 * zoom if scale > 1.2 else 18 * zoom))
+        pill_h = max(14, int((22 if scale > 1.2 else 18) * min(1.2, max(0.75, zoom))))
 
         if is_maxed:
             if is_node_toggled_off:
