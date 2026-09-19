@@ -269,7 +269,7 @@ def get_all_81_nodes():
             ],
             "stat_cur": lambda lvl: f"+{lvl * 2}% к шансу крита Магической башни" if lvl > 0 else "Базовый шанс крита",
             "stat_nxt": lambda lvl: f"+{(lvl + 1) * 2}% к шансу крита Магической башни",
-            "icon_key": "target",
+            "icon_key": "magic_tower",
         },
         "rock_tower": {
             "title": "Огненная Башня",
@@ -361,7 +361,7 @@ def get_all_81_nodes():
             ],
             "stat_cur": lambda lvl: f"+{lvl * 0.15:.2f}с времени замедления" if lvl > 0 else "Базовая длительность заморозки",
             "stat_nxt": lambda lvl: f"+{(lvl + 1) * 0.15:.2f}с времени замедления",
-            "icon_key": "frost",
+            "icon_key": "freeze_tower",
         },
         "farm_tower": {
             "title": "Башня-Ферма",
@@ -545,7 +545,7 @@ def get_all_81_nodes():
             ],
             "stat_cur": lambda lvl: f"+{lvl * 25} px к дальности флага палатки" if lvl > 0 else "Базовый радиус флага",
             "stat_nxt": lambda lvl: f"+{(lvl + 1) * 25} px к дальности флага палатки",
-            "icon_key": "rally",
+            "icon_key": "tent_tower",
         },
         "tesla_tower": {
             "title": "Башня Тесла",
@@ -656,7 +656,7 @@ def get_all_81_nodes():
             ],
             "stat_cur": lambda lvl: f"+{lvl * 20}% к урону Обелиска Солнца" if lvl > 0 else "Базовый урон луча",
             "stat_nxt": lambda lvl: f"+{(lvl + 1) * 20}% к урону Обелиска Солнца",
-            "icon_key": "solar_power",
+            "icon_key": "sun_tower",
         },
         "solar_trail": {
             "title": "Солнечный След",
@@ -674,7 +674,7 @@ def get_all_81_nodes():
             ],
             "stat_cur": lambda lvl: f"Взрыв при гибели: {lvl * 2.5:.1f}% max HP цели" if lvl > 0 else "Без солярного взрыва",
             "stat_nxt": lambda lvl: f"Взрыв при гибели: {(lvl + 1) * 2.5:.1f}% max HP цели",
-            "icon_key": "solar_trail",
+            "icon_key": "sun_tower",
         },
         "prism_beams": {
             "title": "Солнечная Призма",
@@ -692,7 +692,7 @@ def get_all_81_nodes():
             ],
             "stat_cur": lambda lvl: f"Число лучей обелиска: {1 + lvl}" if lvl > 0 else "1 сфокусированный луч",
             "stat_nxt": lambda lvl: f"Число лучей обелиска: {2 + lvl}",
-            "icon_key": "prism_beams",
+            "icon_key": "sun_tower",
         },
         "beam_limit": {
             "title": "Предел Луча",
@@ -710,7 +710,7 @@ def get_all_81_nodes():
             ],
             "stat_cur": lambda lvl: f"Потолок разогрева луча: x{2.5 + lvl * 0.5:.1f}" if lvl > 0 else "Базовый предел x2.5",
             "stat_nxt": lambda lvl: f"Потолок разогрева луча: x{2.5 + (lvl + 1) * 0.5:.1f}",
-            "icon_key": "beam_limit",
+            "icon_key": "sun_tower",
         },
         "speed_limit": {
             "title": "Ускорение Времени",
@@ -834,12 +834,12 @@ def get_all_81_nodes():
             "costs": [2, 4, 7, 11, 16, 22, 30, 40, 52, 66],
             "requires": {'base_health': 2},
             "desc": [
-            "Мастерство критических ударов.",
-            "+1.5% к шансу крита и +0.15х",
-            "к урону крита всех башен за уровень!"
+            "Наделяет атаки башен шансом крита.",
+            "+1.5% шанс нанести сокрушительный удар (x2.0 урон)",
+            "для абсолютно всех типов башен!"
             ],
-            "stat_cur": lambda lvl: f"+{lvl * 1.5:.1f}% шанс крита, +{lvl * 0.15:.2f}x урон крита" if lvl > 0 else "Базовый критический урон (x2.0)",
-            "stat_nxt": lambda lvl: f"+{(lvl + 1) * 1.5:.1f}% шанс крита, +{(lvl + 1) * 0.15:.2f}x урон крита",
+            "stat_cur": lambda lvl: f"Шанс крита: {lvl * 1.5:g}% (урон x2.0)" if lvl > 0 else "Без критов",
+            "stat_nxt": lambda lvl: f"Шанс крита: {(lvl + 1) * 1.5:g}% (урон x2.0)",
             "icon_key": "sword",
         },
         "thorn_armor": {
@@ -970,7 +970,7 @@ def get_all_81_nodes():
             ],
             "stat_cur": lambda lvl: f"+{lvl}% урона за тир бестиария цели" if lvl > 0 else "Базовый урон бестиария",
             "stat_nxt": lambda lvl: f"+{lvl + 1}% урона за тир бестиария цели",
-            "icon_key": "bestiary_damage",
+            "icon_key": "sword",
         },
         "start_cacti": {
             "title": "Стартовая Казна",
@@ -1099,7 +1099,7 @@ def get_all_81_nodes():
             ],
             "stat_cur": lambda lvl: f"+{lvl}% кактусов за тир бестиария моба" if lvl > 0 else "Базовые награды",
             "stat_nxt": lambda lvl: f"+{lvl + 1}% кактусов за тир бестиария моба",
-            "icon_key": "bestiary_cacti",
+            "icon_key": "bounty",
         },
         "bestiary_stars": {
             "title": "Звёздный Трофей",
@@ -1117,7 +1117,7 @@ def get_all_81_nodes():
             ],
             "stat_cur": lambda lvl: f"+{lvl}% к шансу звёзд за тир бестиария" if lvl > 0 else "Базовый шанс трофея",
             "stat_nxt": lambda lvl: f"+{lvl + 1}% к шансу звёзд за тир бестиария",
-            "icon_key": "bestiary_stars",
+            "icon_key": "stellar",
         },
         "greenhouse_unlock": {
             "title": "Оранжерея Оазиса",
@@ -1414,7 +1414,7 @@ def get_all_81_nodes():
             ],
             "stat_cur": lambda lvl: "Тёмный Космос открыт, Тёмные кактусы активны" if lvl > 0 else "Тёмный Космос закрыт",
             "stat_nxt": lambda lvl: "Открыть ветку Тёмного Космоса",
-            "icon_key": "astral_beacon",
+            "icon_key": "dark_cactus",
         },
         "dark_aegis": {
             "title": "Тёмный Эгис",
@@ -1454,7 +1454,7 @@ def get_all_81_nodes():
             ],
             "stat_cur": lambda lvl: f"Метеориты чаще на +{lvl * 20}%, +{lvl} зв. кактус" if lvl > 0 else "Стандартный космос",
             "stat_nxt": lambda lvl: f"Метеориты чаще на +{(lvl + 1) * 20}%, +{lvl + 1} зв. кактус",
-            "icon_key": "gravity_well",
+            "icon_key": "meteor",
         },
         "orbital_strike": {
             "title": "Орбитальный Удар",
@@ -1494,7 +1494,7 @@ def get_all_81_nodes():
             ],
             "stat_cur": lambda lvl: f"+{lvl * 5} HP к базе оазиса" if lvl > 0 else "Базовое здоровье",
             "stat_nxt": lambda lvl: f"+{(lvl + 1) * 5} HP к базе оазиса",
-            "icon_key": "dark_heart",
+            "icon_key": "health",
         },
         "cactus_drone": {
             "title": "Дрон-Кактус",
@@ -1614,7 +1614,7 @@ def get_all_81_nodes():
             ],
             "stat_cur": lambda lvl: f"Сингулярность {1 + lvl}с (стягивание и 60% мороз)" if lvl > 0 else "Без чёрной дыры",
             "stat_nxt": lambda lvl: f"Сингулярность {2 + lvl}с (стягивание и 60% мороз)",
-            "icon_key": "event_horizon",
+            "icon_key": "dark_cactus",
         },
         "quantum_harvester": {
             "title": "Квантовый Жнец",

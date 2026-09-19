@@ -1670,6 +1670,7 @@ _TREE_ICON_FILES = {
     "tent_tower": "tent_tower.png",
     "tesla_tower": "tesla_tower.png",
     "sun_tower": "sun_tower.png",
+    "stellar": "Stellar_Cactus.png",
     "wave": "wave_upg_icon.png",
     "lock": "lock_icon.png",
     "shovel": "shovel_icon.png",
@@ -1677,7 +1678,8 @@ _TREE_ICON_FILES = {
 
 _PIXEL_ART_KEYS = {
     "sword", "soldier", "crown", "speed", "wave", "start_lvl",
-    "start_cacti", "bounty", "damage", "health", "magnet", "dark_cactus", "drone", "lock", "shovel"
+    "start_cacti", "bounty", "damage", "health", "magnet", "dark_cactus", "drone", "lock", "shovel",
+    "sun_tower", "magic_tower", "freeze_tower", "rock_tower", "tesla_tower", "tent_tower", "farm", "stellar"
 }
 
 _tree_icon_cache = {}
@@ -1748,6 +1750,7 @@ def get_node_texture(icon_key):
         "dark_cactus": dark_cactus_img,
         "drone": cactus_img_s,
         "meteor": meteorite_img,
+        "stellar": stellar_cactus_img,
         "start_lvl": start_lvl_icon,
         "freeze_tower": freeze_tower_img,
         "tent_tower": tent_tower_img,
