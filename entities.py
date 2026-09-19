@@ -829,9 +829,9 @@ class Tower:
                 "max_beams": max_beams,
                 "dps": round((dmg_per_tick * 10.0) * ((0.5 + max_mult) / 2.0) * max_beams, 1),
                 "upgrade_cost": cost,
-                "special_name": "Потолок Лучей",
-                "special_val": f"{beam_lbl} (x{max_mult:.1f})",
-                "passive_desc": f"Солярный луч: {beam_lbl}, урон растёт до x{max_mult:.1f}" + (f", взрыв {solar_trail_lvl*2.5:.1f}% HP" if solar_trail_lvl > 0 else "")
+                "special_name": "Потолок Разгона",
+                "special_val": f"x{max_mult:.1f} ({beam_lbl})",
+                "passive_desc": f"Солярный луч: {beam_lbl}, урон растёт до x{max_mult:.1f} (зарядка {ramp_time:.2f}с/x)" + (f", взрыв {solar_trail_lvl*2.5:.1f}% HP" if solar_trail_lvl > 0 else "")
             }
         return {}
 
@@ -922,7 +922,9 @@ class Tower:
             assigned_targets = set()
             for b in self.beams:
                 tgt = b.get("target")
-                if tgt and getattr(tgt, "active", False) and getattr(tgt, "health", 0) > 0:
+                tgt_hp = getattr(tgt, "health", getattr(tgt, "hp", 0))
+                tgt_alive = tgt and getattr(tgt, "active", False) and (tgt_hp > 0)
+                if tgt_alive:
                     d = math.hypot(self.x - tgt.x, self.y - tgt.y)
                     max_d = self.range * 1.25 if tgt == active_meteorite else self.range
                     if d <= max_d:
@@ -930,8 +932,9 @@ class Tower:
                         assigned_targets.add(tgt)
             self.beams = valid_beams[:max_beams]
 
-            # 2. Если метеорит активен и выбран, обязательно направляем на него один из лучей
-            if active_meteorite and active_meteorite.active and active_meteorite.targeted:
+            # 2. Если метеорит активен и выбран игроком, обязательно направляем на него один из лучей
+            can_target_meteor = active_meteorite and getattr(active_meteorite, "active", False) and (getattr(active_meteorite, "hp", 0) > 0)
+            if can_target_meteor and active_meteorite.targeted:
                 d_met = math.hypot(self.x - active_meteorite.x, self.y - active_meteorite.y)
                 if d_met <= self.range * 1.25 and active_meteorite not in assigned_targets:
                     new_b = {
@@ -980,6 +983,19 @@ class Tower:
                         })
                         assigned_targets.add(candidate)
 
+                # Если остались свободные лучи и врагов в радиусе нет — направляем оставшийся луч на метеорит!
+                if len(self.beams) < max_beams and can_target_meteor and active_meteorite not in assigned_targets:
+                    d_met = math.hypot(self.x - active_meteorite.x, self.y - active_meteorite.y)
+                    if d_met <= self.range * 1.25:
+                        self.beams.append({
+                            "target": active_meteorite,
+                            "multiplier": 0.5,
+                            "tick_timer": 0.0,
+                            "accum_dmg": 0.0,
+                            "float_timer": 0.0
+                        })
+                        assigned_targets.add(active_meteorite)
+
             # 4. Обновляем урон и плавающий текст по каждому лучу
             active_beams_after_tick = []
             for b in self.beams:
@@ -991,12 +1007,13 @@ class Tower:
                 if b["tick_timer"] >= 0.10:
                     b["tick_timer"] -= 0.10
                     tick_dmg = round(self.damage * b["multiplier"], 2)
-                    tgt_max_hp = getattr(tgt, "max_health", tgt.health)
+                    tgt_max_hp = getattr(tgt, "max_health", getattr(tgt, "health", getattr(tgt, "hp", 1.0)))
                     tgt.take_damage(tick_dmg, damage_type="sun")
                     self.record_damage(tick_dmg)
                     b["accum_dmg"] += tick_dmg
 
-                target_dead = (not tgt.active) or (getattr(tgt, "health", 0) <= 0)
+                tgt_cur_hp = getattr(tgt, "health", getattr(tgt, "hp", 0))
+                target_dead = (not getattr(tgt, "active", False)) or (tgt_cur_hp <= 0)
                 if b["float_timer"] >= 0.20 or target_dead:
                     if effects is not None and b["accum_dmg"] > 0:
                         if b["multiplier"] >= 3.0:
@@ -1029,27 +1046,43 @@ class Tower:
             self.current_beam_target = self.beams[0]["target"] if self.beams else None
             return 0
 
-        # Метеорит: если игрок выбрал метеорит целью, башни в радиусе range * 1.25 атакуют его!
-        if active_meteorite and active_meteorite.active and active_meteorite.targeted and self.type != "tent":
+        # Метеорит: атака метеорита башнями
+        # 1) Если игрок выбрал метеорит целью — атакуем в приоритете (радиус x1.25)
+        # 2) Если нет врагов в радиусе атаки башни — башня автоматически атакует метеорит!
+        has_enemies_in_range = False
+        if enemies:
+            for enemy in enemies:
+                if enemy.active and math.hypot(self.x - enemy.x, self.y - enemy.y) <= self.range:
+                    has_enemies_in_range = True
+                    break
+
+        meteor_in_reach = active_meteorite and getattr(active_meteorite, "active", False) and (getattr(active_meteorite, "hp", 0) > 0)
+        should_shoot_meteor = False
+        if meteor_in_reach and self.type != "tent":
             d_met = math.hypot(self.x - active_meteorite.x, self.y - active_meteorite.y)
-            if d_met <= self.range * 1.25:
-                if self.timer >= self.cooldown:
-                    self.timer = 0.0
-                    actual_damage = round(self.damage, 1)
-                    if self.type == "magic":
-                        projectiles.append(MagicBullet(self.x, self.y - 18, active_meteorite, actual_damage, self))
-                    elif self.type == "rock":
-                        projectiles.append(RockBullet(self.x, self.y, active_meteorite.x, active_meteorite.y, actual_damage, self.splash_radius, self))
-                    elif self.type == "freeze":
-                        projectiles.append(FrostBullet(self.x, self.y - 15, active_meteorite, actual_damage, self.range, self.slow_ratio, self.slow_duration, self))
-                    elif self.type == "tesla":
-                        active_meteorite.take_damage(actual_damage, damage_type="lightning")
-                        self.record_damage(actual_damage)
-                        if effects is not None:
-                            effects.append(FloatingText(active_meteorite.x, active_meteorite.y - 12, f"-{actual_damage:g}", (90, 225, 255)))
-                            effects.append(LightningEffect([(self.x, self.y - 18), (active_meteorite.x, active_meteorite.y)]))
-                        sfx_tesla.play()
-                return 0
+            if active_meteorite.targeted and d_met <= self.range * 1.25:
+                should_shoot_meteor = True
+            elif not has_enemies_in_range and d_met <= self.range * 1.25:
+                should_shoot_meteor = True
+
+        if should_shoot_meteor:
+            if self.timer >= self.cooldown:
+                self.timer = 0.0
+                actual_damage = round(self.damage, 1)
+                if self.type == "magic":
+                    projectiles.append(MagicBullet(self.x, self.y - 18, active_meteorite, actual_damage, self))
+                elif self.type == "rock":
+                    projectiles.append(RockBullet(self.x, self.y, active_meteorite.x, active_meteorite.y, actual_damage, self.splash_radius, self))
+                elif self.type == "freeze":
+                    projectiles.append(FrostBullet(self.x, self.y - 15, active_meteorite, actual_damage, self.range, self.slow_ratio, self.slow_duration, self))
+                elif self.type == "tesla":
+                    active_meteorite.take_damage(actual_damage, damage_type="lightning")
+                    self.record_damage(actual_damage)
+                    if effects is not None:
+                        effects.append(FloatingText(active_meteorite.x, active_meteorite.y - 12, f"-{actual_damage:g}", (90, 225, 255)))
+                        effects.append(LightningEffect([(self.x, self.y - 18), (active_meteorite.x, active_meteorite.y)]))
+                    sfx_tesla.play()
+            return 0
 
         if self.type == "tent":
             if self.rally_point is None:
@@ -1231,16 +1264,6 @@ class Tower:
             pygame.draw.circle(surface, ocol, (ox, oy), 5)
             pygame.draw.circle(surface, (255, 255, 255), (ox - 1, oy - 1), 2)
 
-        # Бейдж уровня башни (кэшируем текст уровня)
-        lvl_badge = pygame.Rect(self.x - 16, self.y - 34, 32, 16)
-        pygame.draw.rect(surface, (20, 30, 20), lvl_badge, border_radius=4)
-        pygame.draw.rect(surface, GOLD if self.level >= self.max_level else GREEN, lvl_badge, width=1, border_radius=4)
-        if getattr(self, "_cached_lvl_key", None) != self.level or not hasattr(self, "_cached_lvl_text"):
-            self._cached_lvl_key = self.level
-            self._cached_lvl_text = tiny_font.render(f"L{self.level}", True, WHITE)
-        upg_text = self._cached_lvl_text
-        surface.blit(upg_text, (lvl_badge.centerx - upg_text.get_width() // 2, lvl_badge.centery - upg_text.get_height() // 2))
-
         if self.type == "sun":
             sun_y = self.y - 28 + math.sin(ticks * 0.005) * 2
             s_ang = ticks * 0.002
@@ -1274,6 +1297,17 @@ class Tower:
                     pygame.draw.line(surface, WHITE, (sx, sy), (tx, ty), 1)
                     pygame.draw.circle(surface, (255, 210, 60), (tx, ty), max(4, int(3 + b_mult * 1.5)))
                     pygame.draw.circle(surface, WHITE, (tx, ty), max(2, int(1 + b_mult)))
+
+        # Бейдж уровня башни (кэшируем текст уровня, для Солнца поднимаем выше сияния)
+        lvl_y = self.y - 50 if self.type == "sun" else self.y - 34
+        lvl_badge = pygame.Rect(self.x - 16, lvl_y, 32, 16)
+        pygame.draw.rect(surface, (20, 30, 20), lvl_badge, border_radius=4)
+        pygame.draw.rect(surface, GOLD if self.level >= self.max_level else GREEN, lvl_badge, width=1, border_radius=4)
+        if getattr(self, "_cached_lvl_key", None) != self.level or not hasattr(self, "_cached_lvl_text"):
+            self._cached_lvl_key = self.level
+            self._cached_lvl_text = tiny_font.render(f"L{self.level}", True, WHITE)
+        upg_text = self._cached_lvl_text
+        surface.blit(upg_text, (lvl_badge.centerx - upg_text.get_width() // 2, lvl_badge.centery - upg_text.get_height() // 2))
 
         if self.type == "tent":
             for s in self.soldiers:
@@ -1415,7 +1449,7 @@ class RockBullet:
             meteor_lvl = savedata.get("Upgrades", {}).get("meteor_strike", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
 
             # Урон по метеориту, если он в зоне сплэша
-            if active_meteorite and active_meteorite.active and active_meteorite.targeted:
+            if active_meteorite and getattr(active_meteorite, "active", False) and (getattr(active_meteorite, "hp", 0) > 0):
                 mdist = math.hypot(self.x - active_meteorite.x, self.y - active_meteorite.y)
                 if mdist <= self.splash_radius:
                     actual_dmg = round(self.damage, 1)
@@ -1496,7 +1530,7 @@ class FrostBullet:
         step = self.speed * dt
 
         if dist <= step or dist < 10:
-            if active_meteorite and active_meteorite.active and active_meteorite.targeted:
+            if active_meteorite and getattr(active_meteorite, "active", False) and (getattr(active_meteorite, "hp", 0) > 0):
                 mdist = math.hypot(self.x - active_meteorite.x, self.y - active_meteorite.y)
                 if mdist <= self.splash_radius:
                     active_meteorite.take_damage(self.damage, damage_type="freeze")
@@ -1739,8 +1773,30 @@ class AstralMeteorite:
         self.pulse = 0.0
         self.fall_anim = 1.0
 
-    def take_damage(self, amount, damage_type="normal", effects=None):
+    @property
+    def health(self):
+        return self.hp
+
+    @health.setter
+    def health(self, val):
+        self.hp = val
+
+    @property
+    def max_health(self):
+        return self.max_hp
+
+    @max_health.setter
+    def max_health(self, val):
+        self.max_hp = val
+
+    def take_damage(self, amount, damage_type="normal", *args, **kwargs):
         self.hp -= amount
+        effects = kwargs.get("effects")
+        if effects is None and len(args) > 0 and isinstance(args[0], list):
+            effects = args[0]
+        elif isinstance(damage_type, list):
+            effects = damage_type
+            damage_type = "normal"
         if effects is not None:
             effects.append(FloatingText(self.x + random.uniform(-10, 10), self.y - 15, f"-{int(amount)}", (235, 100, 255)))
             effects.append(RingEffect(self.x, self.y, 35, (190, 60, 255)))

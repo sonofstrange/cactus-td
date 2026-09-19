@@ -193,6 +193,9 @@ def run_game():
     last_sell_rect = None
     last_max_rect = None
     upgrade_mode = False
+    DOCK_BTN_W = 114
+    DOCK_BTN_GAP = 9
+    DOCK_START_X = 16
     is_paused = False
     pause_frozen_frame = None
     pause_click_rects = {}
@@ -3115,48 +3118,32 @@ def run_game():
                             rally_targeting_tent._rally_selecting = False
                             rally_targeting_tent = None
 
-                    # Клик по кнопкам дока башен
-                    b1_rect = pygame.Rect(18, SCREEN_HEIGHT - 70, 136, 58)
-                    b2_rect = pygame.Rect(166, SCREEN_HEIGHT - 70, 136, 58)
-                    b3_rect = pygame.Rect(314, SCREEN_HEIGHT - 70, 136, 58)
-                    b4_rect = pygame.Rect(462, SCREEN_HEIGHT - 70, 136, 58)
-                    b5_rect = pygame.Rect(610, SCREEN_HEIGHT - 70, 136, 58)
-                    b6_rect = pygame.Rect(758, SCREEN_HEIGHT - 70, 136, 58)
-                    b_upg_rect = pygame.Rect(906, SCREEN_HEIGHT - 70, 136, 58)
-
-                    if b1_rect.collidepoint(mouse_pos) and savedata["Upgrades"].get("magic_tower", 1) > 0:
-                        selected_tower_type = "magic"
-                        upgrade_mode = False
-                        inspected_tower = None
-                        continue
-                    elif b2_rect.collidepoint(mouse_pos) and savedata["Upgrades"].get("rock_tower", 0) > 0:
-                        selected_tower_type = "rock"
-                        upgrade_mode = False
-                        inspected_tower = None
-                        continue
-                    elif b3_rect.collidepoint(mouse_pos) and savedata["Upgrades"].get("freeze_tower", 0) > 0:
-                        selected_tower_type = "freeze"
-                        upgrade_mode = False
-                        inspected_tower = None
-                        continue
-                    elif b4_rect.collidepoint(mouse_pos) and savedata["Upgrades"].get("tent_tower", 0) > 0:
-                        selected_tower_type = "tent"
-                        upgrade_mode = False
-                        inspected_tower = None
-                        continue
-                    elif b5_rect.collidepoint(mouse_pos) and savedata["Upgrades"].get("tesla_tower", 0) > 0:
-                        selected_tower_type = "tesla"
-                        upgrade_mode = False
-                        inspected_tower = None
-                        continue
-                    elif b6_rect.collidepoint(mouse_pos) and savedata["Upgrades"].get("farm_tower", 0) > 0:
-                        selected_tower_type = "farm"
-                        upgrade_mode = False
-                        inspected_tower = None
-                        continue
-                    elif b_upg_rect.collidepoint(mouse_pos):
-                        upgrade_mode = not upgrade_mode
-                        selected_tower_type = None
+                    # Клик по кнопкам дока башен (7 башен + 1 кнопка прокачки)
+                    dock_defs = [
+                        ("magic", "magic_tower", 1),
+                        ("rock", "rock_tower", 0),
+                        ("freeze", "freeze_tower", 0),
+                        ("tent", "tent_tower", 0),
+                        ("tesla", "tesla_tower", 0),
+                        ("farm", "farm_tower", 0),
+                        ("sun", "sun_tower", 0),
+                        ("upgrade", None, 1),
+                    ]
+                    dock_clicked = False
+                    for b_idx, (b_act, b_upg, b_def) in enumerate(dock_defs):
+                        b_rect = pygame.Rect(DOCK_START_X + b_idx * (DOCK_BTN_W + DOCK_BTN_GAP), SCREEN_HEIGHT - 70, DOCK_BTN_W, 58)
+                        if b_rect.collidepoint(mouse_pos):
+                            dock_clicked = True
+                            if b_act == "upgrade":
+                                upgrade_mode = not upgrade_mode
+                                selected_tower_type = None
+                            else:
+                                if savedata["Upgrades"].get(b_upg, b_def) > 0:
+                                    selected_tower_type = b_act
+                                    upgrade_mode = False
+                                    inspected_tower = None
+                            break
+                    if dock_clicked:
                         continue
 
                     # Клик по плашке ожидания волны — мгновенный старт волны
@@ -4239,9 +4226,9 @@ def run_game():
                 has_farm = savedata["Upgrades"].get("farm_tower", 0) > 0
                 has_sun = savedata["Upgrades"].get("sun_tower", 0) > 0
 
-                btn_w = 120
-                btn_gap = 12
-                start_x = 18
+                btn_w = DOCK_BTN_W
+                btn_gap = DOCK_BTN_GAP
+                start_x = DOCK_START_X
                 buttons_data = [
                     ("1", "Маг", get_tower_build_cost("magic", towers, savedata=savedata, game_map=game_map, session_towers_bought=session_towers_bought), magic_tower_img, (start_x + 0 * (btn_w + btn_gap), SCREEN_HEIGHT - 70, btn_w, 58), "magic", has_magic),
                     ("2", "Огонь", get_tower_build_cost("rock", towers, savedata=savedata, game_map=game_map, session_towers_bought=session_towers_bought), rock_tower_img, (start_x + 1 * (btn_w + btn_gap), SCREEN_HEIGHT - 70, btn_w, 58), "rock", has_rock),

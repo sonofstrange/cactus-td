@@ -3273,7 +3273,10 @@ def _get_tower_inspect_static_surf(tower, upgrade_mode):
             static_surf.blit(r2_a, (12, y_off))
             y_off += row_step
 
-            r3_lbl = small_font.render(f"Кулдаун атаки: {cur['cooldown']:.2f} сек", True, (220, 230, 240))
+            if tower.type == "sun":
+                r3_lbl = small_font.render(f"Скорость зарядки: {cur.get('ramp_time', 1.0):.2f}с / +1.0x", True, (255, 215, 90))
+            else:
+                r3_lbl = small_font.render(f"Кулдаун атаки: {cur['cooldown']:.2f} сек", True, (220, 230, 240))
             static_surf.blit(r3_lbl, (12, y_off))
             y_off += row_step
 
@@ -3386,10 +3389,16 @@ def _get_tower_inspect_static_surf(tower, upgrade_mode):
             static_surf.blit(n_rng, (12 + c_rng.get_width(), y_off))
             y_off += row_step
 
-            d_cd = round(nxt['cooldown'] - cur['cooldown'], 2)
-            d_cd_str = f"({d_cd:+.2f}с)" if abs(d_cd) > 0.001 else ""
-            c_cd = small_font.render(f"Кулдаун: {cur['cooldown']:.2f}с -> ", True, (220, 230, 240))
-            n_cd = small_font.render(f"{nxt['cooldown']:.2f}с {d_cd_str}", True, GREEN if d_cd < 0 else WHITE)
+            if tower.type == "sun":
+                d_ramp = round(nxt.get('ramp_time', 1.0) - cur.get('ramp_time', 1.0), 2)
+                d_ramp_str = f"({d_ramp:+.2f}с)" if abs(d_ramp) > 0.001 else ""
+                c_cd = small_font.render(f"Зарядка: {cur.get('ramp_time', 1.0):.2f}с -> ", True, (255, 215, 90))
+                n_cd = small_font.render(f"{nxt.get('ramp_time', 1.0):.2f}с {d_ramp_str}", True, GREEN if d_ramp < 0 else WHITE)
+            else:
+                d_cd = round(nxt['cooldown'] - cur['cooldown'], 2)
+                d_cd_str = f"({d_cd:+.2f}с)" if abs(d_cd) > 0.001 else ""
+                c_cd = small_font.render(f"Кулдаун: {cur['cooldown']:.2f}с -> ", True, (220, 230, 240))
+                n_cd = small_font.render(f"{nxt['cooldown']:.2f}с {d_cd_str}", True, GREEN if d_cd < 0 else WHITE)
             static_surf.blit(c_cd, (12, y_off))
             static_surf.blit(n_cd, (12 + c_cd.get_width(), y_off))
             y_off += row_step
@@ -3423,8 +3432,11 @@ def _get_tower_inspect_static_surf(tower, upgrade_mode):
                     s_cur_str = f"{cur.get('chains', 0)} цели"
                     s_nxt_str = f"{nxt.get('chains', 0)} цели (макс.)"
             elif tower.type == "sun":
-                s_cur_str = f"x{cur.get('max_multiplier', 2.5):.1f} ({cur.get('ramp_time', 1.0):.2f}с/x)"
-                s_nxt_str = f"x{nxt.get('max_multiplier', 2.5):.1f} ({nxt.get('ramp_time', 1.0):.2f}с/x)"
+                c_beams = cur.get('max_beams', 1)
+                n_beams = nxt.get('max_beams', 1)
+                b_diff = f" (+{n_beams - c_beams})" if n_beams > c_beams else ""
+                s_cur_str = f"x{cur.get('max_multiplier', 2.5):.1f} ({c_beams} л.)"
+                s_nxt_str = f"x{nxt.get('max_multiplier', 2.5):.1f} ({n_beams} л.{b_diff})"
             else:
                 s_cur_str = "-"
                 s_nxt_str = "-"
