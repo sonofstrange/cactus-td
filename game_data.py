@@ -1583,6 +1583,9 @@ def load_data(save_id=None):
             data["MasteryClaimed"] = {}
         if "BestiaryDiscovered" not in data:
             data["BestiaryDiscovered"] = []
+        # Автоматическое открытие 4-го босса (4000), если игрок уже достигал 100-й волны или побеждал его
+        if (max(data.get("LevelsRecords", [0]) or [0]) >= 100 or int(data.get("BestiaryKills", {}).get("4000", 0)) > 0) and 4000 not in data["BestiaryDiscovered"]:
+            data["BestiaryDiscovered"].append(4000)
         if "BestiaryClaimed" not in data:
             data["BestiaryClaimed"] = {}
         if "BestiaryKills" not in data:

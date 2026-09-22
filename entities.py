@@ -597,8 +597,15 @@ class Tower:
             return [(-12, 0), (12, 0)]
         elif count == 3:
             return [(0, -12), (-12, 10), (12, 10)]
-        else:
+        elif count == 4:
             return [(0, -14), (0, 14), (-14, 0), (14, 0)]
+        else:
+            offsets = []
+            radius = 16.0
+            for i in range(count):
+                ang = (2 * math.pi / count) * i
+                offsets.append((int(round(math.cos(ang) * radius)), int(round(math.sin(ang) * radius))))
+            return offsets
 
     def _reposition_soldiers(self):
         if not self.rally_point:
@@ -643,7 +650,8 @@ class Tower:
         if self.type == "magic":
             magic_focus_lvl = savedata.get("Upgrades", {}).get("magic_focus", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
             magic_power_lvl = savedata.get("Upgrades", {}).get("magic_power", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
-            rng = int((145 + min(lvl, 5) * 8 + max(0, lvl - 5) * 4 + sniper_lvl * 8) * rng_relic_mult)
+            rng_lvl = min(lvl, 5) * 6.0 + min(max(0, lvl - 5), 7) * 3.0 + max(0, lvl - 12) * 1.5
+            rng = int((145 + rng_lvl + sniper_lvl * 8) * rng_relic_mult)
             dmg_per_lvl = 0.75 + magic_power_lvl * 0.10
             dmg = round((1.0 + dmg_per_lvl * lvl) * mult * (1.0 + magic_focus_lvl * 0.12 + gh_buffs.get("void_dmg_mult", 0.0)), 1)
             raw_cd = max(0.35, 0.95 - lvl * 0.038)
@@ -668,9 +676,11 @@ class Tower:
             }
         elif self.type == "rock":
             inferno_lvl = savedata.get("Upgrades", {}).get("inferno_mastery", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
-            rng = int((135 + 5 * lvl + sniper_lvl * 8) * rng_relic_mult)
-            dmg = round((1.8 + 0.85 * lvl) * mult * (1.0 + inferno_lvl * 0.10 + gh_buffs.get("fire_dmg_mult", 0.0)) * (1.0 + relic_buffs.get("rock_damage_mult", 0.0)), 1)
-            splash = int((50 + 3 * lvl + inferno_lvl * 6) * (1.0 + relic_buffs.get("rock_splash_mult", 0.0)))
+            rng_lvl = min(lvl, 5) * 5.0 + min(max(0, lvl - 5), 7) * 2.8 + max(0, lvl - 12) * 1.4
+            rng = int((135 + rng_lvl + sniper_lvl * 8) * rng_relic_mult)
+            dmg = round((1.5 + 0.62 * lvl) * mult * (1.0 + inferno_lvl * 0.10 + gh_buffs.get("fire_dmg_mult", 0.0)) * (1.0 + relic_buffs.get("rock_damage_mult", 0.0)), 1)
+            splash_lvl = min(lvl, 5) * 2.2 + min(max(0, lvl - 5), 7) * 1.4 + max(0, lvl - 12) * 0.7
+            splash = int((44 + splash_lvl + inferno_lvl * 4) * (1.0 + relic_buffs.get("rock_splash_mult", 0.0)))
             if g_map == 2:  # Перекрёстки: +15% сплэш
                 splash = int(splash * 1.15)
             elif g_map == 7:  # Петля: +20% сплэш
@@ -694,7 +704,8 @@ class Tower:
             }
         elif self.type == "freeze":
             frost_lvl = savedata.get("Upgrades", {}).get("frost_nova", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
-            rng = int((135 + 5 * lvl + sniper_lvl * 8 + blizzard_lvl * 18) * rng_relic_mult)
+            rng_lvl = min(lvl, 5) * 5.0 + min(max(0, lvl - 5), 7) * 2.8 + max(0, lvl - 12) * 1.4
+            rng = int((135 + rng_lvl + sniper_lvl * 8 + blizzard_lvl * 18) * rng_relic_mult)
             if g_map == 6:  # Лабиринт: радиус заморозки +20%
                 rng = int(rng * 1.20)
             dmg = round((0.35 + 0.16 * lvl) * mult * (1.0 + frost_lvl * 0.20), 1)
@@ -727,10 +738,11 @@ class Tower:
         elif self.type == "tent":
             knight_lvl = savedata.get("Upgrades", {}).get("knight_training", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
             rally_range_lvl = savedata.get("Upgrades", {}).get("rally_range", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
-            rng = int((105 + 6 * lvl + rally_range_lvl * 25) * rng_relic_mult)
-            raw_cd = max(4.0, 8.0 - lvl * 0.22)
-            cd = max(2.8, round(raw_cd / (1.0 + atk_spd_lvl * 0.04 + relic_atk_spd), 2))
-            soldiers = 4 if lvl >= 8 else (3 if lvl >= 4 else 2)
+            rng_lvl = min(lvl, 5) * 5.0 + min(max(0, lvl - 5), 7) * 2.8 + max(0, lvl - 12) * 1.4
+            rng = int((105 + rng_lvl + rally_range_lvl * 25) * rng_relic_mult)
+            raw_cd = max(6.0, 9.5 - lvl * 0.16)
+            cd = max(4.5, round(raw_cd / (1.0 + atk_spd_lvl * 0.03 + relic_atk_spd * 0.5), 2))
+            soldiers = 2 + (lvl // 10)
             soldier_hp = int((28 + lvl * 16 + knight_lvl * 10 + shield_lvl * 30) * (1.0 + gh_buffs.get("soldier_hp_mult", 0.0) + relic_buffs.get("soldier_hp_mult", 0.0)))
             soldier_dmg = round((2.0 + lvl * 0.8) * mult * (1.0 + knight_lvl * 0.15 + gh_buffs.get("soldier_dmg_mult", 0.0)), 1)
             cost = max(5, int((100 * (1.20 ** lvl) + 25 * lvl) * cost_mult))
@@ -738,6 +750,7 @@ class Tower:
             p_desc = f"Орден: -{armor_red}% урона воинам" if armor_red > 0 else "Тактика: удерживают врагов на тропе"
             if shield_lvl > 0:
                 p_desc += f" (Щит +{shield_lvl * 30} HP)"
+            w_lbl = f"{soldiers} воина" if soldiers < 5 else f"{soldiers} воинов"
             return {
                 "damage": soldier_dmg,
                 "range": rng,
@@ -749,12 +762,13 @@ class Tower:
                 "upgrade_cost": cost,
                 "armor_red": armor_red,
                 "special_name": "Гарнизон",
-                "special_val": f"{soldiers} воина ({soldier_hp} HP)",
-                "passive_desc": p_desc
+                "special_val": f"{w_lbl} ({soldier_hp} HP)",
+                "passive_desc": p_desc + ", +1 воин каждые 10 ур."
             }
         elif self.type == "tesla":
             ball_lvl = savedata.get("Upgrades", {}).get("ball_lightning", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
-            rng = int((145 + 5 * lvl + ball_lvl * 18) * rng_relic_mult)
+            rng_lvl = min(lvl, 5) * 5.0 + min(max(0, lvl - 5), 7) * 2.8 + max(0, lvl - 12) * 1.4
+            rng = int((145 + rng_lvl + ball_lvl * 18) * rng_relic_mult)
             if g_map == 4:  # Змейка: Дальность Теслы +10%
                 rng = int(rng * 1.10)
             dmg = round((2.0 + 0.68 * lvl) * mult * (1.0 + ball_lvl * 0.12 + gh_buffs.get("tesla_dmg_mult", 0.0)), 1)
@@ -763,6 +777,8 @@ class Tower:
             overcharge_lvl = savedata.get("Upgrades", {}).get("overcharge", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
             chains = 3 + (lvl // 5) + overcharge_lvl + gh_buffs.get("extra_jumps", 0) + relic_buffs.get("tesla_extra_targets", 0)
             cost = max(5, int((120 * (1.19 ** lvl) + 25 * lvl) * cost_mult))
+            bounces = max(1, chains - 1)
+            b_lbl = f"{bounces} отскок" if bounces % 10 == 1 and bounces % 100 != 11 else (f"{bounces} отскока" if 2 <= bounces % 10 <= 4 and not 12 <= bounces % 100 <= 14 else f"{bounces} отскоков")
             chains_lbl = f"{chains} цели" if 2 <= chains <= 4 else f"{chains} целей"
             return {
                 "damage": dmg,
@@ -771,9 +787,9 @@ class Tower:
                 "cooldown": cd,
                 "dps": dmg / cd,
                 "upgrade_cost": cost,
-                "special_name": "Число целей",
-                "special_val": chains_lbl,
-                "passive_desc": f"Разряд: молния рикошетит по {chains_lbl}"
+                "special_name": "Отскоки цепи",
+                "special_val": f"{b_lbl} ({chains_lbl})",
+                "passive_desc": f"Разряд: {b_lbl} (+1 отскок каждые 5 ур. башни)"
             }
         elif self.type == "farm":
             soil_lvl = savedata.get("Upgrades", {}).get("fertile_soil", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
@@ -812,7 +828,8 @@ class Tower:
             solar_trail_lvl = savedata.get("Upgrades", {}).get("solar_trail", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
             prism_beams_lvl = savedata.get("Upgrades", {}).get("prism_beams", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
 
-            rng = int((140 + 4 * lvl + sniper_lvl * 8) * rng_relic_mult)
+            rng_lvl = min(lvl, 5) * 4.0 + min(max(0, lvl - 5), 7) * 2.2 + max(0, lvl - 12) * 1.0
+            rng = int((140 + rng_lvl + sniper_lvl * 8) * rng_relic_mult)
             # Базово скромный урон (фигня в начале), разгоняемый прокачкой и талантом Солнечная Мощь (+20% за ранг)
             dmg_per_tick = round((0.20 + 0.06 * lvl) * mult * (1.0 + solar_power_lvl * 0.20), 2)
             max_mult = 2.5 + beam_limit_lvl * 0.5
@@ -1099,6 +1116,8 @@ class Tower:
                     self.rally_point = (float(rx), float(ry))
 
             self.soldiers = [s for s in self.soldiers if s.active]
+            if len(self.soldiers) >= self.max_soldiers:
+                self.timer = min(self.timer, self.cooldown)
 
             if self.timer >= self.cooldown and len(self.soldiers) < self.max_soldiers and self.rally_point:
                 self.timer = 0.0
@@ -2149,7 +2168,8 @@ class Enemy:
         if not self.is_demo and 'savedata' in globals() and isinstance(savedata, dict):
             disc = savedata.setdefault("BestiaryDiscovered", [])
             base_id = enemy_type
-            if base_id >= 3000: base_id = 3000
+            if base_id >= 4000: base_id = 4000
+            elif base_id >= 3000: base_id = 3000
             elif base_id >= 2000: base_id = 2000
             elif base_id >= 1000: base_id = 1000
             if base_id not in disc:

@@ -4,6 +4,13 @@ tree_data_v02.py - Tree nodes v0.2 (81 nodes), Metro-routing and 10 Bestiary tie
 """
 import math
 
+def get_greenhouse_cacti_total_levels():
+    try:
+        import game_data
+        return game_data.count_total_greenhouse_cacti_levels()
+    except Exception:
+        return 0
+
 # -------------------------------------------------------------------------
 # BESTIARY 10 TIERS SYSTEM
 # -------------------------------------------------------------------------
@@ -433,8 +440,8 @@ def get_all_81_nodes():
             "Фермы создают Ауру Орошения, ускоряя башни,",
             "и периодически сбрасывают бонусные кактусы!"
             ],
-            "stat_cur": lambda lvl: f"Орошение (R={90 + (lvl - 1) * 40}px + 3px/ур.): +{[0, 8, 14, 20][lvl]}% темпа, полив раз в {[0, 24, 18, 14][lvl]}с" if lvl > 0 else "Пассивный полив закрыт",
-            "stat_nxt": lambda lvl: f"Орошение (R={90 + lvl * 40}px + 3px/ур.): +{[0, 8, 14, 20][lvl + 1]}% темпа, полив раз в {[0, 24, 18, 14][lvl + 1]}с",
+            "stat_cur": lambda lvl: f"Орошение (R={90 + (lvl - 1) * 40}px + 3px/ур.): +{[0, 8, 14, 20][min(lvl, 3)]}% темпа, полив раз в {[0, 24, 18, 14][min(lvl, 3)]}с" if lvl > 0 else "Пассивный полив закрыт",
+            "stat_nxt": lambda lvl: f"Орошение (R={90 + lvl * 40}px + 3px/ур.): +{[0, 8, 14, 20][min(lvl + 1, 3)]}% темпа, полив раз в {[0, 24, 18, 14][min(lvl + 1, 3)]}с",
             "icon_key": "farm",
         },
         "golden_fortune": {
@@ -1169,8 +1176,8 @@ def get_all_81_nodes():
             "+0.2% урона за уровень таланта ВСЕМ башням на",
             "поле боя за каждый уровень кактусов в Оранжерее!"
             ],
-            "stat_cur": lambda lvl: f"+{round(lvl * 0.2, 1)}% урона за ур. кактуса (всего: +{round(lvl * 0.2 * count_total_greenhouse_cacti_levels(), 1)}%)" if lvl > 0 else "Без бонуса компоста",
-            "stat_nxt": lambda lvl: f"+{round((lvl + 1) * 0.2, 1)}% урона за ур. кактуса (будет: +{round((lvl + 1) * 0.2 * count_total_greenhouse_cacti_levels(), 1)}%)",
+            "stat_cur": lambda lvl: f"+{round(lvl * 0.2, 1)}% урона за ур. кактуса (всего: +{round(lvl * 0.2 * get_greenhouse_cacti_total_levels(), 1)}%)" if lvl > 0 else "Без бонуса компоста",
+            "stat_nxt": lambda lvl: f"+{round((lvl + 1) * 0.2, 1)}% урона за ур. кактуса (будет: +{round((lvl + 1) * 0.2 * get_greenhouse_cacti_total_levels(), 1)}%)",
             "icon_key": "farm",
         },
         "sprout_harvest": {
@@ -1188,8 +1195,8 @@ def get_all_81_nodes():
             "с поверженного босса волны за каждый уровень!",
             ],
             "stat_cur": lambda lvl: ("+50% шанс на +1 саженец с босса" if lvl == 1 else ("+1 гарантированный доп. саженец с босса" if lvl == 2 else "+1 гарант. и +50% шанс на 2-й саженец")) if lvl > 0 else "Стандартная награда с боссов",
-            "stat_nxt": lambda lvl: ("+50% шанс на +1 саженец с босса" if lvl == 0 else ("+1 гарантированный доп. саженец с босса" if lvl == 1 else "+1 гарант. и +50% шанс на 2-й саженец")),
-            "icon_key": "bounty",
+            "stat_nxt": lambda lvl: "+50% шанс на +1 саженец с босса" if lvl == 0 else ("+1 гарантированный доп. саженец с босса" if lvl == 1 else "+1 гарант. и +50% шанс на 2-й саженец"),
+            "icon_key": "sprout",
         },
         "flora_resonance": {
             "title": "Резонанс Флоры",
@@ -1198,15 +1205,15 @@ def get_all_81_nodes():
             "x": 1080,
             "y": 1250,
             "max_lvl": 4,
-            "costs": [12, 24, 40, 60],
-            "requires": {'greenhouse_unlock': 'max'},
+            "costs": [15, 30, 60, 100],
+            "requires": {'fertile_compost': 2},
             "desc": [
-            "Симбиоз Оазиса и редкой растительности.",
-            "Усиливает ВСЕ пассивные эффекты кактусов",
-            "в Оранжерее на +10% за каждый ранг!"
+            "Тонкая настройка биоритмов кактусов.",
+            "+10% к силе всех бонусов Оранжереи",
+            "за каждый уровень этого таланта!"
             ],
-            "stat_cur": lambda lvl: f"+{10 * lvl}% к силе всех эффектов Оранжереи" if lvl > 0 else "Базовая сила эффектов Оранжереи",
-            "stat_nxt": lambda lvl: f"+{10 * (lvl + 1)}% к силе всех эффектов Оранжереи",
+            "stat_cur": lambda lvl: f"+{lvl * 10}% к силе всех эффектов сортов Оранжереи" if lvl > 0 else "Базовая сила сортов (100%)",
+            "stat_nxt": lambda lvl: f"+{(lvl + 1) * 10}% к силе всех эффектов сортов Оранжереи",
             "icon_key": "crown",
         },
         "botanic_harvest": {
@@ -1223,8 +1230,8 @@ def get_all_81_nodes():
             "Каждые 20 / 15 / 10 волн дарят +1 росток",
             "случайного кактуса для Оранжереи!"
             ],
-            "stat_cur": lambda lvl: f"+1 росток каждые {[0, 20, 15, 10][lvl]} волн" if lvl > 0 else "Без регулярных всходов",
-            "stat_nxt": lambda lvl: f"+1 росток каждые {[0, 20, 15, 10][lvl + 1]} волн",
+            "stat_cur": lambda lvl: f"+1 росток каждые {[0, 20, 15, 10][min(lvl, 3)]} волн" if lvl > 0 else "Без регулярных всходов",
+            "stat_nxt": lambda lvl: f"+1 росток каждые {[0, 20, 15, 10][min(lvl + 1, 3)]} волн",
             "icon_key": "sprout",
         },
         "archaeology_unlock": {
