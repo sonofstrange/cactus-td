@@ -331,6 +331,10 @@ class Soldier:
     def update(self, dt, enemies, effects=None):
         if not self.active: return
         self.engaged_count = 0
+        if getattr(self, "stun_timer", 0.0) > 0.0:
+            self.stun_timer -= dt
+            return
+
         self.attack_timer += dt
 
         # Плавное перемещение к назначенной точке сбора
@@ -351,7 +355,8 @@ class Soldier:
         closest_enemy = None
         closest_dist = 36.0
         for enemy in enemies:
-            if not enemy.active: continue
+            if not enemy.active or getattr(enemy, "is_flying", False) or getattr(enemy, "is_burrowed", False):
+                continue
             d = math.hypot(self.x - enemy.x, self.y - enemy.y)
             if d < closest_dist:
                 closest_dist = d
@@ -376,6 +381,14 @@ class Soldier:
         elif enemy_type == 8: dmg = 7      # Ледяное желе
         elif enemy_type == 9: dmg = 14     # Слаймовая пирамида (тяжёлое падение)
         elif enemy_type == 10: dmg = 12    # Теневой слайм (теневой удар)
+        elif enemy_type == 11: dmg = 10    # Призматический слайм
+        elif enemy_type == 12: dmg = 14    # Пожиратель маны
+        elif enemy_type == 13: dmg = 16    # Обсидиановый слайм
+        elif enemy_type == 14: dmg = 10    # Паровой слайм
+        elif enemy_type == 15: dmg = 25    # Слайм-камикадзе
+        elif enemy_type == 16: dmg = 15    # Слайм-защитник
+        elif enemy_type == 17: dmg = 8     # Призрачный слайм
+        elif enemy_type == 18: dmg = 12    # Песчаный крот
         elif enemy_type == 777: dmg = 2    # Золотой слайм
         elif enemy_type == 51: dmg = 22    # Элитный страж
         elif enemy_type == 52: dmg = 32    # Элитный крушитель
@@ -425,6 +438,16 @@ class Soldier:
         pygame.draw.rect(surface, BLACK, (int(self.x - bw // 2 - 1), int(self.y - 19 + bob), bw + 2, 5))
         pygame.draw.rect(surface, RED, (int(self.x - bw // 2), int(self.y - 18 + bob), bw, 3))
         pygame.draw.rect(surface, GREEN, (int(self.x - bw // 2), int(self.y - 18 + bob), int(bw * ratio), 3))
+
+        # Визуализация оглушения (звёздочки стана над головой)
+        if getattr(self, "stun_timer", 0.0) > 0.0:
+            t_angle = pygame.time.get_ticks() * 0.008
+            cx, cy = self.x, self.y - 24 + bob
+            for ai in range(3):
+                ang = t_angle + ai * (2.0 * math.pi / 3.0)
+                sx = cx + math.cos(ang) * 9
+                sy = cy + math.sin(ang) * 4
+                pygame.draw.circle(surface, (255, 230, 80), (int(sx), int(sy)), 2)
 
 
 # -------------------------------------------------------------------------
@@ -852,18 +875,7 @@ class Tower:
             }
         return {}
 
-    def _apply_level_stats(self):
-        self.level += 1
-        if 'savedata' in globals() and isinstance(savedata, dict):
-            savedata.setdefault("Stats", {})["max_tower_level_reached"] = max(
-                savedata.get("Stats", {}).get("max_tower_level_reached", 0),
-                self.level
-            )
-            if self.type == "tent":
-                savedata.setdefault("Stats", {})["max_tent_level"] = max(
-                    savedata.get("Stats", {}).get("max_tent_level", 0),
-                    self.level
-                )
+    def recalculate_stats(self):
         stats = self.get_stats_at_level(self.level)
         self.range = stats["range"]
         self.damage = stats["damage"]
@@ -889,6 +901,20 @@ class Tower:
         elif self.type == "sun":
             self.max_multiplier = stats.get("max_multiplier", 2.5)
             self.ramp_time = stats.get("ramp_time", 1.0)
+
+    def _apply_level_stats(self):
+        self.level += 1
+        if 'savedata' in globals() and isinstance(savedata, dict):
+            savedata.setdefault("Stats", {})["max_tower_level_reached"] = max(
+                savedata.get("Stats", {}).get("max_tower_level_reached", 0),
+                self.level
+            )
+            if self.type == "tent":
+                savedata.setdefault("Stats", {})["max_tent_level"] = max(
+                    savedata.get("Stats", {}).get("max_tent_level", 0),
+                    self.level
+                )
+        self.recalculate_stats()
 
     def upgrade(self, current_cacti):
         if self.level < self.max_level and current_cacti >= self.upgrade_cost:
@@ -918,6 +944,13 @@ class Tower:
                             effects.append(DropSpark(self.x, self.y - 10, burst=True))
                         sfx_sprout_pickup.play()
                     return bonus_c
+            return 0
+
+        # Отключение башни при заморозке (способность Слизнебарона)
+        if getattr(self, "freeze_disabled_timer", 0.0) > 0.0:
+            self.freeze_disabled_timer -= dt
+            if self.type == "sun":
+                self.beams = []
             return 0
 
         # Ускорение перезарядки от ауры соседних ферм
@@ -1327,6 +1360,15 @@ class Tower:
             self._cached_lvl_text = tiny_font.render(f"L{self.level}", True, WHITE)
         upg_text = self._cached_lvl_text
         surface.blit(upg_text, (lvl_badge.centerx - upg_text.get_width() // 2, lvl_badge.centery - upg_text.get_height() // 2))
+
+        # Визуальный эффект ледяной глыбы при заморозке башни
+        if getattr(self, "freeze_disabled_timer", 0.0) > 0.0:
+            ice_s = pygame.Surface((56, 56), pygame.SRCALPHA)
+            ice_s.fill((90, 215, 255, 110))
+            pygame.draw.rect(ice_s, (220, 250, 255, 220), (0, 0, 56, 56), width=2, border_radius=6)
+            surface.blit(ice_s, (int(self.x - 28), int(self.y - 28)))
+            ice_txt = tiny_font.render(f"ЛЁД {self.freeze_disabled_timer:.1f}с", True, CYAN)
+            surface.blit(ice_txt, (int(self.x - ice_txt.get_width() // 2), int(self.y - 42)))
 
         if self.type == "tent":
             for s in self.soldiers:
@@ -2071,6 +2113,74 @@ class Enemy:
             self.magic_resist = 0.45
             self.shadow_timer = random.uniform(0.5, 2.5)
             self.is_cloaked = False
+        elif enemy_type == 11:
+            # Призматический Слайм — Преломление магии (70% резист) и иммунитет к критическому урону
+            self.base_speed = 68.0
+            self.health = max(18.0, float(int(18 * hp_mod)))
+            self.reward = 55
+            self.base_damage = 2
+            self.image = mob11_img
+            self.is_prism = True
+            self.magic_resist = 0.70
+        elif enemy_type == 12:
+            # Пожиратель Маны — Поглощение магии и молний (лечится вместо урона)
+            self.base_speed = 52.0
+            self.health = max(28.0, float(int(28 * hp_mod)))
+            self.reward = 70
+            self.base_damage = 3
+            self.image = mob12_img
+            self.is_mana_devourer = True
+        elif enemy_type == 13:
+            # Обсидиановый Слайм — 90% защита от огня, ускорение от пламени, термошок от льда
+            self.base_speed = 42.0
+            self.health = max(40.0, float(int(40 * hp_mod)))
+            self.reward = 80
+            self.base_damage = 3
+            self.image = mob13_img
+            self.is_obsidian = True
+            self.fire_speed_buff_timer = 0.0
+        elif enemy_type == 14:
+            # Паровой Слайм-Огнетушитель — Неуязвим к сплэшу, испускает пар при ударе огнем
+            self.base_speed = 58.0
+            self.health = max(24.0, float(int(24 * hp_mod)))
+            self.reward = 60
+            self.base_damage = 2
+            self.image = mob14_img
+            self.is_steam = True
+        elif enemy_type == 15:
+            # Слайм-Камикадзе — Детонирует при гибели или контакте с воинами, -3 HP базы
+            self.base_speed = 95.0
+            self.health = max(14.0, float(int(14 * hp_mod)))
+            self.reward = 45
+            self.base_damage = 3
+            self.image = mob15_img
+            self.is_kamikaze = True
+        elif enemy_type == 16:
+            # Слайм-Защитник — Аура щита (-40% входящего урона союзникам в радиусе 90px)
+            self.base_speed = 46.0
+            self.health = max(45.0, float(int(45 * hp_mod)))
+            self.reward = 90
+            self.base_damage = 3
+            self.image = mob16_img
+            self.is_protector = True
+        elif enemy_type == 17:
+            # Призрачный Слайм — Бесплотный летун, игнорирует наземных солдат палатки
+            self.base_speed = 78.0
+            self.health = max(16.0, float(int(16 * hp_mod)))
+            self.reward = 50
+            self.base_damage = 2
+            self.image = mob17_img
+            self.is_flying = True
+        elif enemy_type == 18:
+            # Песчаный Крот — Каждые 5с закапывается под землю на 2.5с (неуязвим для атак)
+            self.base_speed = 64.0
+            self.health = max(26.0, float(int(26 * hp_mod)))
+            self.reward = 65
+            self.base_damage = 2
+            self.image = mob18_img
+            self.is_burrower = True
+            self.burrow_timer = random.uniform(0.5, 2.5)
+            self.is_burrowed = False
         elif enemy_type == 777:
             self.base_speed = 98.0
             self.health = max(22.0, float(int(18 * hp_mod)))
@@ -2101,41 +2211,51 @@ class Enemy:
             self.magic_resist = 0.35
             self.is_armored = True
         elif enemy_type >= 4000:
-            # Король Всех Слаймов (Волна 100) — Финальный Колос
+            # Король Всех Слаймов (Волна 100) — Финальный Колос с адаптивным щитом и похищением уровней
             self.base_speed = 26.0
-            self.health = float(int(155000 * (1.5 ** max(0, current_wave // 25 - 4))))
+            self.health = float(int(120000 * (1.5 ** max(0, current_wave // 25 - 4))))
             self.reward = 15000
             self.base_damage = 999999
             self.image = void_lord_boss_img
             self.is_armored = True
             self.magic_resist = 0.50
+            self.level_drain_timer = 12.0
+            self.barrier_cycle_timer = 14.0
+            self.adaptive_element = 0
         elif enemy_type >= 3000:
-            # Теневой Исполин (Волна 75+) — Грозный титан шахт
+            # Багровый Титан (Волна 75+) — Грозный титан с лавовым следом и берсерком (<40% HP)
             self.base_speed = 28.0
-            self.health = float(int(56000 * (1.5 ** max(0, current_wave // 25 - 3))))
+            self.health = float(int(44000 * (1.5 ** max(0, current_wave // 25 - 3))))
             self.reward = 8000
             self.base_damage = 999999
             self.image = void_boss_img
             self.is_armored = True
             self.magic_resist = 0.40
+            self.lava_trail_timer = 1.2
+            self.is_enraged = False
         elif enemy_type >= 2000:
-            # Слизнебарон (Волна 50) — Золотой магнат
+            # Слизнебарон (Волна 50) — Ледяной щит и заморозка ближайшей башни
             self.base_speed = 25.0
-            self.health = float(int(15500 * (1.5 ** max(0, current_wave // 25 - 2))))
+            self.health = float(int(12500 * (1.5 ** max(0, current_wave // 25 - 2))))
             self.reward = 3500
             self.base_damage = 999999
             self.image = colossus_boss_img
             self.is_armored = True
             self.magic_resist = 0.30
+            self.freeze_tower_timer = 5.0
+            self.ice_shield_timer = 9.0
+            self.ice_shield_hp = 0.0
         elif enemy_type >= 1000:
-            # Царь-Слизень (Волна 25) — Первый грозный босс
+            # Царь-Слизень (Волна 25) — Землетрясение (стан воинов) и призыв свиты на 75%/50%/25% HP
             self.base_speed = 22.0
-            self.health = float(int(3300 * (1.5 ** max(0, current_wave // 25 - 1))))
+            self.health = float(int(2600 * (1.5 ** max(0, current_wave // 25 - 1))))
             self.reward = 1500
             self.base_damage = 999999
             self.image = boss_img
             self.is_armored = True
             self.magic_resist = 0.25
+            self.earthquake_timer = 5.0
+            self.minion_hp_thresholds = [0.75, 0.50, 0.25]
         else:
             self.base_speed = 60.0
             self.health = 20.0
@@ -2257,6 +2377,69 @@ class Enemy:
         return self.freeze_timer > 0.0
 
     def take_damage(self, amount, damage_type="normal", is_crit=False, savedata=None):
+        if getattr(self, "is_burrowed", False):
+            return 0.0  # Песчаный крот под землей полностью неуязвим для атак!
+
+        # Адаптивный барьер Короля Всех Слаймов (волна 100)
+        if self.type >= 4000:
+            elem = getattr(self, "adaptive_element", 0)
+            if elem == 0 and damage_type in ["rock", "soldier", "physical"]:
+                return 0.0
+            elif elem == 1 and damage_type in ["magic", "lightning", "sun"]:
+                return 0.0
+            elif elem == 2 and damage_type in ["freeze", "orbital", "laser"]:
+                return 0.0
+
+        # Ледяной щит Слизнебарона
+        if getattr(self, "ice_shield_hp", 0.0) > 0.0:
+            absorbed = min(self.ice_shield_hp, amount)
+            self.ice_shield_hp -= absorbed
+            amount -= absorbed
+            if amount <= 0:
+                return 0.0
+
+        # Багровый Титан в ярости (<40% HP): огонь исцеляет!
+        if self.type >= 3000 and self.type < 4000 and getattr(self, "is_enraged", False):
+            if damage_type in ["rock", "sun"]:
+                heal = min(self.max_health - self.health, amount * 0.5)
+                self.health += heal
+                return -heal
+            elif damage_type == "freeze":
+                amount *= 0.20  # В берсерке мороз почти не действует
+
+        # Пожиратель Маны (тип 12): поглощает магию и теслу, восстанавливая HP
+        if getattr(self, "is_mana_devourer", False):
+            if damage_type in ["magic", "lightning"]:
+                heal = min(self.max_health - self.health, amount * 0.5)
+                self.health += heal
+                return -heal
+
+        # Призматический Слайм (тип 11): 70% резист к магии, игнор крит урона
+        if getattr(self, "is_prism", False):
+            if is_crit:
+                amount /= 1.5  # Отменяет крит-множитель урона
+
+        # Обсидиановый Слайм (тип 13): 90% защита от огня, ускорение от пламени, термошок от льда
+        if getattr(self, "is_obsidian", False):
+            if damage_type in ["rock", "sun"]:
+                amount *= 0.10
+                self.fire_speed_buff_timer = 2.5
+            elif damage_type == "freeze" and getattr(self, "fire_speed_buff_timer", 0.0) > 0.0:
+                amount *= 2.0  # Термошок! Двойной урон от контраста температур
+                self.freeze_timer = 2.5
+                self.speed_multiplier = 0.0
+
+        # Паровой Слайм (тип 14): неуязвим к сплэшу
+        if getattr(self, "is_steam", False):
+            if damage_type in ["rock_aoe", "sun_aoe"]:
+                return 0.0
+            if damage_type in ["rock", "sun"]:
+                self.steam_cloud_timer = 2.5
+
+        # Аура щита от Слайма-Защитника (тип 16)
+        if getattr(self, "shield_protected_timer", 0.0) > 0.0:
+            amount *= 0.60
+
         if getattr(self, 'is_armored', False) and damage_type in ["rock", "soldier", "physical"]:
             armor_factor = 0.25 if getattr(self, 'game_map', 0) == 7 else (0.75 if self.type >= 1000 else 0.50)
             amount *= armor_factor
@@ -2352,34 +2535,185 @@ class Enemy:
                     if effects is not None and random.random() < 0.20:
                         effects.append(DropSpark(self.x + random.uniform(-5, 5), self.y - 10, burst=True))
 
+        # Способность Обсидианового Слайма: ускорение от огня
+        if getattr(self, "fire_speed_buff_timer", 0.0) > 0.0:
+            self.fire_speed_buff_timer -= dt
+            if self.fire_speed_buff_timer > 0.0:
+                self.speed_multiplier = max(self.speed_multiplier, 1.35)
+
+        # Способность Слайма-Защитника: аура силового купола для союзников
+        if getattr(self, "is_protector", False) and enemies:
+            for other in enemies:
+                if other != self and other.active and math.hypot(self.x - other.x, self.y - other.y) <= 90:
+                    other.shield_protected_timer = 0.4
+
+        # Способность Песчаного Крота: закапывание под землю
+        if getattr(self, "is_burrower", False):
+            self.burrow_timer += dt
+            if self.burrow_timer >= 5.0:
+                if self.burrow_timer >= 7.5:
+                    self.burrow_timer = 0.0
+                    self.is_burrowed = False
+                else:
+                    self.is_burrowed = True
+                    if effects is not None and random.random() < 0.20:
+                        effects.append(DropSpark(self.x + random.uniform(-6, 6), self.y + 6, burst=False))
+
+        # Способности Босса 1000 (Царь-Слизень, волна 25)
+        if self.type >= 1000 and self.type < 2000:
+            if hasattr(self, "earthquake_timer"):
+                self.earthquake_timer -= dt
+                if self.earthquake_timer <= 0:
+                    self.earthquake_timer = 8.0
+                    if effects is not None:
+                        effects.append(RingEffect(self.x, self.y, 160, (180, 140, 80)))
+                        effects.append(FloatingText(self.x, self.y - 28, "ЗЕМЛЕТРЯСЕНИЕ! (СТАН ВОИНОВ)", (255, 180, 60)))
+                    sfx_boss_alarm.play()
+                    for t in towers:
+                        if t.type == "tent":
+                            for s in t.soldiers:
+                                if s.active:
+                                    s.stun_timer = 2.5
+            if hasattr(self, "minion_hp_thresholds"):
+                hp_ratio = self.health / max(1.0, self.max_health)
+                triggered = [th for th in self.minion_hp_thresholds if hp_ratio <= th]
+                for th in triggered:
+                    self.minion_hp_thresholds.remove(th)
+                    if enemies is not None:
+                        for _ in range(3):
+                            m_type = random.choice([4, 7])
+                            me = Enemy(m_type, getattr(self, "wave", 25), self.path, game_map=getattr(self, "game_map", 0))
+                            me.path_index = max(0, self.path_index - 1)
+                            me.x = self.x + random.uniform(-18, 18)
+                            me.y = self.y + random.uniform(-18, 18)
+                            enemies.append(me)
+                        if effects is not None:
+                            effects.append(FloatingText(self.x, self.y - 36, "ПРИЗЫВ СВИТЫ!", (120, 255, 160)))
+                            effects.append(RingEffect(self.x, self.y, 70, (100, 240, 140)))
+
+        # Способности Босса 2000 (Слизнебарон, волна 50)
+        if self.type >= 2000 and self.type < 3000:
+            if hasattr(self, "freeze_tower_timer"):
+                self.freeze_tower_timer -= dt
+                if self.freeze_tower_timer <= 0:
+                    self.freeze_tower_timer = 9.0
+                    target_tower = None
+                    min_d = float('inf')
+                    for t in towers:
+                        if t.type != "farm":
+                            td = math.hypot(self.x - t.x, self.y - t.y)
+                            if td < min_d and td <= 240:
+                                min_d = td
+                                target_tower = t
+                    if target_tower:
+                        target_tower.freeze_disabled_timer = 3.0
+                        if effects is not None:
+                            effects.append(RingEffect(target_tower.x, target_tower.y, 48, (120, 230, 255)))
+                            effects.append(FloatingText(target_tower.x, target_tower.y - 24, "ЗАМОРОЗКА! (3с)", (140, 230, 255)))
+                        sfx_freeze_shot.play()
+            if hasattr(self, "ice_shield_timer"):
+                self.ice_shield_timer -= dt
+                if self.ice_shield_timer <= 0:
+                    self.ice_shield_timer = 11.0
+                    self.ice_shield_hp = self.max_health * 0.12
+                    if effects is not None:
+                        effects.append(RingEffect(self.x, self.y, 80, (160, 240, 255)))
+                        effects.append(FloatingText(self.x, self.y - 30, "ЛЕДЯНОЙ ЩИТ!", (180, 245, 255)))
+
+        # Способности Босса 3000 (Багровый Титан, волна 75)
+        if self.type >= 3000 and self.type < 4000:
+            if not getattr(self, "is_enraged", False):
+                if self.health / max(1.0, self.max_health) < 0.40:
+                    self.is_enraged = True
+                    self.base_speed = 39.0
+                    self.freeze_timer = 0.0
+                    self.speed_multiplier = 1.0
+                    if effects is not None:
+                        effects.append(RingEffect(self.x, self.y, 110, (255, 40, 40)))
+                        effects.append(FloatingText(self.x, self.y - 34, "ЯРОСТЬ БЕРСЕРКА! (ОГОНЬ ЛЕЧИТ)", (255, 70, 70)))
+                    sfx_boss_alarm.play()
+            if hasattr(self, "lava_trail_timer"):
+                self.lava_trail_timer -= dt
+                if self.lava_trail_timer <= 0:
+                    self.lava_trail_timer = 1.0
+                    if effects is not None:
+                        effects.append(DropSpark(self.x + random.uniform(-8, 8), self.y + random.uniform(-8, 8), burst=True))
+
+        # Способности Босса 4000 (Король Всех Слаймов, волна 100)
+        if self.type >= 4000:
+            if hasattr(self, "barrier_cycle_timer"):
+                self.barrier_cycle_timer -= dt
+                if self.barrier_cycle_timer <= 0:
+                    self.barrier_cycle_timer = 13.0
+                    self.adaptive_element = (getattr(self, "adaptive_element", 0) + 1) % 3
+                    names = {0: "АНТИ-ФИЗИКА (БРОНЯ)", 1: "АНТИ-МАГИЯ / ТЕСЛА", 2: "АНТИ-МОРОЗ / ОРБИТА"}
+                    cols = {0: (255, 140, 60), 1: (200, 100, 255), 2: (100, 230, 255)}
+                    if effects is not None:
+                        effects.append(RingEffect(self.x, self.y, 120, cols[self.adaptive_element]))
+                        effects.append(FloatingText(self.x, self.y - 36, f"ЩИТ: {names[self.adaptive_element]}", cols[self.adaptive_element]))
+                    sfx_boss_alarm.play()
+            if hasattr(self, "level_drain_timer"):
+                self.level_drain_timer -= dt
+                if self.level_drain_timer <= 0:
+                    self.level_drain_timer = 16.0
+                    best_tower = None
+                    max_lvl = 1
+                    for t in towers:
+                        if t.type != "farm" and t.level > 1:
+                            td = math.hypot(self.x - t.x, self.y - t.y)
+                            if td <= 160 and t.level > max_lvl:
+                                max_lvl = t.level
+                                best_tower = t
+                    if best_tower:
+                        best_tower.level -= 1
+                        best_tower.recalculate_stats()
+                        if effects is not None:
+                            effects.append(RingEffect(best_tower.x, best_tower.y, 64, (180, 50, 220)))
+                            effects.append(FloatingText(best_tower.x, best_tower.y - 28, "-1 УРОВЕНЬ! (ПОХИЩЕНИЕ)", (220, 80, 255)))
+                        sfx_boss_defeat.play()
+
         blocked_by_soldier = False
         self.soldier_hit_timer += dt
         boss_engaged_soldier = None
-        for tower in towers:
-            if tower.type == "tent":
-                for soldier in tower.soldiers:
-                    if not soldier.active: continue
-                    dist = math.hypot(self.x - soldier.x, self.y - soldier.y)
-                    hit_range = 36 if self.type >= 1000 else 24
-                    if dist < hit_range:
-                        if self.type >= 1000:
-                            # Боссы сражаются с воинами: замедляются на 50% и бьют воина раз в 0.75с, не зависая навечно
-                            boss_engaged_soldier = soldier
-                            if self.soldier_hit_timer >= 0.75:
-                                self.soldier_hit_timer = 0.0
-                                soldier.take_mob_damage(self.type, effects=effects, attacker=self)
-                            break
-                        else:
-                            # Обычные и элитные слаймы: каждый воин сдерживает до 4 слаймов
-                            if getattr(soldier, 'engaged_count', 0) < 4:
-                                soldier.engaged_count = getattr(soldier, 'engaged_count', 0) + 1
-                                blocked_by_soldier = True
+
+        # Призраки (17) и кроты под землей (18) не блокируются воинами
+        can_engage_soldiers = not getattr(self, "is_flying", False) and not getattr(self, "is_burrowed", False)
+        if can_engage_soldiers:
+            for tower in towers:
+                if tower.type == "tent":
+                    for soldier in tower.soldiers:
+                        if not soldier.active: continue
+                        dist = math.hypot(self.x - soldier.x, self.y - soldier.y)
+                        hit_range = 36 if self.type >= 1000 else 24
+                        if dist < hit_range:
+                            if self.type == 15:
+                                # Детонация камикадзе при ударе о солдата!
+                                soldier.take_mob_damage(15, effects=effects, attacker=self)
+                                self.health = 0
+                                self.active = False
+                                if effects is not None:
+                                    effects.append(SplashEffect(self.x, self.y, 65, (255, 60, 40)))
+                                    effects.append(FloatingText(self.x, self.y - 18, "БАБАХ!", (255, 80, 50)))
+                                sfx_tesla.play()
+                                return False
+                            elif self.type >= 1000:
+                                # Боссы сражаются с воинами: замедляются на 50% и бьют воина раз в 0.75с, не зависая навечно
+                                boss_engaged_soldier = soldier
                                 if self.soldier_hit_timer >= 0.75:
                                     self.soldier_hit_timer = 0.0
                                     soldier.take_mob_damage(self.type, effects=effects, attacker=self)
                                 break
-                if blocked_by_soldier or boss_engaged_soldier:
-                    break
+                            else:
+                                # Обычные и элитные слаймы: каждый воин сдерживает до 4 слаймов
+                                if getattr(soldier, 'engaged_count', 0) < 4:
+                                    soldier.engaged_count = getattr(soldier, 'engaged_count', 0) + 1
+                                    blocked_by_soldier = True
+                                    if self.soldier_hit_timer >= 0.75:
+                                        self.soldier_hit_timer = 0.0
+                                        soldier.take_mob_damage(self.type, effects=effects, attacker=self)
+                                    break
+                    if blocked_by_soldier or boss_engaged_soldier:
+                        break
 
         if blocked_by_soldier:
             return False
@@ -2435,6 +2769,24 @@ class Enemy:
         if self.facing_left:
             img_to_draw = pygame.transform.flip(img_to_draw, True, False)
 
+        # Призрачный слайм (17) парит над землёй с тенью
+        draw_y = self.rect.y
+        if getattr(self, "is_flying", False):
+            bob = int(math.sin(pygame.time.get_ticks() * 0.007) * 3) - 6
+            draw_y += bob
+            # Тень на земле
+            shadow_s = pygame.Surface((28, 12), pygame.SRCALPHA)
+            pygame.draw.ellipse(shadow_s, (20, 20, 30, 80), (0, 0, 28, 12))
+            surface.blit(shadow_s, (int(self.x - 14), int(self.y + 12)))
+
+        # Аура Слайма-Защитника (16)
+        if getattr(self, "is_protector", False):
+            pulse = math.sin(pygame.time.get_ticks() * 0.008) * 4
+            p_surf = pygame.Surface((190, 190), pygame.SRCALPHA)
+            pygame.draw.circle(p_surf, (255, 200, 50, 35), (95, 95), int(90 + pulse))
+            pygame.draw.circle(p_surf, (255, 220, 80, 140), (95, 95), int(90 + pulse), width=2)
+            surface.blit(p_surf, (int(self.x - 95), int(self.y - 95)))
+
         # Если заморожен — рисуем морозную ауру позади слайма
         if self.is_frozen():
             aura_rad = max(18, self.rect.width // 2 + 5)
@@ -2445,16 +2797,20 @@ class Enemy:
 
         # Уникальные визуальные ауры боссов (соответствуют цветам 4 Больших Слаймов)
         if self.type >= 4000:
-            # Фиолетовый Исполин Бездны (Волна 100)
-            b_aura = pygame.Surface((110, 110), pygame.SRCALPHA)
-            pygame.draw.circle(b_aura, (140, 20, 220, 115), (55, 55), 48)
-            pygame.draw.circle(b_aura, (255, 215, 0, 190), (55, 55), 50, width=2)
-            pygame.draw.circle(b_aura, (180, 70, 255, 140), (55, 55), 32, width=1)
-            surface.blit(b_aura, (int(self.x - 55), int(self.y - 55)))
+            # Фиолетовый Исполин Бездны (Волна 100) с динамическим кольцом адаптивного барьера
+            elem = getattr(self, "adaptive_element", 0)
+            elem_cols = {0: (255, 140, 60), 1: (200, 100, 255), 2: (100, 230, 255)}
+            e_col = elem_cols.get(elem, (200, 100, 255))
+            b_aura = pygame.Surface((116, 116), pygame.SRCALPHA)
+            pygame.draw.circle(b_aura, (140, 20, 220, 115), (58, 58), 48)
+            pygame.draw.circle(b_aura, (*e_col, 220), (58, 58), 54, width=3)
+            pygame.draw.circle(b_aura, (255, 255, 255, 140), (58, 58), 32, width=1)
+            surface.blit(b_aura, (int(self.x - 58), int(self.y - 58)))
         elif self.type >= 3000:
             # Багровый Титан (Волна 75)
             b_aura = pygame.Surface((92, 92), pygame.SRCALPHA)
-            pygame.draw.circle(b_aura, (225, 40, 40, 95), (46, 46), 40)
+            bg_col = (255, 20, 20, 150) if getattr(self, "is_enraged", False) else (225, 40, 40, 95)
+            pygame.draw.circle(b_aura, bg_col, (46, 46), 40)
             pygame.draw.circle(b_aura, (255, 120, 50, 180), (46, 46), 42, width=2)
             pygame.draw.circle(b_aura, (255, 200, 70, 120), (46, 46), 28, width=1)
             surface.blit(b_aura, (int(self.x - 46), int(self.y - 46)))
@@ -2463,6 +2819,8 @@ class Enemy:
             b_aura = pygame.Surface((90, 90), pygame.SRCALPHA)
             pygame.draw.circle(b_aura, (40, 160, 240, 95), (45, 45), 38)
             pygame.draw.circle(b_aura, (120, 235, 255, 190), (45, 45), 40, width=2)
+            if getattr(self, "ice_shield_hp", 0.0) > 0.0:
+                pygame.draw.circle(b_aura, (200, 245, 255, 230), (45, 45), 44, width=3)
             surface.blit(b_aura, (int(self.x - 45), int(self.y - 45)))
         elif self.type >= 1000:
             # Изумрудный Царь (Волна 25)
@@ -2472,17 +2830,28 @@ class Enemy:
             surface.blit(b_aura, (int(self.x - 42), int(self.y - 42)))
 
         # Отрисовка спрайта слайма (чистый пиксель-арт без искажений)
-        if getattr(self, "is_cloaked", False):
+        if getattr(self, "is_burrowed", False):
+            # Под землёй: полупрозрачный силуэт и песчаная насыпь
+            c_surf = img_to_draw.copy()
+            c_surf.set_alpha(80)
+            surface.blit(c_surf, (self.rect.x, self.rect.y + 12))
+            sand_s = pygame.Surface((38, 16), pygame.SRCALPHA)
+            pygame.draw.ellipse(sand_s, (190, 150, 95, 180), (0, 0, 38, 16))
+            pygame.draw.ellipse(sand_s, (230, 190, 120, 230), (4, 2, 30, 10))
+            surface.blit(sand_s, (int(self.x - 19), int(self.y + 6)))
+        elif getattr(self, "is_cloaked", False):
             c_surf = img_to_draw.copy()
             c_surf.set_alpha(115)
-            surface.blit(c_surf, self.rect)
+            surface.blit(c_surf, (self.rect.x, draw_y))
         else:
-            surface.blit(img_to_draw, self.rect)
+            surface.blit(img_to_draw, (self.rect.x, draw_y))
 
         # Шкала здоровья с точным позиционированием над макушкой моба
         bar_w = 34 if self.type < 1000 else 64
         ratio = max(0.0, self.health / self.max_health)
         bar_y = int(self.rect.top - 8)
+        if getattr(self, "is_flying", False):
+            bar_y += (draw_y - self.rect.y)
         pygame.draw.rect(surface, BLACK, (int(self.x - bar_w // 2 - 1), bar_y - 1, bar_w + 2, 5))
         pygame.draw.rect(surface, RED, (int(self.x - bar_w // 2), bar_y, bar_w, 3))
         pygame.draw.rect(surface, GREEN, (int(self.x - bar_w // 2), bar_y, int(bar_w * ratio), 3))
@@ -2530,6 +2899,22 @@ class Enemy:
             return (235, 195, 85)  # Пирамида (песчаное золото)
         elif self.type == 10:
             return (175, 65, 245)  # Теневой слайм (теневой фиолетовый)
+        elif self.type == 11:
+            return (180, 230, 255) # Призматический (кристальный лазурит)
+        elif self.type == 12:
+            return (130, 40, 210)  # Пожиратель маны (эфирный пурпур)
+        elif self.type == 13:
+            return (45, 45, 55)    # Обсидиановый (вулканический уголь)
+        elif self.type == 14:
+            return (190, 215, 230) # Паровой (белый туман)
+        elif self.type == 15:
+            return (255, 60, 40)   # Камикадзе (детонационный пламень)
+        elif self.type == 16:
+            return (240, 200, 70)  # Защитник (золотой янтарь)
+        elif self.type == 17:
+            return (140, 255, 230) # Призрак (бирюзовый эфир)
+        elif self.type == 18:
+            return (200, 160, 105) # Песчаный крот (пустынный песок)
         elif self.type >= 50:
             return (255, 140, 40)  # Элитные мобы
         return (100, 220, 80)

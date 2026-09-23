@@ -19,7 +19,7 @@ source.include_exts = py,png,jpg,wav,ogg,json,txt,ttf,ico
 source.include_patterns = assets/*,saves/*
 
 # (str) Application versioning
-version = 0.2.0
+version = 0.3.0
 
 # (list) Application requirements
 requirements = python3,pygame

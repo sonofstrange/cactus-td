@@ -143,6 +143,9 @@ def run_game():
     cactus_drone = None
     orbital_strike_cd = 0.0
     orbital_targeting = False
+    custom_slots_placed = 0
+    astral_slot_targeting = False
+    astral_slot_btn_rect = None
     rally_targeting_tent = None
     dark_aegis_charges = 0
     flawless_streak = savedata.get("FlawlessWaveStreak", 0)
@@ -249,6 +252,7 @@ def run_game():
         nonlocal r_btn, q_btn, hud_menu_btn, pause_click_rects
         nonlocal current_wave_queue, upcoming_wave_preview, shake_amount, ambient_particles, map_decor, slime_splats
         nonlocal active_meteorite, next_meteor_wave, cactus_drone, orbital_strike_cd, orbital_targeting, rally_targeting_tent, dark_aegis_charges, flawless_streak, lives_at_wave_start, session_start_wave
+        nonlocal custom_slots_placed, astral_slot_targeting, astral_slot_btn_rect
         nonlocal active_dig_site, dig_window, dig_session, dig_window_close_timer, battle_ui_fade_alpha
         nonlocal active_guide_modal, guide_modal_tab, guide_modal_context
 
@@ -288,8 +292,10 @@ def run_game():
             MAP_BIOMES_DATA[9]["soundtrack"] = MAP_SOUNDTRACKS[b_idx][1]
 
         path = path_list[game_map]
-        tower_slots = tower_slots_list[game_map]
+        tower_slots = list(tower_slots_list[game_map])
         occupied_slots = [False] * len(tower_slots)
+        custom_slots_placed = 0
+        astral_slot_targeting = False
         towers = []
         enemies = []
         projectiles = []
@@ -2538,7 +2544,18 @@ def run_game():
                             upgrade_mode = False
                             inspected_tower = None
                     elif event.key == pygame.K_t and not is_paused:
-                        if savedata.get("Upgrades", {}).get("wave_rush", 0) > 0:
+                        if inspected_tower and inspected_tower.type != "farm":
+                            if savedata.get("Upgrades", {}).get("smart_targeting", 0) >= 1:
+                                modes = ["FIRST", "STRONGEST", "WEAKEST", "LAST", "CLOSEST"]
+                            else:
+                                modes = ["FIRST", "STRONGEST", "LAST", "CLOSEST"]
+                            modes_ru = {"FIRST": "ПЕРВЫЙ", "STRONGEST": "СИЛЬНЫЙ", "WEAKEST": "СЛАБЫЙ", "LAST": "ПОСЛЕДНИЙ", "CLOSEST": "БЛИЗКИЙ"}
+                            cur_idx = modes.index(inspected_tower.target_priority) if inspected_tower.target_priority in modes else 0
+                            inspected_tower.target_priority = modes[(cur_idx + 1) % len(modes)]
+                            sfx_click.play()
+                            bonus_note = " (+10% УРОНА)" if (savedata.get("Upgrades", {}).get("smart_targeting", 0) >= 2 and inspected_tower.target_priority == "STRONGEST") else ""
+                            effects.append(FloatingText(inspected_tower.x, inspected_tower.y - 28, f"ЦЕЛЬ: {modes_ru.get(inspected_tower.target_priority, inspected_tower.target_priority)}{bonus_note}", (140, 220, 255)))
+                        elif savedata.get("Upgrades", {}).get("wave_rush", 0) > 0:
                             curr = savedata.get("Toggles", {}).get("wave_rush", True)
                             if "Toggles" not in savedata:
                                 savedata["Toggles"] = {}
@@ -2550,11 +2567,6 @@ def run_game():
                             effects.append(FloatingText(SCREEN_WIDTH // 2, 160, f"ТУРБО-ВОЛНЫ: {status_str}", status_col))
                             if not curr and not wave_in_progress and not game_over:
                                 between_waves_timer = 0.0
-                        elif inspected_tower:
-                            modes = ["FIRST", "STRONGEST", "LAST", "CLOSEST"]
-                            cur_idx = modes.index(inspected_tower.target_priority) if inspected_tower.target_priority in modes else 0
-                            inspected_tower.target_priority = modes[(cur_idx + 1) % len(modes)]
-                            sfx_click.play()
                     elif event.key == pygame.K_y and not is_paused:
                         if savedata.get("Upgrades", {}).get("spawn_rush", 0) > 0:
                             curr = savedata.get("Toggles", {}).get("spawn_rush", True)
@@ -2733,6 +2745,9 @@ def run_game():
                         elif orbital_targeting:
                             orbital_targeting = False
                             sfx_click.play()
+                        elif astral_slot_targeting:
+                            astral_slot_targeting = False
+                            sfx_click.play()
                         elif is_paused:
                             is_paused = False
                             pause_frozen_frame = None
@@ -2801,6 +2816,10 @@ def run_game():
                             continue
                         if orbital_targeting:
                             orbital_targeting = False
+                            sfx_click.play()
+                            continue
+                        if astral_slot_targeting:
+                            astral_slot_targeting = False
                             sfx_click.play()
                             continue
                         if speed_btn_rect.collidepoint(mouse_pos):
@@ -2978,6 +2997,7 @@ def run_game():
                         spawn_rush_btn_rect = pygame.Rect(col2_x, SCREEN_HEIGHT - 116, 104, 44)
                         range_btn_rect = pygame.Rect(ctrl_dock_x, SCREEN_HEIGHT - 166, 104, 44)
                         orbital_btn_rect = pygame.Rect(col2_x, SCREEN_HEIGHT - 166, 104, 44)
+                        astral_slot_btn_rect = pygame.Rect(ctrl_dock_x, SCREEN_HEIGHT - 216, 216, 44)
 
                         # Клик по кнопке скорости (ЛКМ - ускорение вперед)
                         if speed_btn_rect.collidepoint(mouse_pos):
@@ -3027,12 +3047,72 @@ def run_game():
                         effects.append(FloatingText(SCREEN_WIDTH // 2, 160, f"СЕТКА РАДИУСОВ: {stat_str}", stat_col))
                         continue
 
+                    # Клик по кнопке установки Астрального Слота (Астральный Разлом)
+                    astral_slot_lvl = savedata.get("Upgrades", {}).get("astral_slot", 0)
+                    slot_costs = [5000, 25000]
+                    can_place_slot = (astral_slot_lvl > 0 and custom_slots_placed < astral_slot_lvl)
+                    if can_place_slot and astral_slot_btn_rect and astral_slot_btn_rect.collidepoint(mouse_pos) and not is_paused and not game_over:
+                        cur_cost = slot_costs[min(custom_slots_placed, len(slot_costs) - 1)]
+                        if cacti >= cur_cost:
+                            astral_slot_targeting = not astral_slot_targeting
+                            selected_tower_type = None
+                            inspected_tower = None
+                            orbital_targeting = False
+                            sfx_click.play()
+                            if astral_slot_targeting:
+                                effects.append(FloatingText(SCREEN_WIDTH // 2, 140, "УСТАНОВКА СЛОТА: ВЫБЕРИТЕ МЕСТО НА КАРТЕ (ПКМ - ОТМЕНА)", (220, 120, 255)))
+                        else:
+                            laser.play()
+                            effects.append(FloatingText(astral_slot_btn_rect.centerx, astral_slot_btn_rect.top - 20, f"НЕ ХВАТАЕТ 🌵 ({cur_cost:,})", (255, 100, 100)))
+                        continue
+
+                    # Размещение Астрального Слота на карте
+                    if astral_slot_targeting and not is_paused and not game_over:
+                        if mouse_pos[1] < SCREEN_HEIGHT - 72:
+                            cur_cost = slot_costs[min(custom_slots_placed, len(slot_costs) - 1)]
+                            mx, my = mouse_pos
+                            dist_to_path = float('inf')
+                            if path and len(path) >= 2:
+                                for pi in range(len(path) - 1):
+                                    px1, py1 = path[pi]
+                                    px2, py2 = path[pi + 1]
+                                    p_dx, p_dy = px2 - px1, py2 - py1
+                                    p_len_sq = p_dx * p_dx + p_dy * p_dy
+                                    if p_len_sq == 0:
+                                        dist_seg = math.hypot(mx - px1, my - py1)
+                                    else:
+                                        t_proj = max(0.0, min(1.0, ((mx - px1) * p_dx + (my - py1) * p_dy) / p_len_sq))
+                                        dist_seg = math.hypot(mx - (px1 + t_proj * p_dx), my - (py1 + t_proj * p_dy))
+                                    dist_to_path = min(dist_to_path, dist_seg)
+                            dist_to_other_slots = min((math.hypot(mx - sx, my - sy) for sx, sy in tower_slots), default=100.0)
+
+                            if dist_to_path >= 32 and dist_to_other_slots >= 40 and cacti >= cur_cost:
+                                cacti -= cur_cost
+                                tower_slots.append((mx, my))
+                                occupied_slots.append(False)
+                                custom_slots_placed += 1
+                                astral_slot_targeting = False
+                                sfx_upgrade.play()
+                                effects.append(RingEffect(mx, my, 60, (210, 110, 255)))
+                                effects.append(FloatingText(mx, my - 24, "+1 СЛОТ БАШНИ!", (220, 130, 255)))
+                                for _ in range(14):
+                                    effects.append(DropSpark(mx, my, burst=True))
+                                continue
+                            else:
+                                laser.play()
+                                if dist_to_path < 32:
+                                    effects.append(FloatingText(mx, my - 20, "СЛИШКОМ БЛИЗКО К ДОРОГЕ!", (255, 120, 120)))
+                                elif dist_to_other_slots < 40:
+                                    effects.append(FloatingText(mx, my - 20, "ПЕРЕКРЫТИЕ ДРУГОГО СЛОТА!", (255, 120, 120)))
+                                continue
+
                     # Клик по кнопке Орбитального удара
                     if savedata.get("Upgrades", {}).get("orbital_strike", 0) > 0 and orbital_btn_rect.collidepoint(mouse_pos) and not is_paused and not game_over:
                         if orbital_strike_cd <= 0:
                             orbital_targeting = not orbital_targeting
                             selected_tower_type = None
                             inspected_tower = None
+                            astral_slot_targeting = False
                             sfx_click.play()
                             if orbital_targeting:
                                 effects.append(FloatingText(SCREEN_WIDTH // 2, 140, "ПРИЦЕЛИВАНИЕ: ЛКМ/F - ЗАЛП, ПКМ/ESC - ОТМЕНА", (240, 160, 255)))
@@ -3279,7 +3359,7 @@ def run_game():
                             selected_tower_type = None
 
                     # Клик по башне на карте для её осмотра/выбора (особенно важно для сенсорных экранов)
-                    if not selected_tower_type and not orbital_targeting and not rally_targeting_tent and not is_paused and not game_over:
+                    if not selected_tower_type and not orbital_targeting and not astral_slot_targeting and not rally_targeting_tent and not is_paused and not game_over:
                         clicked_map_tower = None
                         for tower in towers:
                             if math.hypot(mouse_pos[0] - tower.x, mouse_pos[1] - tower.y) < 32:
@@ -3799,6 +3879,12 @@ def run_game():
                                     ne.health -= s_dmg
                                     effects.append(FloatingText(ne.x, ne.y - 10, f"-{s_dmg}", (200, 100, 255)))
 
+                        # Взрыв Слайма-Камикадзе (15) при уничтожении
+                        if e.type == 15:
+                            effects.append(RingEffect(e.x, e.y, 65, (255, 90, 40)))
+                            for _ in range(12):
+                                effects.append(DropSpark(e.x, e.y, burst=True))
+
                         if get_graphics_preset() != "optimized":
                             splat_col = e.get_splat_color()
                             splat_sz = 26 if e.type >= 1000 else (20 if e.type >= 50 else 15)
@@ -3878,6 +3964,13 @@ def run_game():
                 for i, slot in enumerate(tower_slots):
                     if not occupied_slots[i]:
                         field_surf.blit(slot_img, (slot[0] - 22, slot[1] - 22))
+                        if i >= len(tower_slots_list.get(game_map, [])):
+                            # Астральный слот: мерцающее пурпурное кольцо
+                            a_pulse = int(140 + 70 * math.sin(pygame.time.get_ticks() * 0.006 + i))
+                            a_surf = pygame.Surface((44, 44), pygame.SRCALPHA)
+                            pygame.draw.circle(a_surf, (210, 110, 255, a_pulse), (22, 22), 20, width=2)
+                            pygame.draw.circle(a_surf, (255, 200, 255, a_pulse // 2), (22, 22), 12, width=1)
+                            field_surf.blit(a_surf, (slot[0] - 22, slot[1] - 22))
 
                 # Атмосферные частицы биома (снежинки, пепел, песчинки, споры)
                 if get_graphics_preset() != "optimized":
@@ -4145,6 +4238,7 @@ def run_game():
                 spawn_rush_btn_rect = pygame.Rect(col2_x, SCREEN_HEIGHT - 116, 104, 44)
                 range_btn_rect = pygame.Rect(ctrl_dock_x, SCREEN_HEIGHT - 166, 104, 44)
                 orbital_btn_rect = pygame.Rect(col2_x, SCREEN_HEIGHT - 166, 104, 44)
+                astral_slot_btn_rect = pygame.Rect(ctrl_dock_x, SCREEN_HEIGHT - 216, 216, 44)
 
                 # 5.1 Кнопка скорости (ЛКМ - быстрее, ПКМ - медленнее)
                 spd_hov = speed_btn_rect.collidepoint(mouse_pos)
@@ -4217,6 +4311,31 @@ def run_game():
                         else:
                             orb_txt = tiny_font.render(f"КД: {int(orbital_strike_cd + 0.9)}с", True, (170, 150, 190))
                     screen.blit(orb_txt, (orbital_btn_rect.centerx - orb_txt.get_width() // 2, orbital_btn_rect.centery - orb_txt.get_height() // 2))
+
+                # 5.6 Кнопка Астрального Слота (Астральный Разлом)
+                astral_slot_lvl = savedata.get("Upgrades", {}).get("astral_slot", 0)
+                if astral_slot_lvl > 0 and custom_slots_placed < astral_slot_lvl:
+                    as_hov = astral_slot_btn_rect.collidepoint(mouse_pos)
+                    slot_costs = [5000, 25000]
+                    cur_slot_cost = slot_costs[min(custom_slots_placed, len(slot_costs) - 1)]
+                    can_afford_slot = (cacti >= cur_slot_cost)
+                    if astral_slot_targeting:
+                        pulse = (math.sin(pygame.time.get_ticks() * 0.01) + 1.0) * 0.5
+                        as_bg = (int(90 + 50 * pulse), 30, int(130 + 70 * pulse))
+                        as_border = (230, 160, 255)
+                        pygame.draw.rect(screen, as_bg, astral_slot_btn_rect, border_radius=8)
+                        pygame.draw.rect(screen, as_border, astral_slot_btn_rect, width=2, border_radius=8)
+                        as_txt = tiny_font.render("ВЫБЕРИТЕ МЕСТО...", True, (255, 230, 255))
+                    else:
+                        as_bg = (45, 25, 65) if can_afford_slot else (35, 30, 40)
+                        if as_hov and can_afford_slot:
+                            as_bg = (70, 35, 100)
+                        as_border = (200, 100, 255) if can_afford_slot else (115, 95, 135)
+                        pygame.draw.rect(screen, as_bg, astral_slot_btn_rect, border_radius=8)
+                        pygame.draw.rect(screen, as_border, astral_slot_btn_rect, width=2 if (as_hov and can_afford_slot) else 1, border_radius=8)
+                        cost_str = "5k" if cur_slot_cost == 5000 else "25k"
+                        as_txt = tiny_font.render(f"[+] СЛОТ: {cost_str} 🌵 ({custom_slots_placed + 1}/{astral_slot_lvl})", True, (230, 190, 255) if can_afford_slot else (160, 145, 175))
+                    screen.blit(as_txt, (astral_slot_btn_rect.centerx - as_txt.get_width() // 2, astral_slot_btn_rect.centery - as_txt.get_height() // 2))
 
                 has_magic = savedata["Upgrades"].get("magic_tower", 1) > 0
                 has_rock = savedata["Upgrades"].get("rock_tower", 0) > 0
@@ -4353,6 +4472,8 @@ def run_game():
                         1: mob1_img, 2: mob2_img, 3: mob3_img,
                         4: mob4_img, 5: mob5_img, 6: mob6_img,
                         7: mob7_img, 8: mob8_img, 9: mob9_img, 10: mob10_img,
+                        11: mob11_img, 12: mob12_img, 13: mob13_img, 14: mob14_img,
+                        15: mob15_img, 16: mob16_img, 17: mob17_img, 18: mob18_img,
                         777: gold_slime_img, 1000: boss_img,
                         2000: colossus_boss_img, 3000: void_boss_img, 4000: void_lord_boss_img
                     }
@@ -4450,6 +4571,65 @@ def run_game():
                     by = max(40, int(target_y) - 65)
                     b_surf = pygame.Surface((bw, bh), pygame.SRCALPHA)
                     pygame.draw.rect(b_surf, (20, 38, 26, 230), (0, 0, bw, bh), border_radius=6)
+                    pygame.draw.rect(b_surf, b_border, (0, 0, bw, bh), width=1, border_radius=6)
+                    b_surf.blit(t_txt, (10, 4))
+                    b_surf.blit(t_sub, (10, 23))
+                    screen.blit(b_surf, (bx, by))
+
+                # Голографический курсор размещения Астрального Слота
+                if astral_slot_targeting and not is_paused and not game_over:
+                    mx, my = mouse_pos
+                    slot_costs = [5000, 25000]
+                    cur_slot_cost = slot_costs[min(custom_slots_placed, len(slot_costs) - 1)]
+                    dist_to_path = float('inf')
+                    if path and len(path) >= 2:
+                        for pi in range(len(path) - 1):
+                            px1, py1 = path[pi]
+                            px2, py2 = path[pi + 1]
+                            p_dx, p_dy = px2 - px1, py2 - py1
+                            p_len_sq = p_dx * p_dx + p_dy * p_dy
+                            if p_len_sq == 0:
+                                dist_seg = math.hypot(mx - px1, my - py1)
+                            else:
+                                t_proj = max(0.0, min(1.0, ((mx - px1) * p_dx + (my - py1) * p_dy) / p_len_sq))
+                                dist_seg = math.hypot(mx - (px1 + t_proj * p_dx), my - (py1 + t_proj * p_dy))
+                            dist_to_path = min(dist_to_path, dist_seg)
+                    dist_to_other_slots = min((math.hypot(mx - sx, my - sy) for sx, sy in tower_slots), default=100.0)
+
+                    is_valid = (dist_to_path >= 32 and dist_to_other_slots >= 40 and cacti >= cur_slot_cost and my < SCREEN_HEIGHT - 72)
+                    pulse = (math.sin(pygame.time.get_ticks() * 0.01) + 1.0) * 0.5
+                    slot_color = (200, 100, 255) if is_valid else (255, 70, 70)
+
+                    disc_s = pygame.Surface((70, 70), pygame.SRCALPHA)
+                    pygame.draw.circle(disc_s, (*slot_color, int(40 + 20 * pulse)), (35, 35), 32)
+                    pygame.draw.circle(disc_s, (*slot_color, int(180 + 70 * pulse)), (35, 35), 32, width=2)
+                    pygame.draw.circle(disc_s, (*slot_color, 220), (35, 35), 14, width=1)
+                    pygame.draw.line(disc_s, (*slot_color, 160), (35, 10), (35, 60), 1)
+                    pygame.draw.line(disc_s, (*slot_color, 160), (10, 35), (60, 35), 1)
+                    screen.blit(disc_s, (mx - 35, my - 35))
+
+                    if is_valid:
+                        t_txt = small_font.render(f"РАЗМЕСТИТЬ СЛОТ ({cur_slot_cost:,} 🌵)", True, (230, 180, 255))
+                        t_sub = tiny_font.render("[ЛКМ] - Установить  |  [ПКМ / ESC] - Отмена", True, (240, 210, 255))
+                        b_border = (200, 100, 255, 240)
+                    else:
+                        if cacti < cur_slot_cost:
+                            reason = f"НЕ ХВАТАЕТ 🌵 ({cur_slot_cost:,})"
+                        elif dist_to_path < 32:
+                            reason = "СЛИШКОМ БЛИЗКО К ДОРОГЕ"
+                        elif dist_to_other_slots < 40:
+                            reason = "ПЕРЕКРЫВАЕТ ДРУГОЙ СЛОТ"
+                        else:
+                            reason = "НЕДОСТУПНАЯ ЗОНА"
+                        t_txt = small_font.render(reason, True, (255, 120, 120))
+                        t_sub = tiny_font.render("Нельзя разместить здесь", True, (255, 180, 180))
+                        b_border = (255, 80, 80, 240)
+                    bw = max(t_txt.get_width(), t_sub.get_width()) + 20
+                    bh = 42
+                    bx = max(10, min(SCREEN_WIDTH - bw - 10, mx - bw // 2))
+                    by = max(40, my - 65)
+                    b_surf = pygame.Surface((bw, bh), pygame.SRCALPHA)
+                    pygame.draw.rect(b_surf, (30, 15, 45, 230), (0, 0, bw, bh), border_radius=6)
                     pygame.draw.rect(b_surf, b_border, (0, 0, bw, bh), width=1, border_radius=6)
                     b_surf.blit(t_txt, (10, 4))
                     b_surf.blit(t_sub, (10, 23))

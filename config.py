@@ -26,7 +26,7 @@ if sys.platform == "win32":
                 pass
 
 IS_ANDROID = hasattr(sys, 'getandroidapilevel') or 'ANDROID_ARGUMENT' in os.environ or 'ANDROID_PRIVATE' in os.environ
-GAME_VERSION = "0.2.0"
+GAME_VERSION = "0.3.0"
 
 if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
     BASE_DIR = sys._MEIPASS
@@ -714,6 +714,14 @@ mob7_img = load_texture("tiger_slime.png", target_size=(44, 44))       # Тиг�
 mob8_img = load_texture("frost_jelly.png", target_size=(44, 44))       # Ледяное желе (иммунитет к льду)
 mob9_img = load_texture("stacked_slimes.png", target_size=(44, 60))    # Слаймовая пирамида (раскол)
 mob10_img = load_texture("black_slime.png", target_size=(44, 44))      # Теневой слайм (антимагия)
+mob11_img = load_texture("prism_slime.png", target_size=(44, 44))          # Призматический слайм (антимагия)
+mob12_img = load_texture("mana_devourer_slime.png", target_size=(46, 46)) # Пожиратель маны (поглощение магии)
+mob13_img = load_texture("obsidian_slime.png", target_size=(44, 44))       # Обсидиановый слайм (антиогонь)
+mob14_img = load_texture("steam_slime.png", target_size=(46, 46))          # Паровой огнетушитель (антиогонь/сплэш)
+mob15_img = load_texture("kamikaze_slime.png", target_size=(42, 42))       # Слайм-камикадзе (взрыв)
+mob16_img = load_texture("protector_slime.png", target_size=(48, 48))      # Слайм-защитник (аура щита)
+mob17_img = load_texture("phantom_slime.png", target_size=(44, 44))        # Призрачный слайм (летун)
+mob18_img = load_texture("burrower_slime.png", target_size=(42, 42))       # Песчаный крот (закапывание)
 gold_slime_img = load_texture("gold_slime.png", target_size=(46, 46))
 # Официальные текстуры 4 Больших Слаймов из Stardew Valley Wiki (Green, Blue, Red, Purple)
 boss_img = load_texture("big_green_slime.png", target_size=(80, 80)) # Босс 25 волны (Зелёный Большой Слизень)

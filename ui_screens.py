@@ -1684,6 +1684,7 @@ _TREE_ICON_FILES = {
     "bestiary_damage": "tree_bestiary_damage.png",
     "bestiary_stars": "tree_bestiary_stars.png",
     "gravity_well": "tree_gravity_well.png",
+    "astral_slot": "tree_astral_slot.png",
     "event_horizon": "tree_event_horizon.png",
     "dark_vitality": "tree_dark_vitality.png",
 }
@@ -1694,7 +1695,7 @@ _PIXEL_ART_KEYS = {
     "sun_tower", "magic_tower", "freeze_tower", "rock_tower", "tesla_tower", "tent_tower", "farm", "stellar",
     "arcane_precision", "frost_linger", "rally_range",
     "solar_power", "solar_trail", "prism_beams", "beam_limit",
-    "bestiary_damage", "bestiary_stars", "gravity_well",
+    "bestiary_damage", "bestiary_stars", "gravity_well", "astral_slot",
     "event_horizon", "dark_vitality"
 }
 

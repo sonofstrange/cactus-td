@@ -1464,6 +1464,27 @@ def get_all_81_nodes():
             "stat_nxt": lambda lvl: f"Метеориты чаще на +{(lvl + 1) * 20}%, +{lvl + 1} зв. кактус",
             "icon_key": "gravity_well",
         },
+        "astral_slot": {
+            "title": "Астральный Разлом",
+            "branch": "astral",
+            "branch_title": "Тёмный Космос",
+            "currency": "hybrid",
+            "x": 600,
+            "y": 1740,
+            "max_lvl": 2,
+            "costs": [35, 70],
+            "dark_costs": [2, 4],
+            "requires": {'gravity_well': 1},
+            "desc": [
+            "Искривляет ткань пространства Оазиса.",
+            "Позволяет в бою установить произвольный слот",
+            "под башню в любой точке карты!",
+            "1-й слот: 5 000 🌵, 2-й слот: 25 000 🌵."
+            ],
+            "stat_cur": lambda lvl: f"Доступно создание {lvl} слота{'ов' if lvl > 1 else ''} для башен в бою (5k / 25k 🌵)" if lvl > 0 else "Произвольные слоты недоступны",
+            "stat_nxt": lambda lvl: f"Разблокировать установку {lvl + 1}-го произвольного слота в бою",
+            "icon_key": "astral_slot",
+        },
         "orbital_strike": {
             "title": "Орбитальный Удар",
             "branch": "astral",
