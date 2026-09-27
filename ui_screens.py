@@ -36,14 +36,39 @@ _tree_hud_bg = None
 _tree_aura_cache = {}
 _tree_title_cache = {}
 _settings_grid_surf = None
+_settings_dim_surf = None
+_settings_profiles_cache = None
+_settings_profiles_cache_time = 0.0
+_settings_profiles_count_cache = 0
+_settings_profiles_count_time = 0.0
 _TEXT_CACHE = {}
 
+def invalidate_save_profiles_cache():
+    global _settings_profiles_cache, _settings_profiles_cache_time, _settings_profiles_count_cache, _settings_profiles_count_time
+    _settings_profiles_cache = None
+    _settings_profiles_cache_time = 0.0
+    _settings_profiles_count_cache = 0
+    _settings_profiles_count_time = 0.0
+    if "invalidate_profiles_cache" in globals():
+        try:
+            invalidate_profiles_cache()
+        except Exception:
+            pass
+
+def get_settings_dim_surf():
+    global _settings_dim_surf
+    if _settings_dim_surf is None or _settings_dim_surf.get_size() != (SCREEN_WIDTH, SCREEN_HEIGHT):
+        _settings_dim_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        _settings_dim_surf.fill((0, 0, 0, 215))
+    return _settings_dim_surf
+
 def get_rendered_text(font_obj, text, color):
-    key = (id(font_obj), text, color)
+    col_key = tuple(color) if isinstance(color, (list, pygame.Color)) else color
+    key = (id(font_obj), text, col_key)
     surf = _TEXT_CACHE.get(key)
     if surf is None:
         surf = font_obj.render(text, True, color)
-        if len(_TEXT_CACHE) > 1000:
+        if len(_TEXT_CACHE) > 3000:
             _TEXT_CACHE.clear()
         _TEXT_CACHE[key] = surf
     return surf
@@ -87,13 +112,13 @@ def generate_background(surf, bg_time, map_id=None, custom_cols=None):
         min(255, int(col_b[2] * 1.35 + 24))
     )
 
-    if get_graphics_preset() == "optimized":
+    if get_graphics_preset() == "optimized" or IS_ANDROID:
         ox = int((bg_time * 0.035) % cell_size)
         oy = int((bg_time * 0.035) % cell_size)
         for x in range(ox - cell_size, sw + cell_size, cell_size):
-            pygame.draw.line(surf, line_col, (x, 0), (x, sh), 2)
+            pygame.draw.line(surf, line_col, (x, 0), (x, sh), 1)
         for y in range(oy - cell_size, sh + cell_size, cell_size):
-            pygame.draw.line(surf, line_col, (0, y), (sw, y), 2)
+            pygame.draw.line(surf, line_col, (0, y), (sw, y), 1)
         return
 
     # Интенсивные гармонические волны движения сетки (эффект шёлка, приливов и дыхания пространства)
@@ -5211,18 +5236,22 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
     - Вкладка 2: Файлы сохранений (Создание, выбор, копирование, переименование, удаление)
     - Диалоговые окна: модальный ввод текста (создание/переименование) и подтверждение удаления
     """
-    if bg_time is None:
-        bg_time = pygame.time.get_ticks()
-    generate_background(surface, bg_time, custom_cols=((12, 16, 24), (18, 24, 36)))
-
-    # Фоновые декоративные полосы (кэшируются и не пересоздаются)
+    # 0. Кэшированный статический темный фон с градиентом и сеткой (0 мс CPU на кадр)
     global _settings_grid_surf
-    if _settings_grid_surf is None:
-        _settings_grid_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+    if _settings_grid_surf is None or _settings_grid_surf.get_size() != (SCREEN_WIDTH, SCREEN_HEIGHT):
+        _settings_grid_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+        c_top = (12, 16, 24)
+        c_bot = (18, 24, 36)
+        for y in range(SCREEN_HEIGHT):
+            ratio = y / max(1, SCREEN_HEIGHT)
+            r = int(c_top[0] + (c_bot[0] - c_top[0]) * ratio)
+            g = int(c_top[1] + (c_bot[1] - c_top[1]) * ratio)
+            b = int(c_top[2] + (c_bot[2] - c_top[2]) * ratio)
+            pygame.draw.line(_settings_grid_surf, (r, g, b), (0, y), (SCREEN_WIDTH, y))
         for x in range(0, SCREEN_WIDTH, 48):
-            pygame.draw.line(_settings_grid_surf, (30, 42, 58, 40), (x, 70), (x, SCREEN_HEIGHT), 1)
+            pygame.draw.line(_settings_grid_surf, (28, 38, 54), (x, 70), (x, SCREEN_HEIGHT), 1)
         for y in range(70, SCREEN_HEIGHT, 48):
-            pygame.draw.line(_settings_grid_surf, (30, 42, 58, 40), (0, y), (SCREEN_WIDTH, y), 1)
+            pygame.draw.line(_settings_grid_surf, (28, 38, 54), (0, y), (SCREEN_WIDTH, y), 1)
     surface.blit(_settings_grid_surf, (0, 0))
 
     # 1. Верхняя панель навигации
@@ -5270,12 +5299,22 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
     # Отрисовка вкладки 1: Параметры игры
     is_gen = (current_tab == "general")
     is_sav = (current_tab == "saves")
+    cur_time = time.time()
+    global _settings_profiles_cache, _settings_profiles_cache_time, _settings_profiles_count_cache, _settings_profiles_count_time
     if is_sav:
-        all_profiles = list_save_profiles()
-        profiles_count = len(all_profiles)
+        if _settings_profiles_cache is None or (cur_time - _settings_profiles_cache_time > 1.5):
+            _settings_profiles_cache = list_save_profiles()
+            _settings_profiles_cache_time = cur_time
+            _settings_profiles_count_cache = len(_settings_profiles_cache)
+            _settings_profiles_count_time = cur_time
+        all_profiles = _settings_profiles_cache
+        profiles_count = _settings_profiles_count_cache
     else:
         all_profiles = []
-        profiles_count = get_save_profiles_count()
+        if cur_time - _settings_profiles_count_time > 1.5:
+            _settings_profiles_count_cache = get_save_profiles_count()
+            _settings_profiles_count_time = cur_time
+        profiles_count = _settings_profiles_count_cache
 
     t1_bg = (35, 60, 95) if is_gen else ((28, 42, 60) if tg_hov else (20, 26, 38))
     t1_bd = (90, 195, 255) if is_gen else ((70, 110, 150) if tg_hov else (45, 60, 85))
@@ -5354,12 +5393,12 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
 
         pygame.draw.rect(surface, (25, 36, 52), (col1_x, 126, card_w, 40), border_top_left_radius=12, border_top_right_radius=12)
         pygame.draw.line(surface, (50, 85, 125), (col1_x, 166), (col1_x + card_w, 166), 1)
-        c1_hdr = font.render("ЗВУК И МУЗЫКА (AUDIO)", True, (130, 205, 255))
+        c1_hdr = get_rendered_text(font, "ЗВУК И МУЗЫКА (AUDIO)", (130, 205, 255))
         surface.blit(c1_hdr, (col1_x + 18, 134))
 
         # 1.1 SFX Громкость
         row1_y = 180
-        lbl_sfx = font.render("Громкость эффектов (SFX):", True, WHITE)
+        lbl_sfx = get_rendered_text(font, "Громкость эффектов (SFX):", WHITE)
         surface.blit(lbl_sfx, (col1_x + 18, row1_y + 4))
 
         sfx_minus_rect = pygame.Rect(col1_x + 325, row1_y, 38, 32)
@@ -5369,12 +5408,12 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
 
         pygame.draw.rect(surface, (45, 75, 110) if sm_hov else (28, 48, 72), sfx_minus_rect, border_radius=6)
         pygame.draw.rect(surface, (110, 175, 245) if sm_hov else (52, 92, 138), sfx_minus_rect, width=1, border_radius=6)
-        t_sm = font.render("-", True, WHITE)
+        t_sm = get_rendered_text(font, "-", WHITE)
         surface.blit(t_sm, (sfx_minus_rect.centerx - t_sm.get_width() // 2, sfx_minus_rect.centery - t_sm.get_height() // 2 - 2))
 
         pygame.draw.rect(surface, (45, 75, 110) if sp_hov else (28, 48, 72), sfx_plus_rect, border_radius=6)
         pygame.draw.rect(surface, (110, 175, 245) if sp_hov else (52, 92, 138), sfx_plus_rect, width=1, border_radius=6)
-        t_sp = font.render("+", True, WHITE)
+        t_sp = get_rendered_text(font, "+", WHITE)
         surface.blit(t_sp, (sfx_plus_rect.centerx - t_sp.get_width() // 2, sfx_plus_rect.centery - t_sp.get_height() // 2 - 2))
 
         # Индикатор уровня SFX
@@ -5384,12 +5423,12 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
         sfx_fill_w = int((sfx_bar_rect.width - 4) * sfx_vol)
         if sfx_fill_w > 0:
             pygame.draw.rect(surface, (70, 185, 245), (sfx_bar_rect.left + 2, sfx_bar_rect.top + 2, sfx_fill_w, sfx_bar_rect.height - 4), border_radius=4)
-        sfx_pct_txt = tiny_font.render(f"{int(round(sfx_vol * 100))}%", True, WHITE)
+        sfx_pct_txt = get_rendered_text(tiny_font, f"{int(round(sfx_vol * 100))}%", WHITE)
         surface.blit(sfx_pct_txt, (sfx_bar_rect.centerx - sfx_pct_txt.get_width() // 2, sfx_bar_rect.centery - sfx_pct_txt.get_height() // 2))
 
         # 1.2 Музыка Громкость
         row2_y = 228
-        lbl_mus = font.render("Громкость музыки (Music):", True, WHITE)
+        lbl_mus = get_rendered_text(font, "Громкость музыки (Music):", WHITE)
         surface.blit(lbl_mus, (col1_x + 18, row2_y + 4))
 
         music_minus_rect = pygame.Rect(col1_x + 325, row2_y, 38, 32)
@@ -5399,12 +5438,12 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
 
         pygame.draw.rect(surface, (45, 75, 110) if mm_hov else (28, 48, 72), music_minus_rect, border_radius=6)
         pygame.draw.rect(surface, (110, 175, 245) if mm_hov else (52, 92, 138), music_minus_rect, width=1, border_radius=6)
-        t_mm = font.render("-", True, WHITE)
+        t_mm = get_rendered_text(font, "-", WHITE)
         surface.blit(t_mm, (music_minus_rect.centerx - t_mm.get_width() // 2, music_minus_rect.centery - t_mm.get_height() // 2 - 2))
 
         pygame.draw.rect(surface, (45, 75, 110) if mp_hov else (28, 48, 72), music_plus_rect, border_radius=6)
         pygame.draw.rect(surface, (110, 175, 245) if mp_hov else (52, 92, 138), music_plus_rect, width=1, border_radius=6)
-        t_mp = font.render("+", True, WHITE)
+        t_mp = get_rendered_text(font, "+", WHITE)
         surface.blit(t_mp, (music_plus_rect.centerx - t_mp.get_width() // 2, music_plus_rect.centery - t_mp.get_height() // 2 - 2))
 
         # Индикатор уровня Музыки
@@ -5414,13 +5453,13 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
         mus_fill_w = int((mus_bar_rect.width - 4) * mus_vol)
         if mus_fill_w > 0:
             pygame.draw.rect(surface, (190, 110, 245), (mus_bar_rect.left + 2, mus_bar_rect.top + 2, mus_fill_w, mus_bar_rect.height - 4), border_radius=4)
-        mus_pct_txt = tiny_font.render(f"{int(round(mus_vol * 100))}%", True, WHITE)
+        mus_pct_txt = get_rendered_text(tiny_font, f"{int(round(mus_vol * 100))}%", WHITE)
         surface.blit(mus_pct_txt, (mus_bar_rect.centerx - mus_pct_txt.get_width() // 2, mus_bar_rect.centery - mus_pct_txt.get_height() // 2))
 
         # Подсказка
-        tip_sound = tiny_font.render("Совет: Снижение громкости звуков делает битву приятной на скорости 3x-8x.", True, (140, 170, 200))
+        tip_sound = get_rendered_text(tiny_font, "Совет: Снижение громкости звуков делает битву приятной на скорости 3x-8x.", (140, 170, 200))
         surface.blit(tip_sound, (col1_x + 18, 276))
-        tip_sound2 = tiny_font.render("Все синтезированные частоты и музыка адаптируются в реальном времени.", True, (110, 140, 170))
+        tip_sound2 = get_rendered_text(tiny_font, "Все синтезированные частоты и музыка адаптируются в реальном времени.", (110, 140, 170))
         surface.blit(tip_sound2, (col1_x + 18, 298))
 
         # -------------------------------------------------------------
@@ -5432,7 +5471,7 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
 
         pygame.draw.rect(surface, (38, 20, 28), (col1_x, 388, card_w, 40), border_top_left_radius=12, border_top_right_radius=12)
         pygame.draw.line(surface, (75, 45, 60), (col1_x, 428), (col1_x + card_w, 428), 1)
-        c2_hdr = font.render("ТЕКУЩИЙ ПРОФИЛЬ И ДАННЫЕ", True, (255, 140, 150))
+        c2_hdr = get_rendered_text(font, "ТЕКУЩИЙ ПРОФИЛЬ И ДАННЫЕ", (255, 140, 150))
         surface.blit(c2_hdr, (col1_x + 18, 396))
 
         player_name = savedata.get("PlayerName", "sonofstrange")
@@ -5443,13 +5482,13 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
         cur_play_sec = savedata.get("Stats", {}).get("play_time_seconds", 0.0)
         cur_ptime_str = format_play_time(cur_play_sec)
 
-        p_d0 = small_font.render(f"Текущий профиль: '{cur_sname}'", True, (130, 230, 255))
+        p_d0 = get_rendered_text(small_font, f"Текущий профиль: '{cur_sname}'", (130, 230, 255))
         surface.blit(p_d0, (col1_x + 18, 438))
-        p_d_time = tiny_font.render(f"Время в игре: {cur_ptime_str}  •  Обновлён: {cur_updated}", True, (255, 220, 130))
+        p_d_time = get_rendered_text(tiny_font, f"Время в игре: {cur_ptime_str}  •  Обновлён: {cur_updated}", (255, 220, 130))
         surface.blit(p_d_time, (col1_x + 18, 464))
-        p_d1 = tiny_font.render(f"Слот файла: saves/{cur_sid}.json  (Шифрование CTD1)", True, (185, 205, 230))
+        p_d1 = get_rendered_text(tiny_font, f"Слот файла: saves/{cur_sid}.json  (Шифрование CTD1)", (185, 205, 230))
         surface.blit(p_d1, (col1_x + 18, 486))
-        p_d2 = tiny_font.render("Шифрованный экспорт/импорт позволяет переносить прогресс между ПК и телефоном.", True, (140, 175, 205))
+        p_d2 = get_rendered_text(tiny_font, "Шифрованный экспорт/импорт позволяет переносить прогресс между ПК и телефоном.", (140, 175, 205))
         surface.blit(p_d2, (col1_x + 18, 508))
 
         # Ряд 1 кнопок: Экспорт и Импорт (быстрый перенос через буфер обмена)
@@ -5462,12 +5501,12 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
 
         pygame.draw.rect(surface, (36, 95, 145) if exp_hov else (24, 68, 105), export_active_btn, border_radius=7)
         pygame.draw.rect(surface, (100, 215, 255) if exp_hov else (55, 120, 180), export_active_btn, width=1, border_radius=7)
-        t_exp = font.render("ЭКСПОРТ (КОД В БУФЕР)", True, WHITE)
+        t_exp = get_rendered_text(font, "ЭКСПОРТ (КОД В БУФЕР)", WHITE)
         surface.blit(t_exp, (export_active_btn.centerx - t_exp.get_width() // 2, export_active_btn.centery - t_exp.get_height() // 2))
 
         pygame.draw.rect(surface, (36, 130, 75) if imp_hov else (25, 95, 52), import_active_btn, border_radius=7)
         pygame.draw.rect(surface, GOLD if imp_hov else (110, 225, 150), import_active_btn, width=1, border_radius=7)
-        t_imp = font.render("ИМПОРТ ИЗ БУФЕРА", True, WHITE)
+        t_imp = get_rendered_text(font, "ИМПОРТ ИЗ БУФЕРА", WHITE)
         surface.blit(t_imp, (import_active_btn.centerx - t_imp.get_width() // 2, import_active_btn.centery - t_imp.get_height() // 2))
 
         # Ряд 2 кнопок: Слоты сохранений и Сброс профиля
@@ -5483,7 +5522,7 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
         r_hov = reset_btn_rect.collidepoint(mouse_pos)
         pygame.draw.rect(surface, (165, 38, 45) if r_hov else (125, 28, 35), reset_btn_rect, border_radius=8)
         pygame.draw.rect(surface, (255, 120, 130) if r_hov else (180, 50, 60), reset_btn_rect, width=2, border_radius=8)
-        r_txt = font.render("[!] СБРОСИТЬ", True, WHITE)
+        r_txt = get_rendered_text(font, "[!] СБРОСИТЬ", WHITE)
         surface.blit(r_txt, (reset_btn_rect.centerx - r_txt.get_width() // 2, reset_btn_rect.centery - r_txt.get_height() // 2))
 
         # -------------------------------------------------------------
@@ -5702,7 +5741,7 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
             # Заблокировано
             pygame.draw.rect(surface, (36, 30, 42), credits_btn_rect, border_radius=8)
             pygame.draw.rect(surface, (80, 60, 80), credits_btn_rect, width=1, border_radius=8)
-            cr_btn_txt = font.render("ТИТРЫ ЗАБЛОКИРОВАНЫ", True, (140, 130, 150))
+            cr_btn_txt = get_rendered_text(font, "ТИТРЫ ЗАБЛОКИРОВАНЫ", (140, 130, 150))
             surface.blit(cr_btn_txt, (credits_btn_rect.centerx - cr_btn_txt.get_width() // 2, credits_btn_rect.centery - cr_btn_txt.get_height() // 2))
 
     # =========================================================================
@@ -5710,23 +5749,23 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
     # =========================================================================
     else:
         # Подзаголовок и кнопка создания нового профиля
-        s_title = font.render("УПРАВЛЕНИЕ СЛОТАМИ СОХРАНЕНИЙ", True, (240, 250, 255))
+        s_title = get_rendered_text(font, "УПРАВЛЕНИЕ СЛОТАМИ СОХРАНЕНИЙ", (240, 250, 255))
         surface.blit(s_title, (col1_x, 126))
-        s_sub = tiny_font.render("Создавайте сколько угодно профилей, переключайтесь между кампаниями и копируйте слоты.", True, (140, 185, 230))
+        s_sub = get_rendered_text(tiny_font, "Создавайте сколько угодно профилей, переключайтесь между кампаниями и копируйте слоты.", (140, 185, 230))
         surface.blit(s_sub, (col1_x, 150))
 
         create_save_btn = pygame.Rect(SCREEN_WIDTH - 42 - 250, 122, 250, 42)
         cs_hov = create_save_btn.collidepoint(mouse_pos)
         pygame.draw.rect(surface, (32, 120, 65) if cs_hov else (24, 92, 50), create_save_btn, border_radius=8)
         pygame.draw.rect(surface, GOLD if cs_hov else (100, 225, 145), create_save_btn, width=2, border_radius=8)
-        cs_txt = font.render("+ НОВОЕ СОХРАНЕНИЕ", True, WHITE)
+        cs_txt = get_rendered_text(font, "+ НОВОЕ СОХРАНЕНИЕ", WHITE)
         surface.blit(cs_txt, (create_save_btn.centerx - cs_txt.get_width() // 2, create_save_btn.centery - cs_txt.get_height() // 2))
 
         import_clipboard_btn = pygame.Rect(SCREEN_WIDTH - 42 - 250 - 230 - 14, 122, 230, 42)
         ic_hov = import_clipboard_btn.collidepoint(mouse_pos)
         pygame.draw.rect(surface, (36, 95, 145) if ic_hov else (25, 68, 105), import_clipboard_btn, border_radius=8)
         pygame.draw.rect(surface, (100, 215, 255) if ic_hov else (60, 140, 210), import_clipboard_btn, width=1, border_radius=8)
-        ic_txt = font.render("ИМПОРТ ИЗ БУФЕРА", True, WHITE)
+        ic_txt = get_rendered_text(font, "ИМПОРТ ИЗ БУФЕРА", WHITE)
         surface.blit(ic_txt, (import_clipboard_btn.centerx - ic_txt.get_width() // 2, import_clipboard_btn.centery - ic_txt.get_height() // 2))
 
         # Контейнер списка слотов
@@ -5765,14 +5804,14 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
 
             # 1. Название сохранения и бейдж активного слота
             name_x = card_rect.left + (20 if is_act else 16)
-            name_surf = font.render(p["name"], True, (255, 235, 140) if is_act else WHITE)
+            name_surf = get_rendered_text(font, p["name"], (255, 235, 140) if is_act else WHITE)
             surface.blit(name_surf, (name_x, card_rect.top + 8))
 
             if is_act:
                 act_badge_rect = pygame.Rect(name_x + name_surf.get_width() + 12, card_rect.top + 7, 130, 24)
                 pygame.draw.rect(surface, (25, 68, 42), act_badge_rect, border_radius=5)
                 pygame.draw.rect(surface, (80, 220, 130), act_badge_rect, width=1, border_radius=5)
-                ab_txt = tiny_font.render("[ТЕКУЩИЙ СЛОТ]", True, (180, 255, 200))
+                ab_txt = get_rendered_text(tiny_font, "[ТЕКУЩИЙ СЛОТ]", (180, 255, 200))
                 surface.blit(ab_txt, (act_badge_rect.centerx - ab_txt.get_width() // 2, act_badge_rect.centery - ab_txt.get_height() // 2))
 
             # Бейдж сложности профиля
@@ -5783,12 +5822,12 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
             diff_badge_rect = pygame.Rect(d_bx, card_rect.top + 7, d_bw, 24)
             pygame.draw.rect(surface, diff_cfg["bg"], diff_badge_rect, border_radius=5)
             pygame.draw.rect(surface, diff_cfg["border"], diff_badge_rect, width=1, border_radius=5)
-            db_txt = tiny_font.render(diff_cfg["badge"], True, diff_cfg["color"])
+            db_txt = get_rendered_text(tiny_font, diff_cfg["badge"], diff_cfg["color"])
             surface.blit(db_txt, (diff_badge_rect.centerx - db_txt.get_width() // 2, diff_badge_rect.centery - db_txt.get_height() // 2))
 
             # 2. Дата создания и изменения
             dt_txt = f"ID: {p['id']}  |  Создан: {p.get('created_at', '—')}  |  Обновлён: {p.get('updated_at', '—')}"
-            dt_surf = tiny_font.render(dt_txt, True, (135, 155, 180))
+            dt_surf = get_rendered_text(tiny_font, dt_txt, (135, 155, 180))
             surface.blit(dt_surf, (name_x, card_rect.top + 34))
 
             # 3. Первая строка индикаторов: Звёзды, Тёмные, Рекорд, Время
@@ -5798,31 +5837,31 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
             # Звёздные кактусы
             surface.blit(stellar_cactus_img_s, (bx, r3_y - 2))
             bx += 18
-            s_chip = tiny_font.render(f"{p['stars']:,}", True, (255, 225, 120))
+            s_chip = get_rendered_text(tiny_font, f"{p['stars']:,}", (255, 225, 120))
             surface.blit(s_chip, (bx, r3_y))
             bx += s_chip.get_width() + 18
 
             # Тёмные кактусы
             surface.blit(dark_cactus_img_s, (bx, r3_y - 2))
             bx += 18
-            d_chip = tiny_font.render(f"{p['dark']:,}", True, (215, 140, 255))
+            d_chip = get_rendered_text(tiny_font, f"{p['dark']:,}", (215, 140, 255))
             surface.blit(d_chip, (bx, r3_y))
             bx += d_chip.get_width() + 18
 
             # Рекорд волны
-            w_chip = tiny_font.render(f"Рекорд: волна {p['max_wave']}", True, (120, 215, 255))
+            w_chip = get_rendered_text(tiny_font, f"Рекорд: волна {p['max_wave']}", (120, 215, 255))
             surface.blit(w_chip, (bx, r3_y))
             bx += w_chip.get_width() + 18
 
             # Время в игре
             ptime_str = format_play_time(p.get("play_time", 0.0))
-            time_chip = tiny_font.render(f"Время: {ptime_str}", True, (255, 225, 130))
+            time_chip = get_rendered_text(tiny_font, f"Время: {ptime_str}", (255, 225, 130))
             surface.blit(time_chip, (bx, r3_y))
             bx += time_chip.get_width() + 18
 
             # Финал пройден
             if p.get("game_completed", False):
-                fin_chip = tiny_font.render("[ФИНАЛ ПРОЙДЕН]", True, GOLD)
+                fin_chip = get_rendered_text(tiny_font, "[ФИНАЛ ПРОЙДЕН]", GOLD)
                 surface.blit(fin_chip, (bx, r3_y))
 
             # 4. Вторая строка индикаторов: Оранжерея, Реликвии, Древо улучшений
@@ -5831,7 +5870,7 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
 
             # Оранжерея
             gh_txt = f"Оранжерея: {p.get('greenhouse_count', 0)}/8 (ур. {p.get('greenhouse_total_lvl', 0)})"
-            gh_chip = tiny_font.render(gh_txt, True, (140, 235, 185))
+            gh_chip = get_rendered_text(tiny_font, gh_txt, (140, 235, 185))
             surface.blit(gh_chip, (bx4, r4_y))
             bx4 += gh_chip.get_width() + 18
 
@@ -5840,13 +5879,13 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
             r_m = p.get('relics_max_count', 20)
             r_lvl = p.get('relics_total_lvl', 0)
             rel_txt = f"Реликвии: {r_c}/{r_m} (ур. {r_lvl})"
-            rel_chip = tiny_font.render(rel_txt, True, (255, 215, 120))
+            rel_chip = get_rendered_text(tiny_font, rel_txt, (255, 215, 120))
             surface.blit(rel_chip, (bx4, r4_y))
             bx4 += rel_chip.get_width() + 18
 
             # Древо улучшений
             tree_txt = f"Древо: {p.get('bought_nodes', 0)}/{p.get('total_nodes', 64)} нод • {p.get('bought_upgrades', 0)}/{p.get('total_upgrades', 239)} улучш."
-            tree_chip = tiny_font.render(tree_txt, True, (180, 195, 225))
+            tree_chip = get_rendered_text(tiny_font, tree_txt, (180, 195, 225))
             surface.blit(tree_chip, (bx4, r4_y))
 
             # 5. Кнопки действий справа карточки
@@ -5865,7 +5904,7 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
             d_hov = del_rect.collidepoint(mouse_pos)
             pygame.draw.rect(surface, (160, 35, 42) if d_hov else (115, 25, 32), del_rect, border_radius=6)
             pygame.draw.rect(surface, (255, 110, 120) if d_hov else (160, 50, 60), del_rect, width=1, border_radius=6)
-            d_txt = small_font.render("УДАЛИТЬ", True, WHITE)
+            d_txt = get_rendered_text(small_font, "УДАЛИТЬ", WHITE)
             surface.blit(d_txt, (del_rect.centerx - d_txt.get_width() // 2, del_rect.centery - d_txt.get_height() // 2))
             rx -= (btn_w_del + 8)
 
@@ -5874,7 +5913,7 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
             e_hov = exp_rect.collidepoint(mouse_pos)
             pygame.draw.rect(surface, (35, 95, 145) if e_hov else (24, 68, 105), exp_rect, border_radius=6)
             pygame.draw.rect(surface, (100, 215, 255) if e_hov else (55, 120, 180), exp_rect, width=1, border_radius=6)
-            e_txt = small_font.render("ЭКСПОРТ", True, WHITE)
+            e_txt = get_rendered_text(small_font, "ЭКСПОРТ", WHITE)
             surface.blit(e_txt, (exp_rect.centerx - e_txt.get_width() // 2, exp_rect.centery - e_txt.get_height() // 2))
             rx -= (btn_w_exp + 8)
 
@@ -5883,7 +5922,7 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
             c_hov = copy_rect.collidepoint(mouse_pos)
             pygame.draw.rect(surface, (72, 42, 105) if c_hov else (52, 30, 78), copy_rect, border_radius=6)
             pygame.draw.rect(surface, (175, 120, 245) if c_hov else (110, 65, 160), copy_rect, width=1, border_radius=6)
-            c_txt = small_font.render("КОПИЯ", True, WHITE)
+            c_txt = get_rendered_text(small_font, "КОПИЯ", WHITE)
             surface.blit(c_txt, (copy_rect.centerx - c_txt.get_width() // 2, copy_rect.centery - c_txt.get_height() // 2))
             rx -= (btn_w_copy + 8)
 
@@ -5892,7 +5931,7 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
             rn_hov = ren_rect.collidepoint(mouse_pos)
             pygame.draw.rect(surface, (45, 68, 95) if rn_hov else (32, 48, 70), ren_rect, border_radius=6)
             pygame.draw.rect(surface, (120, 175, 235) if rn_hov else (65, 95, 135), ren_rect, width=1, border_radius=6)
-            rn_txt = small_font.render("ИМЯ", True, WHITE)
+            rn_txt = get_rendered_text(small_font, "ИМЯ", WHITE)
             surface.blit(rn_txt, (ren_rect.centerx - rn_txt.get_width() // 2, ren_rect.centery - rn_txt.get_height() // 2))
             rx -= (btn_w_ren + 8)
 
@@ -5901,7 +5940,7 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
                 act_ind_rect = pygame.Rect(rx - btn_w_sel, btn_y, btn_w_sel, btn_h)
                 pygame.draw.rect(surface, (25, 55, 38), act_ind_rect, border_radius=6)
                 pygame.draw.rect(surface, (70, 180, 110), act_ind_rect, width=1, border_radius=6)
-                ind_txt = small_font.render("АКТИВЕН", True, (180, 255, 200))
+                ind_txt = get_rendered_text(small_font, "АКТИВЕН", (180, 255, 200))
                 surface.blit(ind_txt, (act_ind_rect.centerx - ind_txt.get_width() // 2, act_ind_rect.centery - ind_txt.get_height() // 2))
                 sel_rect = None
             else:
@@ -5909,7 +5948,7 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
                 sl_hov = sel_rect.collidepoint(mouse_pos)
                 pygame.draw.rect(surface, (35, 105, 175) if sl_hov else (24, 75, 130), sel_rect, border_radius=6)
                 pygame.draw.rect(surface, (100, 215, 255) if sl_hov else (60, 140, 215), sel_rect, width=1, border_radius=6)
-                sel_txt = small_font.render("ВЫБРАТЬ", True, WHITE)
+                sel_txt = get_rendered_text(small_font, "ВЫБРАТЬ", WHITE)
                 surface.blit(sel_txt, (sel_rect.centerx - sel_txt.get_width() // 2, sel_rect.centery - sel_txt.get_height() // 2))
 
             save_actions.append({
@@ -5945,8 +5984,7 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
 
     # 1. Модальное окно полного сброса сохранения (confirming_reset)
     if confirming_reset:
-        dim_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-        dim_surf.fill((0, 0, 0, 215))
+        dim_surf = get_settings_dim_surf()
         surface.blit(dim_surf, (0, 0))
 
         mw, mh = 560, 250
@@ -5957,12 +5995,12 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
         pygame.draw.rect(surface, (24, 18, 26), m_rect, border_radius=14)
         pygame.draw.rect(surface, RED, m_rect, width=2, border_radius=14)
 
-        m_title = large_font.render("СБРОС ТЕКУЩЕГО СЛОТА?", True, RED)
+        m_title = get_rendered_text(large_font, "СБРОС ТЕКУЩЕГО СЛОТА?", RED)
         surface.blit(m_title, (m_rect.centerx - m_title.get_width() // 2, my + 24))
 
-        m_msg1 = small_font.render("Вы действительно хотите сбросить прогресс текущего слота?", True, WHITE)
+        m_msg1 = get_rendered_text(small_font, "Вы действительно хотите сбросить прогресс текущего слота?", WHITE)
         surface.blit(m_msg1, (m_rect.centerx - m_msg1.get_width() // 2, my + 76))
-        m_msg2 = tiny_font.render("Все звёздные кактусы, таланты и рекорды этого слота будут стёрты!", True, (255, 175, 175))
+        m_msg2 = get_rendered_text(tiny_font, "Все звёздные кактусы, таланты и рекорды этого слота будут стёрты!", (255, 175, 175))
         surface.blit(m_msg2, (m_rect.centerx - m_msg2.get_width() // 2, my + 110))
 
         confirm_yes_btn = pygame.Rect(mx + 38, my + 160, 220, 48)
@@ -5973,18 +6011,17 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
 
         pygame.draw.rect(surface, (190, 40, 50) if cy_hov else (145, 28, 35), confirm_yes_btn, border_radius=8)
         pygame.draw.rect(surface, WHITE if cy_hov else (240, 120, 130), confirm_yes_btn, width=2, border_radius=8)
-        t_cy = font.render("ДА, СБРОСИТЬ", True, WHITE)
+        t_cy = get_rendered_text(font, "ДА, СБРОСИТЬ", WHITE)
         surface.blit(t_cy, (confirm_yes_btn.centerx - t_cy.get_width() // 2, confirm_yes_btn.centery - t_cy.get_height() // 2))
 
         pygame.draw.rect(surface, (40, 140, 70) if cn_hov else (28, 105, 52), confirm_no_btn, border_radius=8)
         pygame.draw.rect(surface, GOLD if cn_hov else (140, 235, 170), confirm_no_btn, width=2, border_radius=8)
-        t_cn = font.render("ОТМЕНА [ESC]", True, WHITE)
+        t_cn = get_rendered_text(font, "ОТМЕНА [ESC]", WHITE)
         surface.blit(t_cn, (confirm_no_btn.centerx - t_cn.get_width() // 2, confirm_no_btn.centery - t_cn.get_height() // 2))
 
     # 2. Модальное окно ввода имени (Создание или Переименование)
     elif modal_state and modal_state.get("type") == "input":
-        dim_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-        dim_surf.fill((0, 0, 0, 215))
+        dim_surf = get_settings_dim_surf()
         surface.blit(dim_surf, (0, 0))
 
         mode = modal_state.get("mode", "create")
@@ -5997,10 +6034,10 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
             pygame.draw.rect(surface, (20, 28, 42), m_rect, border_radius=14)
             pygame.draw.rect(surface, (80, 185, 255), m_rect, width=2, border_radius=14)
 
-            m_title = large_font.render("НОВОЕ СОХРАНЕНИЕ", True, (240, 250, 255))
+            m_title = get_rendered_text(large_font, "НОВОЕ СОХРАНЕНИЕ", (240, 250, 255))
             surface.blit(m_title, (m_rect.centerx - m_title.get_width() // 2, my + 14))
 
-            sub_msg = tiny_font.render("Введите название файла сохранения (до 24 символов):", True, (150, 195, 235))
+            sub_msg = get_rendered_text(tiny_font, "Введите название файла сохранения (до 24 символов):", (150, 195, 235))
             surface.blit(sub_msg, (mx + 36, my + 46))
 
             input_rect = pygame.Rect(mx + 36, my + 68, mw - 72, 38)
@@ -6010,10 +6047,10 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
             text_str = modal_state.get("text", "")
             cursor_visible = (int(time.time() * 2.2) % 2 == 0)
             display_str = text_str + ("|" if cursor_visible else "")
-            t_surf = font.render(display_str, True, WHITE)
+            t_surf = get_rendered_text(font, display_str, WHITE)
             surface.blit(t_surf, (input_rect.left + 12, input_rect.centery - t_surf.get_height() // 2))
 
-            lbl_diff = font.render("ВЫБЕРИТЕ СЛОЖНОСТЬ:", True, (255, 220, 100))
+            lbl_diff = get_rendered_text(font, "ВЫБЕРИТЕ СЛОЖНОСТЬ:", (255, 220, 100))
             surface.blit(lbl_diff, (mx + 36, my + 116))
 
             cur_diff = modal_state.get("difficulty", "normal")
@@ -6062,22 +6099,22 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
                 bd_w = 3 if is_sel else (2 if hov else 1)
                 pygame.draw.rect(surface, bd_c, c_rect, width=bd_w, border_radius=10)
 
-                t_dt = small_font.render(d_title, True, GOLD if is_sel else d_col)
+                t_dt = get_rendered_text(small_font, d_title, GOLD if is_sel else d_col)
                 surface.blit(t_dt, (c_rect.centerx - t_dt.get_width() // 2, c_rect.top + 8))
 
-                t_bg = tiny_font.render(d_badge, True, WHITE if is_sel else d_col)
+                t_bg = get_rendered_text(tiny_font, d_badge, WHITE if is_sel else d_col)
                 surface.blit(t_bg, (c_rect.centerx - t_bg.get_width() // 2, c_rect.top + 26))
 
                 pygame.draw.line(surface, bd_c, (c_rect.left + 12, c_rect.top + 44), (c_rect.right - 12, c_rect.top + 44), 1)
 
                 ly = c_rect.top + 50
                 for line in d_lines:
-                    l_surf = tiny_font.render(f"• {line}", True, (240, 245, 255) if is_sel else (180, 200, 220))
+                    l_surf = get_rendered_text(tiny_font, f"• {line}", (240, 245, 255) if is_sel else (180, 200, 220))
                     surface.blit(l_surf, (c_rect.left + 10, ly))
                     ly += 20
 
                 if is_sel:
-                    st_txt = tiny_font.render("✔ ВЫБРАНО", True, GOLD)
+                    st_txt = get_rendered_text(tiny_font, "✔ ВЫБРАНО", GOLD)
                     surface.blit(st_txt, (c_rect.centerx - st_txt.get_width() // 2, c_rect.bottom - 22))
 
             btn_y = my + mh - 58
@@ -6092,10 +6129,10 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
             pygame.draw.rect(surface, (20, 28, 42), m_rect, border_radius=14)
             pygame.draw.rect(surface, (80, 185, 255), m_rect, width=2, border_radius=14)
 
-            m_title = large_font.render("ПЕРЕИМЕНОВАНИЕ СОХРАНЕНИЯ", True, (240, 250, 255))
+            m_title = get_rendered_text(large_font, "ПЕРЕИМЕНОВАНИЕ СОХРАНЕНИЯ", (240, 250, 255))
             surface.blit(m_title, (m_rect.centerx - m_title.get_width() // 2, my + 20))
 
-            sub_msg = tiny_font.render("Введите название файла сохранения (до 24 символов) и нажмите Enter:", True, (150, 195, 235))
+            sub_msg = get_rendered_text(tiny_font, "Введите название файла сохранения (до 24 символов) и нажмите Enter:", (150, 195, 235))
             surface.blit(sub_msg, (m_rect.centerx - sub_msg.get_width() // 2, my + 60))
 
             input_rect = pygame.Rect(mx + 36, my + 92, mw - 72, 44)
@@ -6105,7 +6142,7 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
             text_str = modal_state.get("text", "")
             cursor_visible = (int(time.time() * 2.2) % 2 == 0)
             display_str = text_str + ("|" if cursor_visible else "")
-            t_surf = font.render(display_str, True, WHITE)
+            t_surf = get_rendered_text(font, display_str, WHITE)
             surface.blit(t_surf, (input_rect.left + 14, input_rect.centery - t_surf.get_height() // 2))
 
             modal_ok_btn = pygame.Rect(mx + 36, my + 160, 240, 48)
@@ -6116,18 +6153,17 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
 
         pygame.draw.rect(surface, (35, 135, 75) if m_ok_hov else (25, 105, 58), modal_ok_btn, border_radius=8)
         pygame.draw.rect(surface, GOLD if m_ok_hov else (120, 235, 160), modal_ok_btn, width=2, border_radius=8)
-        t_ok = font.render("СОХРАНИТЬ [ENTER]", True, WHITE)
+        t_ok = get_rendered_text(font, "СОХРАНИТЬ [ENTER]", WHITE)
         surface.blit(t_ok, (modal_ok_btn.centerx - t_ok.get_width() // 2, modal_ok_btn.centery - t_ok.get_height() // 2))
 
         pygame.draw.rect(surface, (135, 45, 52) if m_can_hov else (105, 32, 38), modal_cancel_btn, border_radius=8)
         pygame.draw.rect(surface, WHITE if m_can_hov else (210, 110, 120), modal_cancel_btn, width=2, border_radius=8)
-        t_can = font.render("ОТМЕНА [ESC]", True, WHITE)
+        t_can = get_rendered_text(font, "ОТМЕНА [ESC]", WHITE)
         surface.blit(t_can, (modal_cancel_btn.centerx - t_can.get_width() // 2, modal_cancel_btn.centery - t_can.get_height() // 2))
 
     # 3. Модальное окно подтверждения удаления сохранения
     elif modal_state and modal_state.get("type") == "delete_confirm":
-        dim_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-        dim_surf.fill((0, 0, 0, 215))
+        dim_surf = get_settings_dim_surf()
         surface.blit(dim_surf, (0, 0))
 
         mw, mh = 580, 250
@@ -6138,15 +6174,15 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
         pygame.draw.rect(surface, (26, 16, 20), m_rect, border_radius=14)
         pygame.draw.rect(surface, RED, m_rect, width=2, border_radius=14)
 
-        m_title = large_font.render("УДАЛИТЬ СОХРАНЕНИЕ?", True, RED)
+        m_title = get_rendered_text(large_font, "УДАЛИТЬ СОХРАНЕНИЕ?", RED)
         surface.blit(m_title, (m_rect.centerx - m_title.get_width() // 2, my + 22))
 
         d_name = modal_state.get("name", "")
         d_id = modal_state.get("target_id", "")
-        m_msg1 = small_font.render(f"Вы действительно хотите удалить слот '{d_name}'?", True, WHITE)
+        m_msg1 = get_rendered_text(small_font, f"Вы действительно хотите удалить слот '{d_name}'?", WHITE)
         surface.blit(m_msg1, (m_rect.centerx - m_msg1.get_width() // 2, my + 72))
 
-        m_msg2 = tiny_font.render(f"Файл saves/{d_id}.json и весь прогресс будут стёрты безвозвратно!", True, (255, 175, 175))
+        m_msg2 = get_rendered_text(tiny_font, f"Файл saves/{d_id}.json и весь прогресс будут стёрты безвозвратно!", (255, 175, 175))
         surface.blit(m_msg2, (m_rect.centerx - m_msg2.get_width() // 2, my + 104))
 
         modal_ok_btn = pygame.Rect(mx + 36, my + 160, 240, 48)
@@ -6157,18 +6193,17 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
 
         pygame.draw.rect(surface, (190, 40, 50) if m_ok_hov else (145, 28, 35), modal_ok_btn, border_radius=8)
         pygame.draw.rect(surface, WHITE if m_ok_hov else (240, 120, 130), modal_ok_btn, width=2, border_radius=8)
-        t_ok = font.render("ДА, УДАЛИТЬ", True, WHITE)
+        t_ok = get_rendered_text(font, "ДА, УДАЛИТЬ", WHITE)
         surface.blit(t_ok, (modal_ok_btn.centerx - t_ok.get_width() // 2, modal_ok_btn.centery - t_ok.get_height() // 2))
 
         pygame.draw.rect(surface, (40, 140, 70) if m_can_hov else (28, 105, 52), modal_cancel_btn, border_radius=8)
         pygame.draw.rect(surface, GOLD if m_can_hov else (140, 235, 170), modal_cancel_btn, width=2, border_radius=8)
-        t_can = font.render("ОТМЕНА [ESC]", True, WHITE)
+        t_can = get_rendered_text(font, "ОТМЕНА [ESC]", WHITE)
         surface.blit(t_can, (modal_cancel_btn.centerx - t_can.get_width() // 2, modal_cancel_btn.centery - t_can.get_height() // 2))
 
     # 4. Модальное окно успешного экспорта сохранения
     elif modal_state and modal_state.get("type") == "export":
-        dim_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-        dim_surf.fill((0, 0, 0, 215))
+        dim_surf = get_settings_dim_surf()
         surface.blit(dim_surf, (0, 0))
 
         mw, mh = 640, 280
@@ -6179,23 +6214,23 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
         pygame.draw.rect(surface, (18, 26, 38), m_rect, border_radius=14)
         pygame.draw.rect(surface, (90, 205, 255), m_rect, width=2, border_radius=14)
 
-        m_title = large_font.render("ЭКСПОРТ СОХРАНЕНИЯ", True, (130, 220, 255))
+        m_title = get_rendered_text(large_font, "ЭКСПОРТ СОХРАНЕНИЯ", (130, 220, 255))
         surface.blit(m_title, (m_rect.centerx - m_title.get_width() // 2, my + 20))
 
         code_str = modal_state.get("code", "")
         fpath = modal_state.get("file", "")
 
-        msg1 = small_font.render("Зашифрованный ключ скопирован в буфер обмена!", True, (120, 255, 170))
+        msg1 = get_rendered_text(small_font, "Зашифрованный ключ скопирован в буфер обмена!", (120, 255, 170))
         surface.blit(msg1, (m_rect.centerx - msg1.get_width() // 2, my + 64))
 
         preview_rect = pygame.Rect(mx + 30, my + 98, mw - 60, 42)
         pygame.draw.rect(surface, (10, 14, 22), preview_rect, border_radius=7)
         pygame.draw.rect(surface, (50, 75, 105), preview_rect, width=1, border_radius=7)
         disp_code = code_str[:54] + "..." if len(code_str) > 54 else code_str
-        c_surf = tiny_font.render(disp_code, True, (240, 240, 255))
+        c_surf = get_rendered_text(tiny_font, disp_code, (240, 240, 255))
         surface.blit(c_surf, (preview_rect.left + 12, preview_rect.centery - c_surf.get_height() // 2))
 
-        msg2 = tiny_font.render(f"Также создан файл: {os.path.basename(fpath)} (в папке saves)", True, (160, 180, 210))
+        msg2 = get_rendered_text(tiny_font, f"Также создан файл: {os.path.basename(fpath)} (в папке saves)", (160, 180, 210))
         surface.blit(msg2, (m_rect.centerx - msg2.get_width() // 2, my + 152))
 
         modal_copy_code_btn = pygame.Rect(mx + 36, my + 195, 260, 48)
@@ -6206,18 +6241,17 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
 
         pygame.draw.rect(surface, (35, 105, 175) if cp_hov else (24, 75, 130), modal_copy_code_btn, border_radius=8)
         pygame.draw.rect(surface, (100, 215, 255) if cp_hov else (60, 140, 215), modal_copy_code_btn, width=2, border_radius=8)
-        t_cp = font.render("СКОПИРОВАТЬ ЕЩЁ", True, WHITE)
+        t_cp = get_rendered_text(font, "СКОПИРОВАТЬ ЕЩЁ", WHITE)
         surface.blit(t_cp, (modal_copy_code_btn.centerx - t_cp.get_width() // 2, modal_copy_code_btn.centery - t_cp.get_height() // 2))
 
         pygame.draw.rect(surface, (40, 140, 70) if can_hov else (28, 105, 52), modal_cancel_btn, border_radius=8)
         pygame.draw.rect(surface, GOLD if can_hov else (140, 235, 170), modal_cancel_btn, width=2, border_radius=8)
-        t_can = font.render("ЗАКРЫТЬ [ESC]", True, WHITE)
+        t_can = get_rendered_text(font, "ЗАКРЫТЬ [ESC]", WHITE)
         surface.blit(t_can, (modal_cancel_btn.centerx - t_can.get_width() // 2, modal_cancel_btn.centery - t_can.get_height() // 2))
 
     # 5. Модальное окно импорта сохранения
     elif modal_state and modal_state.get("type") == "import":
-        dim_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-        dim_surf.fill((0, 0, 0, 215))
+        dim_surf = get_settings_dim_surf()
         surface.blit(dim_surf, (0, 0))
 
         mw, mh = 660, 310
@@ -6229,10 +6263,10 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
         pygame.draw.rect(surface, (18, 24, 36), m_rect, border_radius=14)
         pygame.draw.rect(surface, RED if err_msg else (70, 185, 120), m_rect, width=2, border_radius=14)
 
-        m_title = large_font.render("ИМПОРТ СОХРАНЕНИЯ", True, (130, 230, 170))
+        m_title = get_rendered_text(large_font, "ИМПОРТ СОХРАНЕНИЯ", (130, 230, 170))
         surface.blit(m_title, (m_rect.centerx - m_title.get_width() // 2, my + 18))
 
-        sub_msg = tiny_font.render("Вставьте зашифрованный ключ сохранения (CTD1_...) или нажмите «ВСТАВИТЬ»:", True, (170, 205, 235))
+        sub_msg = get_rendered_text(tiny_font, "Вставьте зашифрованный ключ сохранения (CTD1_...) или нажмите «ВСТАВИТЬ»:", (170, 205, 235))
         surface.blit(sub_msg, (m_rect.centerx - sub_msg.get_width() // 2, my + 56))
 
         input_rect = pygame.Rect(mx + 30, my + 86, mw - 60, 42)
@@ -6243,14 +6277,14 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
         cursor_visible = (int(time.time() * 2.2) % 2 == 0)
         disp_txt = text_str if len(text_str) <= 48 else (text_str[:24] + "..." + text_str[-22:])
         display_str = disp_txt + ("|" if cursor_visible else "")
-        t_surf = font.render(display_str, True, WHITE)
+        t_surf = get_rendered_text(font, display_str, WHITE)
         surface.blit(t_surf, (input_rect.left + 12, input_rect.centery - t_surf.get_height() // 2))
 
         if err_msg:
-            e_surf = tiny_font.render(err_msg, True, (255, 120, 130))
+            e_surf = get_rendered_text(tiny_font, err_msg, (255, 120, 130))
             surface.blit(e_surf, (m_rect.centerx - e_surf.get_width() // 2, my + 138))
         else:
-            n_surf = tiny_font.render("Сохранение будет добавлено как новый слот и сделано активным.", True, (140, 180, 215))
+            n_surf = get_rendered_text(tiny_font, "Сохранение будет добавлено как новый слот и сделано активным.", (140, 180, 215))
             surface.blit(n_surf, (m_rect.centerx - n_surf.get_width() // 2, my + 138))
 
         modal_paste_code_btn = pygame.Rect(mx + 30, my + 172, 280, 44)
@@ -6263,17 +6297,17 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
 
         pygame.draw.rect(surface, (35, 95, 160) if pst_hov else (24, 68, 120), modal_paste_code_btn, border_radius=8)
         pygame.draw.rect(surface, (100, 215, 255) if pst_hov else (55, 125, 195), modal_paste_code_btn, width=1, border_radius=8)
-        t_pst = font.render("ВСТАВИТЬ ИЗ БУФЕРА", True, WHITE)
+        t_pst = get_rendered_text(font, "ВСТАВИТЬ ИЗ БУФЕРА", WHITE)
         surface.blit(t_pst, (modal_paste_code_btn.centerx - t_pst.get_width() // 2, modal_paste_code_btn.centery - t_pst.get_height() // 2))
 
         pygame.draw.rect(surface, (35, 140, 75) if ok_hov else (25, 105, 58), modal_ok_btn, border_radius=8)
         pygame.draw.rect(surface, GOLD if ok_hov else (120, 235, 160), modal_ok_btn, width=2, border_radius=8)
-        t_ok = font.render("ИМПОРТИРОВАТЬ", True, WHITE)
+        t_ok = get_rendered_text(font, "ИМПОРТИРОВАТЬ", WHITE)
         surface.blit(t_ok, (modal_ok_btn.centerx - t_ok.get_width() // 2, modal_ok_btn.centery - t_ok.get_height() // 2))
 
         pygame.draw.rect(surface, (115, 35, 42) if can_hov else (85, 25, 32), modal_cancel_btn, border_radius=8)
         pygame.draw.rect(surface, WHITE if can_hov else (180, 80, 90), modal_cancel_btn, width=1, border_radius=8)
-        t_can = font.render("ОТМЕНА [ESC]", True, WHITE)
+        t_can = get_rendered_text(font, "ОТМЕНА [ESC]", WHITE)
         surface.blit(t_can, (modal_cancel_btn.centerx - t_can.get_width() // 2, modal_cancel_btn.centery - t_can.get_height() // 2))
 
     return {
@@ -7023,6 +7057,18 @@ class MenuDemoSimulation:
             except Exception:
                 pass
 
+        # Пререндеринг статичной поверхности дороги (устраняет покадровую отрисовку 40 толстых линий)
+        self.road_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        r_border = self.biome.get("road_border", (85, 70, 50))
+        r_col = self.biome.get("road_col", (125, 110, 85))
+        if self.path:
+            for p_i in range(len(self.path) - 1):
+                pygame.draw.line(self.road_surf, r_border, self.path[p_i], self.path[p_i + 1], 40)
+                pygame.draw.circle(self.road_surf, r_border, self.path[p_i + 1], 20)
+            for p_i in range(len(self.path) - 1):
+                pygame.draw.line(self.road_surf, r_col, self.path[p_i], self.path[p_i + 1], 32)
+                pygame.draw.circle(self.road_surf, r_col, self.path[p_i + 1], 16)
+
     def update(self, dt):
         dt = min(dt, 0.1)
 
@@ -7111,16 +7157,9 @@ class MenuDemoSimulation:
             except Exception:
                 pass
 
-        # Дорожка биома (двойная окантовка и цвет грунта)
-        r_border = self.biome.get("road_border", (85, 70, 50))
-        r_col = self.biome.get("road_col", (125, 110, 85))
-        if self.path:
-            for p_i in range(len(self.path) - 1):
-                pygame.draw.line(surf, r_border, self.path[p_i], self.path[p_i + 1], 40)
-                pygame.draw.circle(surf, r_border, self.path[p_i + 1], 20)
-            for p_i in range(len(self.path) - 1):
-                pygame.draw.line(surf, r_col, self.path[p_i], self.path[p_i + 1], 32)
-                pygame.draw.circle(surf, r_col, self.path[p_i + 1], 16)
+        # Дорожка биома (быстрый блит кэшированной поверхности вместо тяжелой покадровой растеризации)
+        if getattr(self, "road_surf", None):
+            surf.blit(self.road_surf, (0, 0))
 
         # Желейные пятна слаймов на земле и дороге
         for splat in getattr(self, "slime_splats", []):
@@ -7171,6 +7210,12 @@ class MenuDemoSimulation:
                 pass
 
 
+_vignette_top_surf = None
+_vignette_bot_surf = None
+_main_menu_btn_cache = {}
+_sub_pill_cache = {}
+_foot_pill_cache = {}
+
 def draw_main_menu_screen(surface, mouse_pos, demo_sim, bg_time=None):
     """
     Отрисовывает открытое, кинематографичное главное меню игры:
@@ -7179,24 +7224,27 @@ def draw_main_menu_screen(surface, mouse_pos, demo_sim, bg_time=None):
     - По центру: парящий сияющий логотип и стильные полупрозрачные стеклянные кнопки
     - Внизу: плашка версии 0.1.0 и автора sonofstrange
     """
+    global _vignette_top_surf, _vignette_bot_surf
     if bg_time is None:
         bg_time = pygame.time.get_ticks()
 
     # 1. Живая симуляция на фоне
     demo_sim.draw(surface, bg_time)
 
-    # 2. Мягкая кинематографичная виньетка сверху и снизу (центр экрана открыт и прозрачен!)
-    vignette_top = pygame.Surface((SCREEN_WIDTH, 170), pygame.SRCALPHA)
-    for y in range(170):
-        alpha = int(160 * ((170 - y) / 170.0) ** 1.4)
-        pygame.draw.line(vignette_top, (8, 12, 18, alpha), (0, y), (SCREEN_WIDTH, y))
-    surface.blit(vignette_top, (0, 0))
+    # 2. Мягкая кинематографичная виньетка сверху и снизу (статичный кэш поверхностей)
+    if _vignette_top_surf is None:
+        _vignette_top_surf = pygame.Surface((SCREEN_WIDTH, 170), pygame.SRCALPHA)
+        for y in range(170):
+            alpha = int(160 * ((170 - y) / 170.0) ** 1.4)
+            pygame.draw.line(_vignette_top_surf, (8, 12, 18, alpha), (0, y), (SCREEN_WIDTH, y))
+    surface.blit(_vignette_top_surf, (0, 0))
 
-    vignette_bot = pygame.Surface((SCREEN_WIDTH, 180), pygame.SRCALPHA)
-    for y in range(180):
-        alpha = int(170 * (y / 180.0) ** 1.4)
-        pygame.draw.line(vignette_bot, (8, 12, 18, alpha), (0, y), (SCREEN_WIDTH, SCREEN_HEIGHT - 180 + y))
-    surface.blit(vignette_bot, (0, SCREEN_HEIGHT - 180))
+    if _vignette_bot_surf is None:
+        _vignette_bot_surf = pygame.Surface((SCREEN_WIDTH, 180), pygame.SRCALPHA)
+        for y in range(180):
+            alpha = int(170 * (y / 180.0) ** 1.4)
+            pygame.draw.line(_vignette_bot_surf, (8, 12, 18, alpha), (0, y), (SCREEN_WIDTH, SCREEN_HEIGHT - 180 + y))
+    surface.blit(_vignette_bot_surf, (0, SCREEN_HEIGHT - 180))
 
     cx = SCREEN_WIDTH // 2
 
@@ -7210,19 +7258,22 @@ def draw_main_menu_screen(surface, mouse_pos, demo_sim, bg_time=None):
     c_y = title_y - 4 + float_y
     surface.blit(c_icon, (cx - c_sz // 2, int(c_y)))
 
-    t_shadow = massive_font.render("CACTUS TD", True, (0, 0, 0))
+    t_shadow = get_rendered_text(massive_font, "CACTUS TD", (0, 0, 0))
     surface.blit(t_shadow, (cx - t_shadow.get_width() // 2 + 2, title_y + 110))
-    t_main = massive_font.render("CACTUS TD", True, GOLD)
+    t_main = get_rendered_text(massive_font, "CACTUS TD", GOLD)
     surface.blit(t_main, (cx - t_main.get_width() // 2, title_y + 108))
 
     # Стеклянная плашка подзаголовка с надписью Remastered
     sub_str = "REMASTERED"
-    st_surf = font.render(sub_str, True, (140, 245, 205))
+    st_surf = get_rendered_text(font, sub_str, (140, 245, 205))
     pw = st_surf.get_width() + 40
     ph = 30
-    sub_pill = pygame.Surface((pw, ph), pygame.SRCALPHA)
-    pygame.draw.rect(sub_pill, (14, 24, 34, 190), (0, 0, pw, ph), border_radius=15)
-    pygame.draw.rect(sub_pill, (55, 175, 130, 220), (0, 0, pw, ph), width=1, border_radius=15)
+    sub_pill = _sub_pill_cache.get(pw)
+    if sub_pill is None:
+        sub_pill = pygame.Surface((pw, ph), pygame.SRCALPHA)
+        pygame.draw.rect(sub_pill, (14, 24, 34, 190), (0, 0, pw, ph), border_radius=15)
+        pygame.draw.rect(sub_pill, (55, 175, 130, 220), (0, 0, pw, ph), width=1, border_radius=15)
+        _sub_pill_cache[pw] = sub_pill
     surface.blit(sub_pill, (cx - pw // 2, title_y + 168))
     surface.blit(st_surf, (cx - st_surf.get_width() // 2, title_y + 171))
 
@@ -7233,66 +7284,83 @@ def draw_main_menu_screen(surface, mouse_pos, demo_sim, bg_time=None):
     # Кнопка: В БОЙ
     play_btn = pygame.Rect(btn_x, 318, btn_w, 60)
     p_hov = play_btn.collidepoint(mouse_pos)
-    p_surf = pygame.Surface((btn_w, 60), pygame.SRCALPHA)
-    p_bg = (28, 92, 48, 230) if p_hov else (18, 56, 32, 190)
-    p_brd = (120, 255, 170, 255) if p_hov else (60, 180, 100, 220)
-    pygame.draw.rect(p_surf, p_bg, (0, 0, btn_w, 60), border_radius=16)
-    pygame.draw.rect(p_surf, p_brd, (0, 0, btn_w, 60), width=2, border_radius=16)
+    p_surf = _main_menu_btn_cache.get(("play", p_hov))
+    if p_surf is None:
+        p_surf = pygame.Surface((btn_w, 60), pygame.SRCALPHA)
+        p_bg = (28, 92, 48, 230) if p_hov else (18, 56, 32, 190)
+        p_brd = (120, 255, 170, 255) if p_hov else (60, 180, 100, 220)
+        pygame.draw.rect(p_surf, p_bg, (0, 0, btn_w, 60), border_radius=16)
+        pygame.draw.rect(p_surf, p_brd, (0, 0, btn_w, 60), width=2, border_radius=16)
+        _main_menu_btn_cache[("play", p_hov)] = p_surf
     surface.blit(p_surf, play_btn)
 
-    p_txt = large_font.render("В БОЙ", True, WHITE)
+    p_txt = get_rendered_text(large_font, "В БОЙ", WHITE)
     surface.blit(p_txt, (play_btn.centerx - p_txt.get_width() // 2, play_btn.centery - p_txt.get_height() // 2))
 
     # Кнопка: ДОСТИЖЕНИЯ
     ach_btn = pygame.Rect(btn_x, 390, btn_w, 54)
     a_hov = ach_btn.collidepoint(mouse_pos)
-    a_surf = pygame.Surface((btn_w, 54), pygame.SRCALPHA)
-    a_bg = (110, 80, 24, 230) if a_hov else (65, 48, 14, 190)
-    a_brd = (255, 225, 100, 255) if a_hov else (180, 140, 45, 220)
-    pygame.draw.rect(a_surf, a_bg, (0, 0, btn_w, 54), border_radius=14)
-    pygame.draw.rect(a_surf, a_brd, (0, 0, btn_w, 54), width=2, border_radius=14)
+    a_surf = _main_menu_btn_cache.get(("ach", a_hov))
+    if a_surf is None:
+        a_surf = pygame.Surface((btn_w, 54), pygame.SRCALPHA)
+        a_bg = (110, 80, 24, 230) if a_hov else (65, 48, 14, 190)
+        a_brd = (255, 225, 100, 255) if a_hov else (180, 140, 45, 220)
+        pygame.draw.rect(a_surf, a_bg, (0, 0, btn_w, 54), border_radius=14)
+        pygame.draw.rect(a_surf, a_brd, (0, 0, btn_w, 54), width=2, border_radius=14)
+        _main_menu_btn_cache[("ach", a_hov)] = a_surf
     surface.blit(a_surf, ach_btn)
 
-    a_txt = font.render("ДОСТИЖЕНИЯ", True, WHITE)
+    a_txt = get_rendered_text(font, "ДОСТИЖЕНИЯ", WHITE)
     surface.blit(a_txt, (ach_btn.centerx - a_txt.get_width() // 2, ach_btn.centery - a_txt.get_height() // 2))
 
     # Кнопка: НАСТРОЙКИ
     set_btn = pygame.Rect(btn_x, 456, btn_w, 52)
     s_hov = set_btn.collidepoint(mouse_pos)
-    s_surf = pygame.Surface((btn_w, 52), pygame.SRCALPHA)
-    s_bg = (30, 62, 98, 230) if s_hov else (20, 38, 62, 190)
-    s_brd = (110, 205, 255, 255) if s_hov else (55, 100, 155, 220)
-    pygame.draw.rect(s_surf, s_bg, (0, 0, btn_w, 52), border_radius=14)
-    pygame.draw.rect(s_surf, s_brd, (0, 0, btn_w, 52), width=2, border_radius=14)
+    s_surf = _main_menu_btn_cache.get(("settings", s_hov))
+    if s_surf is None:
+        s_surf = pygame.Surface((btn_w, 52), pygame.SRCALPHA)
+        s_bg = (30, 62, 98, 230) if s_hov else (20, 38, 62, 190)
+        s_brd = (110, 205, 255, 255) if s_hov else (55, 100, 155, 220)
+        pygame.draw.rect(s_surf, s_bg, (0, 0, btn_w, 52), border_radius=14)
+        pygame.draw.rect(s_surf, s_brd, (0, 0, btn_w, 52), width=2, border_radius=14)
+        _main_menu_btn_cache[("settings", s_hov)] = s_surf
     surface.blit(s_surf, set_btn)
 
-    s_txt = font.render("НАСТРОЙКИ", True, WHITE)
+    s_txt = get_rendered_text(font, "НАСТРОЙКИ", WHITE)
     surface.blit(s_txt, (set_btn.centerx - s_txt.get_width() // 2, set_btn.centery - s_txt.get_height() // 2))
 
     # Кнопка: ВЫХОД
     exit_btn = pygame.Rect(btn_x, 520, btn_w, 48)
     e_hov = exit_btn.collidepoint(mouse_pos)
-    e_surf = pygame.Surface((btn_w, 48), pygame.SRCALPHA)
-    e_bg = (95, 30, 36, 230) if e_hov else (58, 20, 24, 190)
-    e_brd = (255, 110, 120, 255) if e_hov else (145, 45, 52, 220)
-    pygame.draw.rect(e_surf, e_bg, (0, 0, btn_w, 48), border_radius=14)
-    pygame.draw.rect(e_surf, e_brd, (0, 0, btn_w, 48), width=2, border_radius=14)
+    e_surf = _main_menu_btn_cache.get(("exit", e_hov))
+    if e_surf is None:
+        e_surf = pygame.Surface((btn_w, 48), pygame.SRCALPHA)
+        e_bg = (95, 30, 36, 230) if e_hov else (58, 20, 24, 190)
+        e_brd = (255, 110, 120, 255) if e_hov else (145, 45, 52, 220)
+        pygame.draw.rect(e_surf, e_bg, (0, 0, btn_w, 48), border_radius=14)
+        pygame.draw.rect(e_surf, e_brd, (0, 0, btn_w, 48), width=2, border_radius=14)
+        _main_menu_btn_cache[("exit", e_hov)] = e_surf
     surface.blit(e_surf, exit_btn)
 
-    e_txt = font.render("ВЫХОД", True, WHITE)
+    e_txt = get_rendered_text(font, "ВЫХОД", WHITE)
     surface.blit(e_txt, (exit_btn.centerx - e_txt.get_width() // 2, exit_btn.centery - e_txt.get_height() // 2))
 
     # 5. Нижняя панель информации (Версия GAME_VERSION • Автор: sonofstrange)
     foot_str = f"Версия {GAME_VERSION} • Автор: sonofstrange"
-    foot_txt = tiny_font.render(foot_str, True, (180, 210, 240))
+    foot_txt = get_rendered_text(tiny_font, foot_str, (180, 210, 240))
     fp_w = foot_txt.get_width() + 36
     fp_h = 28
-    foot_pill = pygame.Surface((fp_w, fp_h), pygame.SRCALPHA)
-    pygame.draw.rect(foot_pill, (10, 14, 22, 180), (0, 0, fp_w, fp_h), border_radius=14)
-    pygame.draw.rect(foot_pill, (50, 75, 110, 180), (0, 0, fp_w, fp_h), width=1, border_radius=14)
+    foot_pill = _foot_pill_cache.get(fp_w)
+    if foot_pill is None:
+        foot_pill = pygame.Surface((fp_w, fp_h), pygame.SRCALPHA)
+        pygame.draw.rect(foot_pill, (10, 14, 22, 180), (0, 0, fp_w, fp_h), border_radius=14)
+        pygame.draw.rect(foot_pill, (50, 75, 110, 180), (0, 0, fp_w, fp_h), width=1, border_radius=14)
+        _foot_pill_cache[fp_w] = foot_pill
     foot_y = SCREEN_HEIGHT - 38
     surface.blit(foot_pill, (cx - fp_w // 2, foot_y))
     surface.blit(foot_txt, (cx - foot_txt.get_width() // 2, foot_y + (fp_h - foot_txt.get_height()) // 2))
+
+    return play_btn, ach_btn, set_btn, exit_btn
 
     return play_btn, ach_btn, set_btn, exit_btn
 

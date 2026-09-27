@@ -43,6 +43,60 @@ def get_cached_hud_icon(img, size):
         _cached_hud_icons[key] = icon
     return icon
 
+cached_road_surfs = {}
+
+def get_cached_road_surf(map_id, path_coords, r_border, r_col):
+    key = (map_id, tuple(tuple(p) for p in path_coords))
+    surf = cached_road_surfs.get(key)
+    if surf is None:
+        surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        for i in range(len(path_coords) - 1):
+            pygame.draw.line(surf, r_border, path_coords[i], path_coords[i + 1], 40)
+            pygame.draw.circle(surf, r_border, path_coords[i + 1], 20)
+        for i in range(len(path_coords) - 1):
+            pygame.draw.line(surf, r_col, path_coords[i], path_coords[i + 1], 32)
+            pygame.draw.circle(surf, r_col, path_coords[i + 1], 16)
+        cached_road_surfs[key] = surf
+    return surf
+
+cached_biome_bg = {}
+
+def get_cached_biome_bg(map_id):
+    surf = cached_biome_bg.get(map_id)
+    if surf is None:
+        surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+        generate_background(surf, 0, map_id=map_id)
+        cached_biome_bg[map_id] = surf
+    return surf
+
+_farm_base_aura_cache = {}
+
+def get_cached_farm_base_aura(fr):
+    s = _farm_base_aura_cache.get(fr)
+    if s is None:
+        dim = fr * 2 + 10
+        s = pygame.Surface((dim, dim), pygame.SRCALPHA)
+        pygame.draw.circle(s, (50, 160, 255, 25), (fr + 5, fr + 5), fr)
+        pygame.draw.circle(s, (80, 200, 255, 60), (fr + 5, fr + 5), fr, width=1)
+        _farm_base_aura_cache[fr] = s
+    return s
+
+_cached_w_puddles = None
+
+def get_cached_puddle_surf(phase_w):
+    global _cached_w_puddles
+    if _cached_w_puddles is None:
+        _cached_w_puddles = []
+        for p_idx in range(16):
+            pw = p_idx / 15.0
+            p_surf = pygame.Surface((38, 18), pygame.SRCALPHA)
+            pygame.draw.ellipse(p_surf, (40, 160, 255, int(45 + 35 * pw)), (2, 2, 34, 14))
+            pygame.draw.ellipse(p_surf, (130, 230, 255, int(120 + 70 * pw)), (2, 2, 34, 14), width=1)
+            _cached_w_puddles.append(p_surf)
+    idx = max(0, min(15, int(phase_w * 15.99)))
+    return _cached_w_puddles[idx]
+
+
 class WindowManager:
     """Управление физическим окном ОС (Windows), заголовком, эффектами тряски и системным оповещением."""
     def __init__(self):
@@ -4261,8 +4315,12 @@ def run_game():
                         if get_graphics_preset() != "optimized":
                             splat_col = e.get_splat_color()
                             splat_sz = 26 if e.type >= 1000 else (20 if e.type >= 50 else 15)
-                            slime_splats.append(SlimeSplat(e.x, e.y, splat_col, size=splat_sz))
+                            max_splats = 20 if IS_ANDROID else 40
+                            if len(slime_splats) < max_splats:
+                                slime_splats.append(SlimeSplat(e.x, e.y, splat_col, size=splat_sz))
                             num_drops = 10 if e.type >= 1000 else (7 if e.type >= 50 else 5)
+                            if IS_ANDROID:
+                                num_drops = min(4, num_drops)
                             for _ in range(num_drops):
                                 effects.append(JellyDroplet(e.x, e.y, splat_col))
 
@@ -4299,8 +4357,9 @@ def run_game():
                 for splat in slime_splats[:]:
                     if splat.update(ui_dt):
                         slime_splats.remove(splat)
-                if len(slime_splats) > 40:
-                    slime_splats = slime_splats[-40:]
+                max_splats = 20 if IS_ANDROID else 40
+                if len(slime_splats) > max_splats:
+                    slime_splats = slime_splats[-max_splats:]
 
             if is_paused and not game_over and pause_frozen_frame is not None:
                 screen.blit(pause_frozen_frame, (0, 0))
@@ -4315,25 +4374,23 @@ def run_game():
 
                 draw_surf = screen if (ox == 0 and oy == 0) else field_surf
 
-                generate_background(draw_surf, bg_time, map_id=game_map)
+                # Быстрый рендеринг фона биома в бою (кэшированный бэкдроп)
+                draw_surf.blit(get_cached_biome_bg(game_map), (0, 0))
 
                 # Атмосферный фоновый декор биома (кристаллы, камни, кактусы, лавовые трещины)
                 map_decor.draw(draw_surf, bg_time)
 
-                # Дорога биома (двойная окантовка и цвет грунта)
+                # Дорога биома (двойная окантовка и цвет грунта - кэшированная)
                 biome = MAP_BIOMES_DATA.get(game_map, MAP_BIOMES_DATA[0])
                 r_border = biome["road_border"]
                 r_col = biome["road_col"]
-                for i in range(len(path) - 1):
-                    pygame.draw.line(draw_surf, r_border, path[i], path[i + 1], 40)
-                    pygame.draw.circle(draw_surf, r_border, path[i + 1], 20)
-                for i in range(len(path) - 1):
-                    pygame.draw.line(draw_surf, r_col, path[i], path[i + 1], 32)
-                    pygame.draw.circle(draw_surf, r_col, path[i + 1], 16)
+                road_surf = get_cached_road_surf(game_map, path, r_border, r_col)
+                draw_surf.blit(road_surf, (0, 0))
 
                 # Желейные пятна слаймов на земле и дороге (только на нормальной графике)
-                for splat in slime_splats:
-                    splat.draw(draw_surf)
+                if get_graphics_preset() != "optimized":
+                    for splat in slime_splats:
+                        splat.draw(draw_surf)
 
                 # Слоты под башни
                 base_slots_count = len(tower_slots_list[game_map]) if (0 <= game_map < len(tower_slots_list)) else len(tower_slots)
@@ -4380,35 +4437,24 @@ def run_game():
                     for f in towers:
                         if f.type == "farm" and getattr(f, "range", 0) > 0:
                             fr = int(f.range)
-                            surf_aura = getattr(f, "_farm_aura_surf", None)
-                            req_dim = fr * 2 + 10
-                            if surf_aura is None or surf_aura.get_size() != (req_dim, req_dim):
-                                surf_aura = pygame.Surface((req_dim, req_dim), pygame.SRCALPHA)
-                                f._farm_aura_surf = surf_aura
-                            else:
-                                surf_aura.fill((0, 0, 0, 0))
-                            pulse_a = int(22 + 6 * math.sin(t_ticks * 0.003 + f.x))
-                            pygame.draw.circle(surf_aura, (50, 160, 255, pulse_a), (fr + 5, fr + 5), fr)
-                            pygame.draw.circle(surf_aura, (80, 200, 255, 60), (fr + 5, fr + 5), fr, width=1)
-                            wave_p = (t_ticks * 0.0007 + f.x * 0.03) % 1.0
-                            w_r = int(fr * wave_p)
-                            w_alpha = int(75 * (1.0 - wave_p))
-                            if w_r > 6:
-                                pygame.draw.circle(surf_aura, (120, 220, 255, w_alpha), (fr + 5, fr + 5), w_r, width=1)
-                            draw_surf.blit(surf_aura, (int(f.x) - fr - 5, int(f.y) - fr - 5))
+                            base_aura = get_cached_farm_base_aura(fr)
+                            draw_surf.blit(base_aura, (int(f.x) - fr - 5, int(f.y) - fr - 5))
+                            if get_graphics_preset() != "optimized":
+                                wave_p = (t_ticks * 0.0007 + f.x * 0.03) % 1.0
+                                w_r = int(fr * wave_p)
+                                w_alpha = int(75 * (1.0 - wave_p))
+                                if w_r > 6:
+                                    r_surf, r_act = get_cached_ring_surf((120, 220, 255), w_r, w_alpha, width=1)
+                                    if r_surf:
+                                        draw_surf.blit(r_surf, (int(f.x) - r_act - 3, int(f.y) - r_act - 3))
 
-                    # Водный индикатор полива у основания ускоренных башен
-                    if not hasattr(run_game, "_w_puddle"):
-                        run_game._w_puddle = pygame.Surface((38, 18), pygame.SRCALPHA)
-                    w_puddle = run_game._w_puddle
+                    # Водный индикатор полива у основания ускоренных башен (кэшированные фазы)
                     for t in towers:
                         if t.type != "farm" and getattr(t, "farm_boost", 0) > 0:
                             bx, by = int(t.x), int(t.y + 14)
                             p_w = (math.sin(t_ticks * 0.006 + t.x) + 1.0) * 0.5
-                            w_puddle.fill((0, 0, 0, 0))
-                            pygame.draw.ellipse(w_puddle, (40, 160, 255, int(45 + 35 * p_w)), (2, 2, 34, 14))
-                            pygame.draw.ellipse(w_puddle, (130, 230, 255, int(120 + 70 * p_w)), (2, 2, 34, 14), width=1)
-                            draw_surf.blit(w_puddle, (bx - 19, by - 9))
+                            p_surf = get_cached_puddle_surf(p_w)
+                            draw_surf.blit(p_surf, (bx - 19, by - 9))
 
                 if active_meteorite: active_meteorite.draw(draw_surf)
                 if active_dig_site: active_dig_site.draw(draw_surf)
@@ -4486,7 +4532,7 @@ def run_game():
                 pygame.draw.rect(screen, (65, 170, 90), cacti_panel, width=2, border_radius=10)
                 c_icon_scaled = get_cached_hud_icon(cactus_img, (30, 30))
                 screen.blit(c_icon_scaled, (24, cacti_panel.centery - 15))
-                cacti_txt = large_font.render(f"{cacti:,}".replace(",", " "), True, (15, 55, 22))
+                cacti_txt = get_rendered_text(large_font, f"{cacti:,}".replace(",", " "), (15, 55, 22))
                 screen.blit(cacti_txt, (64, cacti_panel.centery - cacti_txt.get_height() // 2))
 
                 # 1.1 Кнопка меню в бою (доступна на ПК и на мобильных устройствах)
@@ -4494,7 +4540,7 @@ def run_game():
                 hud_menu_hov = hud_menu_btn.collidepoint(mouse_pos)
                 pygame.draw.rect(screen, (32, 44, 58) if not hud_menu_hov else (48, 65, 88), hud_menu_btn, border_radius=10)
                 pygame.draw.rect(screen, (75, 145, 210) if not hud_menu_hov else (115, 200, 255), hud_menu_btn, width=2, border_radius=10)
-                hud_menu_txt = font.render("МЕНЮ", True, (225, 240, 255) if not hud_menu_hov else WHITE)
+                hud_menu_txt = get_rendered_text(font, "МЕНЮ", (225, 240, 255) if not hud_menu_hov else WHITE)
                 screen.blit(hud_menu_txt, (hud_menu_btn.centerx - hud_menu_txt.get_width() // 2, hud_menu_btn.centery - hud_menu_txt.get_height() // 2))
 
                 # 2. Звёздные кактусы
@@ -4502,7 +4548,7 @@ def run_game():
                 pygame.draw.rect(screen, (245, 250, 245), st_hud, border_radius=8)
                 pygame.draw.rect(screen, GOLD, st_hud, width=2, border_radius=8)
                 screen.blit(stellar_cactus_img_m, (22, st_hud.centery - 18))
-                st_num = font.render(f"{savedata['StellarCactuses']}", True, (20, 50, 80))
+                st_num = get_rendered_text(font, f"{savedata['StellarCactuses']}", (20, 50, 80))
                 screen.blit(st_num, (66, st_hud.centery - st_num.get_height() // 2))
 
                 # 2.1 Тёмные кактусы (показываются ТОЛЬКО если открыт Тёмный Космос)
@@ -4512,7 +4558,7 @@ def run_game():
                     pygame.draw.rect(screen, (24, 18, 32), dark_hud, border_radius=8)
                     pygame.draw.rect(screen, (175, 75, 245), dark_hud, width=2, border_radius=8)
                     screen.blit(dark_cactus_img_m, (22, dark_hud.centery - 18))
-                    d_num = font.render(f"{dark_cacti_cnt}", True, (240, 220, 255))
+                    d_num = get_rendered_text(font, f"{dark_cacti_cnt}", (240, 220, 255))
                     screen.blit(d_num, (66, dark_hud.centery - d_num.get_height() // 2))
 
                 # 3. Жизни базы (Увеличенный красный Healthbar, плавное заполнение и волна щита)
@@ -4583,8 +4629,8 @@ def run_game():
 
                 # Чёткий текст HP поверх полосы
                 hp_str = f"{lives} / {max_lives} HP"
-                t_shad = font.render(hp_str, True, (0, 0, 0))
-                t_main = font.render(hp_str, True, (255, 255, 255))
+                t_shad = get_rendered_text(font, hp_str, (0, 0, 0))
+                t_main = get_rendered_text(font, hp_str, (255, 255, 255))
                 tx = track_x + 14
                 ty = track_y + track_h // 2 - t_main.get_height() // 2
                 screen.blit(t_shad, (tx + 1, ty + 1))
@@ -4592,8 +4638,8 @@ def run_game():
 
                 # Индикатор щита (Тёмный Эгис)
                 if has_shield:
-                    s_txt = small_font.render(f"ЩИТ x{dark_aegis_charges}", True, (120, 240, 255))
-                    s_shad = small_font.render(f"ЩИТ x{dark_aegis_charges}", True, (0, 0, 0))
+                    s_txt = get_rendered_text(small_font, f"ЩИТ x{dark_aegis_charges}", (120, 240, 255))
+                    s_shad = get_rendered_text(small_font, f"ЩИТ x{dark_aegis_charges}", (0, 0, 0))
                     sx = track_x + track_w - s_txt.get_width() - 8
                     sy = track_y + track_h // 2 - s_txt.get_height() // 2
                     screen.blit(s_shad, (sx + 1, sy + 1))
@@ -4601,19 +4647,22 @@ def run_game():
 
                 # 4. Волна и инфо о карте (Единая верхняя строка y=6..44, гармонично с ХП баром и кактусами)
                 w_str = f"ВОЛНА: {wave}"
-                w_t = font.render(w_str, True, (245, 250, 245))
+                w_t = get_rendered_text(font, w_str, (245, 250, 245))
                 biome = MAP_BIOMES_DATA.get(game_map, MAP_BIOMES_DATA[0])
                 b_str = f"Биом: {biome['name']}  |  {biome['mutator_badge']}"
-                b_t = small_font.render(b_str, True, (215, 235, 255))
+                b_t = get_rendered_text(small_font, b_str, (215, 235, 255))
 
                 tot_w = w_t.get_width() + b_t.get_width() + 38
                 bar_h = 38
                 bar_y = 6
                 bar_rect = pygame.Rect((SCREEN_WIDTH - tot_w) // 2, bar_y, tot_w, bar_h)
 
-                bar_surf = pygame.Surface((tot_w, bar_h), pygame.SRCALPHA)
-                pygame.draw.rect(bar_surf, (18, 26, 36, 220), (0, 0, tot_w, bar_h), border_radius=10)
-                pygame.draw.rect(bar_surf, (55, 135, 100, 240), (0, 0, tot_w, bar_h), width=2, border_radius=10)
+                bar_surf = getattr(run_game, "_top_bar_surf", None)
+                if bar_surf is None or bar_surf.get_size() != (tot_w, bar_h):
+                    bar_surf = pygame.Surface((tot_w, bar_h), pygame.SRCALPHA)
+                    pygame.draw.rect(bar_surf, (18, 26, 36, 220), (0, 0, tot_w, bar_h), border_radius=10)
+                    pygame.draw.rect(bar_surf, (55, 135, 100, 240), (0, 0, tot_w, bar_h), width=2, border_radius=10)
+                    run_game._top_bar_surf = bar_surf
                 screen.blit(bar_surf, (bar_rect.x, bar_rect.y))
 
                 w_pill = pygame.Rect(bar_rect.x + 3, bar_rect.y + 3, w_t.get_width() + 14, bar_h - 6)
@@ -4646,7 +4695,7 @@ def run_game():
                         boss_title = "СЛИЗНЕБАРОН"
                     else:
                         boss_title = "ЦАРЬ-СЛИЗЕНЬ"
-                    b_info_txt = tiny_font.render(f"{boss_title}: {int(boss.health):,} / {int(boss.max_health):,} HP", True, WHITE)
+                    b_info_txt = get_rendered_text(tiny_font, f"{boss_title}: {int(boss.health):,} / {int(boss.max_health):,} HP", WHITE)
                     screen.blit(b_info_txt, (bb_x + bb_w // 2 - b_info_txt.get_width() // 2, bb_y + bb_h // 2 - b_info_txt.get_height() // 2))
 
                 # 5. Компактная панель управления (нижний правый угол, не перекрывает дорогу)
@@ -4665,7 +4714,7 @@ def run_game():
                 spd_col = CYAN if game_speed < 1 else (YELLOW if game_speed > 1 else WHITE)
                 pygame.draw.rect(screen, spd_col, speed_btn_rect, width=2, border_radius=10)
                 spd_label = f">> {game_speed}X  [ПРОБЕЛ]" if game_speed >= 1 else ">> 0.2X [ПРОБЕЛ]"
-                speed_txt = font.render(spd_label, True, spd_col)
+                speed_txt = get_rendered_text(font, spd_label, spd_col)
                 screen.blit(speed_txt, (speed_btn_rect.centerx - speed_txt.get_width() // 2, speed_btn_rect.centery - speed_txt.get_height() // 2))
 
                 # 5.2 Кнопка Турбо-Волн
@@ -4678,7 +4727,7 @@ def run_game():
                     tb_border = (65, 220, 100) if is_turbo else (235, 75, 75)
                     pygame.draw.rect(screen, tb_bg, turbo_btn_rect, border_radius=8)
                     pygame.draw.rect(screen, tb_border, turbo_btn_rect, width=2 if tb_hov else 1, border_radius=8)
-                    tb_txt = tiny_font.render(f"ТУРБО [T]: {'ВКЛ' if is_turbo else 'ВЫКЛ'}", True, (210, 255, 220) if is_turbo else (255, 195, 195))
+                    tb_txt = get_rendered_text(tiny_font, f"ТУРБО [T]: {'ВКЛ' if is_turbo else 'ВЫКЛ'}", (210, 255, 220) if is_turbo else (255, 195, 195))
                     screen.blit(tb_txt, (turbo_btn_rect.centerx - tb_txt.get_width() // 2, turbo_btn_rect.centery - tb_txt.get_height() // 2))
 
                 # 5.3 Кнопка Плотного Спавна
@@ -4691,7 +4740,7 @@ def run_game():
                     sr_border = (255, 170, 40) if is_sr else (140, 130, 120)
                     pygame.draw.rect(screen, sr_bg, spawn_rush_btn_rect, border_radius=8)
                     pygame.draw.rect(screen, sr_border, spawn_rush_btn_rect, width=2 if sr_hov else 1, border_radius=8)
-                    sr_txt = tiny_font.render(f"СПАВН [Y]: {'ВКЛ' if is_sr else 'ВЫКЛ'}", True, (255, 220, 150) if is_sr else (190, 185, 175))
+                    sr_txt = get_rendered_text(tiny_font, f"СПАВН [Y]: {'ВКЛ' if is_sr else 'ВЫКЛ'}", (255, 220, 150) if is_sr else (190, 185, 175))
                     screen.blit(sr_txt, (spawn_rush_btn_rect.centerx - sr_txt.get_width() // 2, spawn_rush_btn_rect.centery - sr_txt.get_height() // 2))
 
                 # 5.4 Кнопка Тактической Сетки
@@ -4704,7 +4753,7 @@ def run_game():
                     rg_border = (90, 200, 255) if is_rg else (130, 140, 150)
                     pygame.draw.rect(screen, rg_bg, range_btn_rect, border_radius=8)
                     pygame.draw.rect(screen, rg_border, range_btn_rect, width=2 if rg_hov else 1, border_radius=8)
-                    rg_txt = tiny_font.render(f"СЕТКА [X]: {'ВКЛ' if is_rg else 'ВЫКЛ'}", True, (210, 240, 255) if is_rg else (190, 195, 205))
+                    rg_txt = get_rendered_text(tiny_font, f"СЕТКА [X]: {'ВКЛ' if is_rg else 'ВЫКЛ'}", (210, 240, 255) if is_rg else (190, 195, 205))
                     screen.blit(rg_txt, (range_btn_rect.centerx - rg_txt.get_width() // 2, range_btn_rect.centery - rg_txt.get_height() // 2))
 
                 # 5.5 Кнопка Орбитального Удара
@@ -4717,7 +4766,7 @@ def run_game():
                         orb_border = (255, 180, 255)
                         pygame.draw.rect(screen, orb_bg, orbital_btn_rect, border_radius=8)
                         pygame.draw.rect(screen, orb_border, orbital_btn_rect, width=2, border_radius=8)
-                        orb_txt = tiny_font.render("ПРИЦЕЛ...", True, (255, 240, 255))
+                        orb_txt = get_rendered_text(tiny_font, "ПРИЦЕЛ...", (255, 240, 255))
                     else:
                         orb_bg = (55, 20, 75) if is_ready else (35, 30, 40)
                         if orb_hov and is_ready:
@@ -4726,9 +4775,9 @@ def run_game():
                         pygame.draw.rect(screen, orb_bg, orbital_btn_rect, border_radius=8)
                         pygame.draw.rect(screen, orb_border, orbital_btn_rect, width=2 if (orb_hov and is_ready) else 1, border_radius=8)
                         if is_ready:
-                            orb_txt = tiny_font.render("ОРБИТА [F]", True, (245, 210, 255))
+                            orb_txt = get_rendered_text(tiny_font, "ОРБИТА [F]", (245, 210, 255))
                         else:
-                            orb_txt = tiny_font.render(f"КД: {int(orbital_strike_cd + 0.9)}с", True, (170, 150, 190))
+                            orb_txt = get_rendered_text(tiny_font, f"КД: {int(orbital_strike_cd + 0.9)}с", (170, 150, 190))
                     screen.blit(orb_txt, (orbital_btn_rect.centerx - orb_txt.get_width() // 2, orbital_btn_rect.centery - orb_txt.get_height() // 2))
 
                 # 5.6 Кнопка Астрального Слота (Астральный Разлом)
@@ -4744,7 +4793,7 @@ def run_game():
                         as_border = (230, 160, 255)
                         pygame.draw.rect(screen, as_bg, astral_slot_btn_rect, border_radius=8)
                         pygame.draw.rect(screen, as_border, astral_slot_btn_rect, width=2, border_radius=8)
-                        as_txt = tiny_font.render("ВЫБЕРИТЕ МЕСТО...", True, (255, 230, 255))
+                        as_txt = get_rendered_text(tiny_font, "ВЫБЕРИТЕ МЕСТО...", (255, 230, 255))
                     else:
                         as_bg = (45, 25, 65) if can_afford_slot else (35, 30, 40)
                         if as_hov and can_afford_slot:
@@ -4755,9 +4804,9 @@ def run_game():
                         cost_str = "5k" if cur_slot_cost == 5000 else "25k"
                         col_t = (230, 190, 255) if can_afford_slot else (160, 145, 175)
                         col_c = (255, 235, 140) if can_afford_slot else (160, 145, 175)
-                        t_lbl = tiny_font.render("[+] СЛОТ:", True, col_t)
-                        t_cost = tiny_font.render(cost_str, True, col_c)
-                        t_slot = tiny_font.render(f"({custom_slots_placed + 1}/{astral_slot_lvl})", True, col_t)
+                        t_lbl = get_rendered_text(tiny_font, "[+] СЛОТ:", col_t)
+                        t_cost = get_rendered_text(tiny_font, cost_str, col_c)
+                        t_slot = get_rendered_text(tiny_font, f"({custom_slots_placed + 1}/{astral_slot_lvl})", col_t)
                         tot_w = t_lbl.get_width() + 4 + 14 + t_cost.get_width() + 4 + t_slot.get_width()
                         bx = astral_slot_btn_rect.centerx - tot_w // 2
                         by = astral_slot_btn_rect.centery - t_lbl.get_height() // 2
@@ -4805,7 +4854,7 @@ def run_game():
                         pygame.draw.rect(screen, (80, 85, 90), b_rect, width=1, border_radius=8)
                         # Реальная иконка замка и звездного кактуса
                         screen.blit(lock_icon, (b_rect.left + 8, b_rect.centery - 8))
-                        l_txt = tiny_font.render("В ДРЕВЕ", True, (180, 185, 190))
+                        l_txt = get_rendered_text(tiny_font, "В ДРЕВЕ", (180, 185, 190))
                         screen.blit(l_txt, (b_rect.left + 28, b_rect.centery - l_txt.get_height() // 2))
                         screen.blit(stellar_cactus_img_xs, (b_rect.left + 28 + l_txt.get_width() + 2, b_rect.centery - 9))
                     else:
@@ -4822,15 +4871,15 @@ def run_game():
                             screen.blit(_dock_icon_cache[b_action], (b_rect.left + 5, b_rect.centery - 14))
 
                         if b_action == "upgrade":
-                            t_lbl = tiny_font.render("[U] ПРОКАЧКА", True, WHITE)
-                            sub_lbl = tiny_font.render("РЕЖИМ" if not upgrade_mode else "АКТИВЕН", True, (255, 215, 80) if upgrade_mode else (180, 190, 200))
+                            t_lbl = get_rendered_text(tiny_font, "[U] ПРОКАЧКА", WHITE)
+                            sub_lbl = get_rendered_text(tiny_font, "РЕЖИМ" if not upgrade_mode else "АКТИВЕН", (255, 215, 80) if upgrade_mode else (180, 190, 200))
                             screen.blit(t_lbl, (b_rect.left + 35, b_rect.top + 10))
                             screen.blit(sub_lbl, (b_rect.left + 35, b_rect.top + 32))
                         else:
                             title_str = f"[{b_key}] {b_name}"
-                            t_lbl = small_font.render(title_str, True, WHITE)
+                            t_lbl = get_rendered_text(small_font, title_str, WHITE)
                             if t_lbl.get_width() > (b_rect.width - 37):
-                                t_lbl = tiny_font.render(title_str, True, WHITE)
+                                t_lbl = get_rendered_text(tiny_font, title_str, WHITE)
                                 screen.blit(t_lbl, (b_rect.left + 35, b_rect.top + 10))
                             else:
                                 screen.blit(t_lbl, (b_rect.left + 35, b_rect.top + 8))
@@ -4838,7 +4887,7 @@ def run_game():
                             # Цена с кактусом
                             can_buy = (cacti >= b_cost)
                             screen.blit(cactus_img_s, (b_rect.left + 35, b_rect.top + 30))
-                            c_lbl = small_font.render(f"{b_cost}", True, WHITE if can_buy else RED)
+                            c_lbl = get_rendered_text(small_font, f"{b_cost}", WHITE if can_buy else RED)
                             screen.blit(c_lbl, (b_rect.left + 55, b_rect.top + 31))
 
                 # Всплывающая подсказка над кнопкой дока при наведении (если башня на поле не инспектируется)
@@ -4853,17 +4902,17 @@ def run_game():
 
                     if not hb_unlocked:
                         pygame.draw.rect(tip_surf, (180, 60, 60), (0, 0, tip_w, tip_h), width=1, border_radius=8)
-                        t1 = small_font.render(f"[{hb_key}] {hb_name} (ЗАКРЫТО)", True, (255, 140, 140))
-                        t2 = tiny_font.render("Требуется разблокировать в Древе", True, (220, 220, 220))
-                        t3 = tiny_font.render("Талантов Оазиса за Звёздные кактусы.", True, GOLD)
+                        t1 = get_rendered_text(small_font, f"[{hb_key}] {hb_name} (ЗАКРЫТО)", (255, 140, 140))
+                        t2 = get_rendered_text(tiny_font, "Требуется разблокировать в Древе", (220, 220, 220))
+                        t3 = get_rendered_text(tiny_font, "Талантов Оазиса за Звёздные кактусы.", GOLD)
                         tip_surf.blit(t1, (10, 8))
                         tip_surf.blit(t2, (10, 30))
                         tip_surf.blit(t3, (10, 48))
                     elif hb_action == "upgrade":
                         pygame.draw.rect(tip_surf, GOLD if upgrade_mode else (70, 160, 240), (0, 0, tip_w, tip_h), width=1, border_radius=8)
-                        t1 = small_font.render("[U] РЕЖИМ ПРОКАЧКИ", True, GOLD)
-                        t2 = tiny_font.render("Активирует режим улучшения башен.", True, WHITE)
-                        t3 = tiny_font.render("Кликните на башню на поле для прокачки.", True, (160, 215, 255))
+                        t1 = get_rendered_text(small_font, "[U] РЕЖИМ ПРОКАЧКИ", GOLD)
+                        t2 = get_rendered_text(tiny_font, "Активирует режим улучшения башен.", WHITE)
+                        t3 = get_rendered_text(tiny_font, "Кликните на башню на поле для прокачки.", (160, 215, 255))
                         tip_surf.blit(t1, (10, 8))
                         tip_surf.blit(t2, (10, 30))
                         tip_surf.blit(t3, (10, 48))
@@ -4914,9 +4963,9 @@ def run_game():
                         }
                         info = tip_info.get(hb_action, ("Башня", WHITE, "", ""))
                         pygame.draw.rect(tip_surf, info[1], (0, 0, tip_w, tip_h), width=1, border_radius=8)
-                        t1 = small_font.render(f"[{hb_key}] {info[0]}", True, info[1])
-                        t2 = tiny_font.render(info[2], True, (220, 230, 240))
-                        t3 = tiny_font.render(info[3], True, GOLD)
+                        t1 = get_rendered_text(small_font, f"[{hb_key}] {info[0]}", info[1])
+                        t2 = get_rendered_text(tiny_font, info[2], (220, 230, 240))
+                        t3 = get_rendered_text(tiny_font, info[3], GOLD)
                         tip_surf.blit(t1, (10, 8))
                         tip_surf.blit(t2, (10, 30))
                         tip_surf.blit(t3, (10, 48))
@@ -4929,7 +4978,7 @@ def run_game():
                     p_hov = prep_rect.collidepoint(mouse_pos)
                     pygame.draw.rect(screen, (255, 250, 235) if p_hov else (245, 250, 245), prep_rect, border_radius=8)
                     pygame.draw.rect(screen, (255, 175, 20) if p_hov else GOLD, prep_rect, width=2 if not p_hov else 3, border_radius=8)
-                    prep_txt = small_font.render(f"Волна {wave} через {max(0.0, between_waves_timer):.1f} сек. [ПРОБЕЛ / Клик]", True, (160, 85, 0))
+                    prep_txt = get_rendered_text(small_font, f"Волна {wave} через {max(0.0, between_waves_timer):.1f} сек. [ПРОБЕЛ / Клик]", (160, 85, 0))
                     screen.blit(prep_txt, (prep_rect.centerx - prep_txt.get_width() // 2, prep_rect.top + 6))
 
                     # Мини-иконки предстоящих типов врагов
@@ -4991,8 +5040,8 @@ def run_game():
 
                     # Бейджик информации о прицеле
                     snap_hint = " • ПРИВЯЗКА К ПУТИ" if snap_type == "road" else (" • МЕТЕОРИТ" if snap_type == "meteorite" else "")
-                    t_txt = small_font.render(f"ОРБИТАЛЬНЫЙ УДАР (R={strike_rad}){snap_hint}", True, (255, 230, 255))
-                    t_sub = tiny_font.render("[ЛКМ / F] - Залп  |  [ПКМ / ESC] - Отмена", True, (230, 200, 240))
+                    t_txt = get_rendered_text(small_font, f"ОРБИТАЛЬНЫЙ УДАР (R={strike_rad}){snap_hint}", (255, 230, 255))
+                    t_sub = get_rendered_text(tiny_font, "[ЛКМ / F] - Залп  |  [ПКМ / ESC] - Отмена", (230, 200, 240))
                     bw = max(t_txt.get_width(), t_sub.get_width()) + 24
                     bh = 44
                     bx = max(10, min(SCREEN_WIDTH - bw - 10, tx - bw // 2))
@@ -5027,12 +5076,10 @@ def run_game():
                             is_snapped = True
 
                     in_range = (math.hypot(target_x - tx, target_y - ty) <= tr)
-                    line_col = (80, 255, 120, 190) if in_range else (255, 90, 90, 180)
+                    line_col = (80, 255, 120) if in_range else (255, 90, 90)
 
-                    # Линия связи от центра палатки к целевой точке флага
-                    guide_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-                    pygame.draw.line(guide_surf, line_col, (tx, ty), (int(target_x), int(target_y)), 2)
-                    screen.blit(guide_surf, (0, 0))
+                    # Прямая отрисовка линии связи на screen без выделения полноэкранной SRCALPHA поверхности
+                    pygame.draw.line(screen, line_col, (tx, ty), (int(target_x), int(target_y)), 2)
 
                     # Эффект притягивания к дороге: мягкое кольцо захвата дороги
                     if is_snapped and in_range:
@@ -5049,12 +5096,12 @@ def run_game():
                     # Подсказка рядом с курсором
                     if in_range:
                         sub_t = "ПРИВЯЗКА К ДОРОГЕ" if is_snapped else "ТОЧКА СБОРА"
-                        t_txt = small_font.render(sub_t, True, (160, 255, 190))
-                        t_sub = tiny_font.render("[ЛКМ] - Установить  |  [ПКМ / ESC] - Отмена", True, (210, 255, 220))
+                        t_txt = get_rendered_text(small_font, sub_t, (160, 255, 190))
+                        t_sub = get_rendered_text(tiny_font, "[ЛКМ] - Установить  |  [ПКМ / ESC] - Отмена", (210, 255, 220))
                         b_border = (80, 240, 120, 240)
                     else:
-                        t_txt = small_font.render("ВНЕ ЗОНЫ ДЕЙСТВИЯ!", True, (255, 130, 130))
-                        t_sub = tiny_font.render("Выберите точку внутри зоны палатки", True, (255, 200, 200))
+                        t_txt = get_rendered_text(small_font, "ВНЕ ЗОНЫ ДЕЙСТВИЯ!", (255, 130, 130))
+                        t_sub = get_rendered_text(tiny_font, "Выберите точку внутри зоны палатки", (255, 200, 200))
                         b_border = (255, 90, 90, 240)
                     bw = max(t_txt.get_width(), t_sub.get_width()) + 20
                     bh = 42
@@ -5100,15 +5147,15 @@ def run_game():
                     screen.blit(disc_s, (mx - 35, my - 35))
 
                     if is_valid:
-                        t_txt1 = small_font.render("РАЗМЕСТИТЬ СЛОТ: ", True, (230, 180, 255))
-                        t_cost = small_font.render(f"{cur_slot_cost:,}", True, (255, 235, 140))
-                        t_sub = tiny_font.render("[ЛКМ] - Установить  |  [ПКМ / ESC] - Отмена", True, (240, 210, 255))
+                        t_txt1 = get_rendered_text(small_font, "РАЗМЕСТИТЬ СЛОТ: ", (230, 180, 255))
+                        t_cost = get_rendered_text(small_font, f"{cur_slot_cost:,}", (255, 235, 140))
+                        t_sub = get_rendered_text(tiny_font, "[ЛКМ] - Установить  |  [ПКМ / ESC] - Отмена", (240, 210, 255))
                         b_border = (200, 100, 255, 240)
                         tw = t_txt1.get_width() + 18 + t_cost.get_width()
                     else:
                         if cacti < cur_slot_cost:
-                            t_txt1 = small_font.render("НЕ ХВАТАЕТ: ", True, (255, 120, 120))
-                            t_cost = small_font.render(f"{cur_slot_cost:,}", True, (255, 160, 160))
+                            t_txt1 = get_rendered_text(small_font, "НЕ ХВАТАЕТ: ", (255, 120, 120))
+                            t_cost = get_rendered_text(small_font, f"{cur_slot_cost:,}", (255, 160, 160))
                             tw = t_txt1.get_width() + 18 + t_cost.get_width()
                         else:
                             if dist_to_path < 32:
@@ -5117,10 +5164,10 @@ def run_game():
                                 reason = "ПЕРЕКРЫВАЕТ ДРУГОЙ СЛОТ"
                             else:
                                 reason = "НЕДОСТУПНАЯ ЗОНА"
-                            t_txt1 = small_font.render(reason, True, (255, 120, 120))
+                            t_txt1 = get_rendered_text(small_font, reason, (255, 120, 120))
                             t_cost = None
                             tw = t_txt1.get_width()
-                        t_sub = tiny_font.render("Нельзя разместить здесь", True, (255, 180, 180))
+                        t_sub = get_rendered_text(tiny_font, "Нельзя разместить здесь", (255, 180, 180))
                         b_border = (255, 80, 80, 240)
                     bw = max(tw, t_sub.get_width()) + 20
                     bh = 42

@@ -320,7 +320,10 @@ class AmbientParticleSystem:
         biome = MAP_BIOMES_DATA.get(map_id, MAP_BIOMES_DATA[0])
         self.ptype = biome.get("particle_type", "pollen")
         if count is None:
-            count = 18 if get_graphics_preset() == "optimized" else 48
+            if IS_ANDROID:
+                count = 12 if get_graphics_preset() == "optimized" else 20
+            else:
+                count = 18 if get_graphics_preset() == "optimized" else 48
         self.particles = [AmbientParticle(self.ptype) for _ in range(count)]
 
     def update(self, dt):
@@ -1705,9 +1708,9 @@ class MagicBullet:
         for i, pos in enumerate(self.trail):
             alpha = int(220 * (i / t_len))
             rad = max(1, int(4 * (i / t_len)))
-            s = pygame.Surface((rad * 2, rad * 2), pygame.SRCALPHA)
-            pygame.draw.circle(s, (180, 80, 240, alpha), (rad, rad), rad)
-            surface.blit(s, (pos[0] - rad, pos[1] - rad))
+            ps = get_cached_spark_surf((180, 80, 240), rad, alpha)
+            if ps:
+                surface.blit(ps, (pos[0] - rad, pos[1] - rad))
         surface.blit(self.image, self.rect)
 
 
@@ -1798,9 +1801,9 @@ class RockBullet:
         for i, pos in enumerate(self.trail):
             alpha = int(200 * (i / t_len))
             rad = max(1, int(4 * (i / t_len)))
-            s = pygame.Surface((rad * 2, rad * 2), pygame.SRCALPHA)
-            pygame.draw.circle(s, (255, 140, 20, alpha), (rad, rad), rad)
-            surface.blit(s, (pos[0] - rad, pos[1] - rad))
+            ps = get_cached_spark_surf((255, 140, 20), rad, alpha)
+            if ps:
+                surface.blit(ps, (pos[0] - rad, pos[1] - rad))
         surface.blit(self.image, self.rect)
 
 
@@ -1867,9 +1870,9 @@ class FrostBullet:
         for i, pos in enumerate(self.trail):
             alpha = int(220 * (i / t_len))
             rad = max(1, int(4 * (i / t_len)))
-            s = pygame.Surface((rad * 2, rad * 2), pygame.SRCALPHA)
-            pygame.draw.circle(s, (140, 230, 255, alpha), (rad, rad), rad)
-            surface.blit(s, (pos[0] - rad, pos[1] - rad))
+            ps = get_cached_spark_surf((140, 230, 255), rad, alpha)
+            if ps:
+                surface.blit(ps, (pos[0] - rad, pos[1] - rad))
         surface.blit(self.image, self.rect)
 
 
@@ -1893,9 +1896,9 @@ class SplashEffect:
         cur_rad = int(self.max_radius * progress)
         alpha = int(220 * (1.0 - progress))
         if cur_rad > 0:
-            s = pygame.Surface((cur_rad * 2, cur_rad * 2), pygame.SRCALPHA)
-            pygame.draw.circle(s, (*self.color, alpha), (cur_rad, cur_rad), cur_rad, width=3)
-            surface.blit(s, (self.x - cur_rad, self.y - cur_rad))
+            s, r_act = get_cached_ring_surf(self.color, cur_rad, alpha, width=3)
+            if s:
+                surface.blit(s, (self.x - r_act - 3, self.y - r_act - 3))
 
 RingEffect = SplashEffect
 
@@ -3333,47 +3336,51 @@ class Enemy:
             elem_cols = {0: (255, 140, 60), 1: (200, 100, 255), 2: (100, 230, 255)}
             e_col = elem_cols.get(elem, (200, 100, 255))
             b_aura = getattr(self, "_boss_aura_surf", None)
-            if b_aura is None:
+            cur_elem = getattr(self, "_cached_elem", -1)
+            if b_aura is None or cur_elem != elem:
                 b_aura = pygame.Surface((116, 116), pygame.SRCALPHA)
+                pygame.draw.circle(b_aura, (140, 20, 220, 115), (58, 58), 48)
+                pygame.draw.circle(b_aura, (*e_col, 220), (58, 58), 54, width=3)
+                pygame.draw.circle(b_aura, (255, 255, 255, 140), (58, 58), 32, width=1)
                 self._boss_aura_surf = b_aura
-            b_aura.fill((0, 0, 0, 0))
-            pygame.draw.circle(b_aura, (140, 20, 220, 115), (58, 58), 48)
-            pygame.draw.circle(b_aura, (*e_col, 220), (58, 58), 54, width=3)
-            pygame.draw.circle(b_aura, (255, 255, 255, 140), (58, 58), 32, width=1)
+                self._cached_elem = elem
             surface.blit(b_aura, (int(self.x - 58), int(self.y - 58)))
         elif self.type >= 3000:
             # Багровый Титан (Волна 75)
+            enraged = getattr(self, "is_enraged", False)
             b_aura = getattr(self, "_boss_aura_surf", None)
-            if b_aura is None:
+            cur_enraged = getattr(self, "_cached_enraged", None)
+            if b_aura is None or cur_enraged != enraged:
                 b_aura = pygame.Surface((92, 92), pygame.SRCALPHA)
+                bg_col = (255, 20, 20, 150) if enraged else (225, 40, 40, 95)
+                pygame.draw.circle(b_aura, bg_col, (46, 46), 40)
+                pygame.draw.circle(b_aura, (255, 120, 50, 180), (46, 46), 42, width=2)
+                pygame.draw.circle(b_aura, (255, 200, 70, 120), (46, 46), 28, width=1)
                 self._boss_aura_surf = b_aura
-            b_aura.fill((0, 0, 0, 0))
-            bg_col = (255, 20, 20, 150) if getattr(self, "is_enraged", False) else (225, 40, 40, 95)
-            pygame.draw.circle(b_aura, bg_col, (46, 46), 40)
-            pygame.draw.circle(b_aura, (255, 120, 50, 180), (46, 46), 42, width=2)
-            pygame.draw.circle(b_aura, (255, 200, 70, 120), (46, 46), 28, width=1)
+                self._cached_enraged = enraged
             surface.blit(b_aura, (int(self.x - 46), int(self.y - 46)))
         elif self.type >= 2000:
             # Лазурный Барон (Волна 50)
+            has_ice_shield = getattr(self, "ice_shield_hp", 0.0) > 0.0
             b_aura = getattr(self, "_boss_aura_surf", None)
-            if b_aura is None:
+            cur_shield = getattr(self, "_cached_ice_shield", None)
+            if b_aura is None or cur_shield != has_ice_shield:
                 b_aura = pygame.Surface((90, 90), pygame.SRCALPHA)
+                pygame.draw.circle(b_aura, (40, 160, 240, 95), (45, 45), 38)
+                pygame.draw.circle(b_aura, (120, 235, 255, 190), (45, 45), 40, width=2)
+                if has_ice_shield:
+                    pygame.draw.circle(b_aura, (200, 245, 255, 230), (45, 45), 44, width=3)
                 self._boss_aura_surf = b_aura
-            b_aura.fill((0, 0, 0, 0))
-            pygame.draw.circle(b_aura, (40, 160, 240, 95), (45, 45), 38)
-            pygame.draw.circle(b_aura, (120, 235, 255, 190), (45, 45), 40, width=2)
-            if getattr(self, "ice_shield_hp", 0.0) > 0.0:
-                pygame.draw.circle(b_aura, (200, 245, 255, 230), (45, 45), 44, width=3)
+                self._cached_ice_shield = has_ice_shield
             surface.blit(b_aura, (int(self.x - 45), int(self.y - 45)))
         elif self.type >= 1000:
             # Изумрудный Царь (Волна 25)
             b_aura = getattr(self, "_boss_aura_surf", None)
             if b_aura is None:
                 b_aura = pygame.Surface((84, 84), pygame.SRCALPHA)
+                pygame.draw.circle(b_aura, (35, 200, 75, 90), (42, 42), 36)
+                pygame.draw.circle(b_aura, (100, 255, 140, 170), (42, 42), 38, width=2)
                 self._boss_aura_surf = b_aura
-            b_aura.fill((0, 0, 0, 0))
-            pygame.draw.circle(b_aura, (35, 200, 75, 90), (42, 42), 36)
-            pygame.draw.circle(b_aura, (100, 255, 140, 170), (42, 42), 38, width=2)
             surface.blit(b_aura, (int(self.x - 42), int(self.y - 42)))
 
         # Отрисовка спрайта слайма (чистый пиксель-арт без искажений)
