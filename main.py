@@ -33,6 +33,16 @@ from game_data import *
 from entities import *
 from ui_screens import *
 
+_cached_hud_icons = {}
+
+def get_cached_hud_icon(img, size):
+    key = (id(img), size)
+    icon = _cached_hud_icons.get(key)
+    if icon is None:
+        icon = pygame.transform.smoothscale(img, size)
+        _cached_hud_icons[key] = icon
+    return icon
+
 class WindowManager:
     """Управление физическим окном ОС (Windows), заголовком, эффектами тряски и системным оповещением."""
     def __init__(self):
@@ -40,8 +50,7 @@ class WindowManager:
         self.base_pos = None
         self.is_shaking = False
         self.last_title = ""
-        self.win = None
-        self.base_pos = None
+        setup_smooth_window_drag()
 
     def update_shake(self, shake_amount, raw_dt, enabled=True):
         pass  # Тряска физического окна ОС полностью отключена
@@ -67,8 +76,50 @@ class WindowManager:
     def victory_bounce(self):
         pass  # Физическое подпрыгивание окна ОС отключено
 
+def get_orbital_target_coords(mx, my, path, active_meteorite=None):
+    """
+    Рассчитывает точку привязки орбитального удара:
+    1. Если курсор находится рядом с Астральным Метеоритом (в пределах 65px), удар привязывается к метеориту.
+    2. Иначе удар точно привязывается к ближайшей точке пути слаймов, чтобы чёрная дыра и луч не падали в пустое поле.
+    """
+    if active_meteorite and math.hypot(active_meteorite.x - mx, active_meteorite.y - my) <= (active_meteorite.radius + 65):
+        return int(active_meteorite.x), int(active_meteorite.y), True, "meteorite"
+    if path and len(path) >= 2:
+        proj_x, proj_y, _, _ = get_nearest_point_on_road(mx, my, path)
+        return int(proj_x), int(proj_y), True, "road"
+    return int(mx), int(my), False, "none"
+
+def update_farm_auras(towers, savedata):
+    """
+    Рассчитывает ауру орошения от Кактусовых Ферм для всех башен на карте.
+    Бонус темпа строго равен: ур.1 = +10%, ур.2 = +18%, ур.3 = +25% (максимум +25%).
+    """
+    irrig_lvl = savedata.get("Upgrades", {}).get("farm_irrigation", 0) if isinstance(savedata, dict) else 0
+    active_farms = [f for f in towers if f.type == "farm"] if irrig_lvl > 0 else []
+    if irrig_lvl > 0:
+        for f in active_farms:
+            st = f.get_stats_at_level(f.level)
+            f.range = st.get("range", 105)
+            f.buffed_towers_count = 0
+    f_pct = [0, 0.10, 0.18, 0.25][min(3, irrig_lvl)] if irrig_lvl > 0 else 0.0
+    for t in towers:
+        f_boost = 0.0
+        f_buffing_cnt = 0
+        if t.type != "farm" and active_farms:
+            for f in active_farms:
+                if math.hypot(t.x - f.x, t.y - f.y) <= f.range:
+                    f_buffing_cnt += 1
+                    f.buffed_towers_count = getattr(f, 'buffed_towers_count', 0) + 1
+            if f_buffing_cnt > 0:
+                f_boost = f_pct
+        t.farm_boost = f_boost
+        t.farms_buffing_count = f_buffing_cnt
+
 def run_game():
     global savedata, screen
+
+    # Гарантированная загрузка активного сохранения игрока
+    savedata = load_data()
 
     running = True
 
@@ -91,10 +142,8 @@ def run_game():
     selected_diff_choice = savedata.get("difficulty", "normal")
 
     apply_audio_settings(savedata)
+    set_global_savedata(savedata)
     set_graphics_preset(savedata.get("Settings", {}).get("graphics_preset", "normal"))
-    if not is_dark_cacti_unlocked(savedata) and savedata.get("DarkCactuses", 0) > 0:
-        savedata["DarkCactuses"] = 0
-        save_data(savedata)
     win_mgr = WindowManager()
 
     game_map = 0
@@ -120,6 +169,7 @@ def run_game():
     active_custom_map_modal = False
     modal_inspect_wave = 1
     bestiary_scroll_y = 0
+    inspected_bestiary_slime = None
     is_dragging_bestiary = False
     bestiary_drag_start_y = 0
     bestiary_drag_start_scroll = 0
@@ -148,8 +198,75 @@ def run_game():
     astral_slot_btn_rect = None
     rally_targeting_tent = None
     dark_aegis_charges = 0
+    astral_rewind_used = False
     flawless_streak = savedata.get("FlawlessWaveStreak", 0)
     lives_at_wave_start = 12
+    active_achievement_toasts = []
+
+    def push_achievement_toasts(unlocked_list):
+        if not unlocked_list:
+            return
+        sfx_achievement.play()
+        for ach in unlocked_list:
+            active_achievement_toasts.append(AchievementToast(ach.get("title", "Достижение"), ach.get("desc", ""), icon=ach.get("icon", None)))
+
+    def render_global_fps_overlay(surf):
+        if not savedata.get("Settings", {}).get("show_fps", True):
+            return
+        fps_val = int(clock.get_fps())
+        fps_col = (130, 240, 160) if fps_val >= 55 else ((240, 210, 80) if fps_val >= 30 else (240, 90, 90))
+        fps_txt = tiny_font.render(f"FPS: {fps_val}", True, fps_col)
+        tw, th = fps_txt.get_width(), fps_txt.get_height()
+        bw = tw + 16
+        bh = max(24, th + 8)
+
+        if current_state == STATE_PLAYING:
+            # Справа от кнопки [МЕНЮ] (x=209..324) перед центральной плашкой волны (x=~470..810)
+            bx, by = 336, 13
+        elif current_state == STATE_MAIN_MENU:
+            # Верхний левый угол главного меню
+            bx, by = 18, 16
+        elif current_state == STATE_MAP_SELECT:
+            # Справа от панели Тёмных кактусов (x=144..254) перед заголовком (x=510)
+            bx, by = 270, 32
+        elif current_state == STATE_UPGRADES:
+            # Справа от панели Тёмных кактусов (x=154..286) перед заголовком
+            bx, by = 298, 20
+        elif current_state == STATE_SETTINGS:
+            # В верхней панели справа от кнопки Назад (x=20..180)
+            bx, by = 200, 23
+        elif current_state == STATE_GREENHOUSE:
+            # Справа от кнопки Инфо (x=180..295) перед заголовком
+            bx, by = 312, 24
+        elif current_state == STATE_BESTIARY:
+            # Справа от кнопки Назад (x=20..180) перед заголовком
+            bx, by = 200, 24
+        elif current_state == STATE_ACHIEVEMENTS:
+            # Справа от панели баланса (x=185..345) перед заголовком
+            bx, by = 360, 36
+        elif current_state == STATE_GLOBAL_ACHIEVEMENTS:
+            # Справа от кнопки Назад (x=30..170)
+            bx, by = 190, 36
+        elif current_state == STATE_RELICS:
+            # В шапке перед кнопкой Инфо (x=982)
+            bx, by = 820, 20
+        else:
+            bx, by = 18, 16
+
+        badge_rect = pygame.Rect(bx, by, bw, bh)
+        badge = pygame.Surface((bw, bh), pygame.SRCALPHA)
+        badge.fill((12, 18, 28, 215))
+        surf.blit(badge, badge_rect)
+        pygame.draw.rect(surf, (55, 85, 125), badge_rect, width=1, border_radius=6)
+        surf.blit(fps_txt, (badge_rect.centerx - tw // 2, badge_rect.centery - th // 2))
+
+    def render_achievement_toasts(surf, dt):
+        for toast in active_achievement_toasts[:]:
+            if toast.update(dt):
+                active_achievement_toasts.remove(toast)
+            else:
+                toast.draw(surf)
+        render_global_fps_overlay(surf)
 
     cacti = 200
     lives = 12
@@ -190,6 +307,8 @@ def run_game():
     selected_tower_type = None
     hovered_tower = None
     inspected_tower = None
+    pinned_tower = None
+    card_linger_timer = 0.0
     last_card_rect = None
     last_btn_rect = None
     last_target_rect = None
@@ -246,12 +365,12 @@ def run_game():
     def start_battle_session():
         nonlocal path, tower_slots, occupied_slots, towers, enemies, projectiles, effects, item_drops, stellar_drops
         nonlocal wave, cacti, lives, max_lives, animated_hp_ratio, hp_catchup_ratio, session_towers_bought, game_over, wave_in_progress, between_waves_timer
-        nonlocal upgrade_mode, selected_tower_type, inspected_tower, speed_levels, current_speed_index, game_speed
+        nonlocal upgrade_mode, selected_tower_type, inspected_tower, pinned_tower, card_linger_timer, speed_levels, current_speed_index, game_speed
         nonlocal session_kills, session_cacti, session_stellar, is_paused, current_state, pause_frozen_frame
         nonlocal last_card_rect, last_btn_rect, last_target_rect, last_sell_rect, last_max_rect
         nonlocal r_btn, q_btn, hud_menu_btn, pause_click_rects
         nonlocal current_wave_queue, upcoming_wave_preview, shake_amount, ambient_particles, map_decor, slime_splats
-        nonlocal active_meteorite, next_meteor_wave, cactus_drone, orbital_strike_cd, orbital_targeting, rally_targeting_tent, dark_aegis_charges, flawless_streak, lives_at_wave_start, session_start_wave
+        nonlocal active_meteorite, next_meteor_wave, cactus_drone, orbital_strike_cd, orbital_targeting, rally_targeting_tent, dark_aegis_charges, astral_rewind_used, flawless_streak, lives_at_wave_start, session_start_wave
         nonlocal custom_slots_placed, astral_slot_targeting, astral_slot_btn_rect
         nonlocal active_dig_site, dig_window, dig_session, dig_window_close_timer, battle_ui_fade_alpha
         nonlocal active_guide_modal, guide_modal_tab, guide_modal_context
@@ -313,6 +432,7 @@ def run_game():
         orbital_targeting = False
         rally_targeting_tent = None
         dark_aegis_charges = savedata["Upgrades"].get("dark_aegis", 0)
+        astral_rewind_used = False
 
         start_wave = savedata.get("SelectedStartWave", 1)
         wave = start_wave
@@ -363,6 +483,8 @@ def run_game():
         upgrade_mode = False
         selected_tower_type = None
         inspected_tower = None
+        pinned_tower = None
+        card_linger_timer = 0.0
         last_card_rect = None
         last_btn_rect = None
         last_target_rect = None
@@ -395,21 +517,11 @@ def run_game():
         if _new_screen is not None:
             screen = _new_screen
 
-        raw_dt = clock.tick(FPS) / 1000.0
-        raw_dt = min(raw_dt, 0.1)
+        cur_fps_limit = savedata.get("Settings", {}).get("fps_limit", 60)
+        raw_dt = (clock.tick(cur_fps_limit) if cur_fps_limit > 0 else clock.tick()) / 1000.0
+        raw_dt = min(raw_dt, 0.05)
         bg_time += raw_dt * 1000.0
 
-        # Учёт проведённого времени в текущем сохранении и периодическая проверка достижений
-        stats_data = savedata.setdefault("Stats", {})
-        stats_data["play_time_seconds"] = stats_data.get("play_time_seconds", 0.0) + raw_dt
-        playtime_check_timer += raw_dt
-        if playtime_check_timer >= 5.0:
-            playtime_check_timer = 0.0
-            if check_achievements(savedata):
-                save_data(savedata)
-                if current_state == STATE_PLAYING:
-                    effects.append(FloatingText(SCREEN_WIDTH // 2, 150, "ДОСТИЖЕНИЕ РАЗБЛОКИРОВАНО!", GOLD))
-                    sfx_achievement.play()
 
         mouse_pos = pygame.mouse.get_pos()
 
@@ -508,13 +620,10 @@ def run_game():
 
                 if event.type == pygame.KEYDOWN:
                     if event.key in [pygame.K_SPACE, pygame.K_RETURN]:
-                        if not savedata.get("difficulty_selected", False):
-                            difficulty_modal_active = True
-                            selected_diff_choice = savedata.get("difficulty", "normal")
-                            sfx_click.play()
-                        else:
-                            current_state = STATE_MAP_SELECT
-                            sfx_click.play()
+                        savedata["difficulty_selected"] = True
+                        difficulty_modal_active = False
+                        current_state = STATE_MAP_SELECT
+                        sfx_click.play()
                     elif event.key == pygame.K_a:
                         current_state = STATE_GLOBAL_ACHIEVEMENTS
                         global_ach_scroll_y = 0
@@ -528,13 +637,10 @@ def run_game():
 
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     if play_btn and play_btn.collidepoint(mouse_pos):
-                        if not savedata.get("difficulty_selected", False):
-                            difficulty_modal_active = True
-                            selected_diff_choice = savedata.get("difficulty", "normal")
-                            sfx_click.play()
-                        else:
-                            current_state = STATE_MAP_SELECT
-                            sfx_click.play()
+                        savedata["difficulty_selected"] = True
+                        difficulty_modal_active = False
+                        current_state = STATE_MAP_SELECT
+                        sfx_click.play()
                     elif ach_btn and ach_btn.collidepoint(mouse_pos):
                         current_state = STATE_GLOBAL_ACHIEVEMENTS
                         global_ach_scroll_y = 0
@@ -566,6 +672,8 @@ def run_game():
                                     demo_sim.enemies.remove(clicked_e)
                             sfx_click.play()
 
+            if active_achievement_toasts:
+                active_achievement_toasts.clear()
             pygame.display.flip()
             continue
 
@@ -668,6 +776,7 @@ def run_game():
                         bestiary_return_state = STATE_MAP_SELECT
                         current_state = STATE_BESTIARY
                         bestiary_scroll_y = 0
+                        inspected_bestiary_slime = None
                         sfx_click.play()
                     elif event.key == pygame.K_o:
                         current_state = STATE_SETTINGS
@@ -836,6 +945,7 @@ def run_game():
                         bestiary_return_state = STATE_MAP_SELECT
                         current_state = STATE_BESTIARY
                         bestiary_scroll_y = 0
+                        inspected_bestiary_slime = None
                         sfx_click.play()
                     elif settings_btn.collidepoint(mouse_pos):
                         current_state = STATE_SETTINGS
@@ -884,8 +994,10 @@ def run_game():
                         sfx_click.play()
 
                     # Кнопки выбора волны
-                    wave_step_lvl = savedata["Upgrades"].get("start_wave_step", 0)
-                    cur_rec = savedata["LevelsRecords"][game_map]
+                    wave_step_lvl = savedata.get("Upgrades", {}).get("start_wave_step", 0)
+                    recs = savedata.setdefault("LevelsRecords", [0] * len(MAP_NAMES_LIST))
+                    while len(recs) < len(MAP_NAMES_LIST): recs.append(0)
+                    cur_rec = recs[game_map] if game_map < len(recs) else 0
                     max_allowed = 1 + wave_step_lvl * 5
                     if cur_rec > 1: max_allowed = min(max_allowed, (cur_rec // 5) * 5 + 1)
                     else: max_allowed = 1
@@ -909,6 +1021,7 @@ def run_game():
                         else:
                             laser.play()
 
+            render_achievement_toasts(screen, raw_dt)
             pygame.display.flip()
             continue
 
@@ -1159,6 +1272,16 @@ def run_game():
                             inspected_greenhouse_cactus = None
                             sfx_click.play()
                             continue
+                        elif selected_tree_node == "astral_beacon" and savedata["Upgrades"].get("astral_beacon", 0) > 0:
+                            # Трансмутация: 150 звёздных кактусов -> 1 тёмный кактус
+                            if savedata.get("StellarCactuses", 0) >= 150:
+                                savedata["StellarCactuses"] -= 150
+                                savedata["DarkCactuses"] = savedata.get("DarkCactuses", 0) + 1
+                                save_data(savedata)
+                                sfx_relic_found.play()
+                            else:
+                                laser.play()
+                            continue
                         cur_lvl = savedata["Upgrades"].get(selected_tree_node, 0)
                         unlocked, _ = check_node_requirements(selected_tree_node, savedata)
                         cost, dark_cost, max_lvl = get_upgrade_node_cost(selected_tree_node, cur_lvl)
@@ -1171,6 +1294,9 @@ def run_game():
                                 savedata["Upgrades"][selected_tree_node] = cur_lvl + 1
                                 save_data(savedata)
                                 sfx_upgrade.play()
+                                new_achs = check_achievements(savedata)
+                                if new_achs:
+                                    push_achievement_toasts(new_achs)
                             else:
                                 laser.play()
                         continue
@@ -1236,6 +1362,7 @@ def run_game():
                         tree_cam_x = max(-800, min(1800, tree_drag_cam_start[0] - dx / tree_zoom))
                         tree_cam_y = max(-400, min(2200, tree_drag_cam_start[1] - dy / tree_zoom))
 
+            render_achievement_toasts(screen, raw_dt)
             pygame.display.flip()
             continue
 
@@ -1405,6 +1532,7 @@ def run_game():
                                             save_data(savedata)
                                             break
 
+            render_achievement_toasts(screen, raw_dt)
             pygame.display.flip()
             continue
 
@@ -1413,7 +1541,7 @@ def run_game():
         # =================================================================
         elif current_state == STATE_GLOBAL_ACHIEVEMENTS:
             back_rect, max_global_ach_scroll = draw_global_achievements_screen(
-                screen, mouse_pos, global_ach_scroll_y, bg_time=bg_time
+                screen, mouse_pos, global_ach_scroll_y, bg_time=bg_time, savedata=savedata
             )
 
             for event in pygame.event.get():
@@ -1490,6 +1618,7 @@ def run_game():
                                 current_state = STATE_MAIN_MENU
                                 sfx_click.play()
 
+            render_achievement_toasts(screen, raw_dt)
             pygame.display.flip()
             continue
 
@@ -1625,6 +1754,7 @@ def run_game():
                             sfx_click.play()
                             break
 
+            render_achievement_toasts(screen, raw_dt)
             pygame.display.flip()
             continue
 
@@ -1728,6 +1858,7 @@ def run_game():
                                         save_data(savedata)
                                     break
 
+            render_achievement_toasts(screen, raw_dt)
             pygame.display.flip()
             continue
 
@@ -1735,8 +1866,8 @@ def run_game():
         # ЭКРАН 2.5: СЛОВАРЬ СЛАЙМОВ (BESTIARY)
         # =================================================================
         elif current_state == STATE_BESTIARY:
-            back_btn, claim_buttons, max_b_scroll = draw_bestiary_screen(
-                screen, savedata, mouse_pos, bestiary_scroll_y, bg_time=bg_time
+            back_btn, claim_buttons, card_click_rects, modal_rect, modal_close_btn, modal_x_btn, modal_claim_btn, max_b_scroll = draw_bestiary_screen(
+                screen, savedata, mouse_pos, bestiary_scroll_y, bg_time=bg_time, inspected_slime_id=inspected_bestiary_slime
             )
 
             for event in pygame.event.get():
@@ -1746,56 +1877,102 @@ def run_game():
                     running = False
 
                 if event.type == pygame.KEYDOWN:
-                    if event.key in [pygame.K_ESCAPE, pygame.K_b, pygame.K_SPACE, getattr(pygame, 'K_AC_BACK', -999)]:
-                        current_state = bestiary_return_state
-                        sfx_click.play()
-                    elif event.key in [pygame.K_UP, pygame.K_w]:
-                        bestiary_scroll_y = max(0, bestiary_scroll_y - 50)
-                    elif event.key in [pygame.K_DOWN, pygame.K_s]:
-                        bestiary_scroll_y = min(max_b_scroll, bestiary_scroll_y + 50)
+                    if inspected_bestiary_slime is not None:
+                        if event.key in [pygame.K_ESCAPE, pygame.K_b, pygame.K_SPACE, pygame.K_RETURN, getattr(pygame, 'K_AC_BACK', -999)]:
+                            inspected_bestiary_slime = None
+                            sfx_click.play()
+                    else:
+                        if event.key in [pygame.K_ESCAPE, pygame.K_b, pygame.K_SPACE, getattr(pygame, 'K_AC_BACK', -999)]:
+                            current_state = bestiary_return_state
+                            sfx_click.play()
+                        elif event.key in [pygame.K_UP, pygame.K_w]:
+                            bestiary_scroll_y = max(0, bestiary_scroll_y - 50)
+                        elif event.key in [pygame.K_DOWN, pygame.K_s]:
+                            bestiary_scroll_y = min(max_b_scroll, bestiary_scroll_y + 50)
 
                 elif event.type == pygame.MOUSEWHEEL:
-                    bestiary_scroll_y = max(0, min(max_b_scroll, bestiary_scroll_y - event.y * 45))
+                    if inspected_bestiary_slime is None:
+                        bestiary_scroll_y = max(0, min(max_b_scroll, bestiary_scroll_y - event.y * 45))
 
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    is_dragging_bestiary = True
-                    bestiary_drag_start_y = mouse_pos[1]
-                    bestiary_drag_start_scroll = bestiary_scroll_y
-                    bestiary_drag_moved = False
+                    if inspected_bestiary_slime is None:
+                        is_dragging_bestiary = True
+                        bestiary_drag_start_y = mouse_pos[1]
+                        bestiary_drag_start_scroll = bestiary_scroll_y
+                        bestiary_drag_moved = False
 
                 elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
-                    if is_dragging_bestiary:
-                        is_dragging_bestiary = False
-                        if not bestiary_drag_moved:
-                            if back_btn.collidepoint(mouse_pos):
-                                current_state = bestiary_return_state
-                                sfx_click.play()
-
+                    if inspected_bestiary_slime is not None:
+                        if (modal_x_btn and modal_x_btn.collidepoint(mouse_pos)) or (modal_close_btn and modal_close_btn.collidepoint(mouse_pos)):
+                            inspected_bestiary_slime = None
+                            sfx_click.play()
+                        elif modal_claim_btn and modal_claim_btn.collidepoint(mouse_pos):
+                            slime_info = next((s for s in BESTIARY_DATA if s["id"] == inspected_bestiary_slime), None)
+                            is_boss = slime_info.get("is_boss", False) if slime_info else False
+                            r_star = 5 if is_boss else 2
+                            r_dark = 1 if is_boss else 0
+                            b_claimed = savedata.setdefault("BestiaryClaimed", {})
+                            already_claimed = False
+                            if isinstance(b_claimed, dict):
+                                already_claimed = bool(b_claimed.get(str(inspected_bestiary_slime), False))
+                                if not already_claimed:
+                                    b_claimed[str(inspected_bestiary_slime)] = True
+                            elif isinstance(b_claimed, list):
+                                already_claimed = (inspected_bestiary_slime in b_claimed)
+                                if not already_claimed:
+                                    b_claimed.append(inspected_bestiary_slime)
                             else:
-                                for sid, b_rect, r_star, r_dark in claim_buttons:
-                                    if b_rect.collidepoint(mouse_pos):
-                                        b_claimed = savedata.setdefault("BestiaryClaimed", {})
-                                        already_claimed = False
-                                        if isinstance(b_claimed, dict):
-                                            already_claimed = bool(b_claimed.get(str(sid), False))
-                                            if not already_claimed:
-                                                b_claimed[str(sid)] = True
-                                        elif isinstance(b_claimed, list):
-                                            already_claimed = (sid in b_claimed)
-                                            if not already_claimed:
-                                                b_claimed.append(sid)
-                                        else:
-                                            savedata["BestiaryClaimed"] = {str(sid): True}
+                                savedata["BestiaryClaimed"] = {str(inspected_bestiary_slime): True}
 
-                                        if not already_claimed:
-                                            savedata["StellarCactuses"] = savedata.get("StellarCactuses", 0) + r_star
-                                            savedata["DarkCactuses"] = savedata.get("DarkCactuses", 0) + r_dark
-                                            sfx_achievement.play()
-                                            save_data(savedata)
-                                        break
+                            if not already_claimed:
+                                savedata["StellarCactuses"] = savedata.get("StellarCactuses", 0) + r_star
+                                savedata["DarkCactuses"] = savedata.get("DarkCactuses", 0) + r_dark
+                                sfx_achievement.play()
+                                save_data(savedata)
+                        elif modal_rect and not modal_rect.collidepoint(mouse_pos):
+                            inspected_bestiary_slime = None
+                            sfx_click.play()
+                    else:
+                        if is_dragging_bestiary:
+                            is_dragging_bestiary = False
+                            if not bestiary_drag_moved:
+                                if back_btn.collidepoint(mouse_pos):
+                                    current_state = bestiary_return_state
+                                    sfx_click.play()
+                                else:
+                                    clicked_claim = False
+                                    for sid, b_rect, r_star, r_dark in claim_buttons:
+                                        if b_rect.collidepoint(mouse_pos):
+                                            clicked_claim = True
+                                            b_claimed = savedata.setdefault("BestiaryClaimed", {})
+                                            already_claimed = False
+                                            if isinstance(b_claimed, dict):
+                                                already_claimed = bool(b_claimed.get(str(sid), False))
+                                                if not already_claimed:
+                                                    b_claimed[str(sid)] = True
+                                            elif isinstance(b_claimed, list):
+                                                already_claimed = (sid in b_claimed)
+                                                if not already_claimed:
+                                                    b_claimed.append(sid)
+                                            else:
+                                                savedata["BestiaryClaimed"] = {str(sid): True}
+
+                                            if not already_claimed:
+                                                savedata["StellarCactuses"] = savedata.get("StellarCactuses", 0) + r_star
+                                                savedata["DarkCactuses"] = savedata.get("DarkCactuses", 0) + r_dark
+                                                sfx_achievement.play()
+                                                save_data(savedata)
+                                            break
+
+                                    if not clicked_claim:
+                                        for sid, c_rect, is_disc in card_click_rects:
+                                            if is_disc and c_rect.collidepoint(mouse_pos):
+                                                inspected_bestiary_slime = sid
+                                                sfx_click.play()
+                                                break
 
                 elif event.type == pygame.MOUSEMOTION:
-                    if is_dragging_bestiary:
+                    if is_dragging_bestiary and inspected_bestiary_slime is None:
                         dy = mouse_pos[1] - bestiary_drag_start_y
                         if abs(dy) > 5:
                             bestiary_drag_moved = True
@@ -1805,15 +1982,16 @@ def run_game():
                 elif event.type == pygame.FINGERDOWN:
                     touch_pos = (int(event.x * SCREEN_WIDTH), int(event.y * SCREEN_HEIGHT))
                     mouse_pos = touch_pos
-                    is_dragging_bestiary = True
-                    bestiary_drag_start_y = touch_pos[1]
-                    bestiary_drag_start_scroll = bestiary_scroll_y
-                    bestiary_drag_moved = False
+                    if inspected_bestiary_slime is None:
+                        is_dragging_bestiary = True
+                        bestiary_drag_start_y = touch_pos[1]
+                        bestiary_drag_start_scroll = bestiary_scroll_y
+                        bestiary_drag_moved = False
 
                 elif event.type == pygame.FINGERMOTION:
                     touch_pos = (int(event.x * SCREEN_WIDTH), int(event.y * SCREEN_HEIGHT))
                     mouse_pos = touch_pos
-                    if is_dragging_bestiary:
+                    if is_dragging_bestiary and inspected_bestiary_slime is None:
                         delta_px = event.dy * SCREEN_HEIGHT * 1.5
                         if abs(delta_px) > 2:
                             bestiary_drag_moved = True
@@ -1822,35 +2000,76 @@ def run_game():
                 elif event.type == pygame.FINGERUP:
                     touch_pos = (int(event.x * SCREEN_WIDTH), int(event.y * SCREEN_HEIGHT))
                     mouse_pos = touch_pos
-                    if is_dragging_bestiary:
-                        is_dragging_bestiary = False
-                        if not bestiary_drag_moved:
-                            if back_btn.collidepoint(touch_pos):
-                                current_state = bestiary_return_state
-                                sfx_click.play()
+                    if inspected_bestiary_slime is not None:
+                        if (modal_x_btn and modal_x_btn.collidepoint(touch_pos)) or (modal_close_btn and modal_close_btn.collidepoint(touch_pos)):
+                            inspected_bestiary_slime = None
+                            sfx_click.play()
+                        elif modal_claim_btn and modal_claim_btn.collidepoint(touch_pos):
+                            slime_info = next((s for s in BESTIARY_DATA if s["id"] == inspected_bestiary_slime), None)
+                            is_boss = slime_info.get("is_boss", False) if slime_info else False
+                            r_star = 5 if is_boss else 2
+                            r_dark = 1 if is_boss else 0
+                            b_claimed = savedata.setdefault("BestiaryClaimed", {})
+                            already_claimed = False
+                            if isinstance(b_claimed, dict):
+                                already_claimed = bool(b_claimed.get(str(inspected_bestiary_slime), False))
+                                if not already_claimed:
+                                    b_claimed[str(inspected_bestiary_slime)] = True
+                            elif isinstance(b_claimed, list):
+                                already_claimed = (inspected_bestiary_slime in b_claimed)
+                                if not already_claimed:
+                                    b_claimed.append(inspected_bestiary_slime)
                             else:
-                                for sid, b_rect, r_star, r_dark in claim_buttons:
-                                    if b_rect.collidepoint(touch_pos):
-                                        b_claimed = savedata.setdefault("BestiaryClaimed", {})
-                                        already_claimed = False
-                                        if isinstance(b_claimed, dict):
-                                            already_claimed = bool(b_claimed.get(str(sid), False))
-                                            if not already_claimed:
-                                                b_claimed[str(sid)] = True
-                                        elif isinstance(b_claimed, list):
-                                            already_claimed = (sid in b_claimed)
-                                            if not already_claimed:
-                                                b_claimed.append(sid)
-                                        else:
-                                            savedata["BestiaryClaimed"] = {str(sid): True}
+                                savedata["BestiaryClaimed"] = {str(inspected_bestiary_slime): True}
 
-                                        if not already_claimed:
-                                            savedata["StellarCactuses"] = savedata.get("StellarCactuses", 0) + r_star
-                                            savedata["DarkCactuses"] = savedata.get("DarkCactuses", 0) + r_dark
-                                            sfx_achievement.play()
-                                            save_data(savedata)
-                                        break
+                            if not already_claimed:
+                                savedata["StellarCactuses"] = savedata.get("StellarCactuses", 0) + r_star
+                                savedata["DarkCactuses"] = savedata.get("DarkCactuses", 0) + r_dark
+                                sfx_achievement.play()
+                                save_data(savedata)
+                        elif modal_rect and not modal_rect.collidepoint(touch_pos):
+                            inspected_bestiary_slime = None
+                            sfx_click.play()
+                    else:
+                        if is_dragging_bestiary:
+                            is_dragging_bestiary = False
+                            if not bestiary_drag_moved:
+                                if back_btn.collidepoint(touch_pos):
+                                    current_state = bestiary_return_state
+                                    sfx_click.play()
+                                else:
+                                    clicked_claim = False
+                                    for sid, b_rect, r_star, r_dark in claim_buttons:
+                                        if b_rect.collidepoint(touch_pos):
+                                            clicked_claim = True
+                                            b_claimed = savedata.setdefault("BestiaryClaimed", {})
+                                            already_claimed = False
+                                            if isinstance(b_claimed, dict):
+                                                already_claimed = bool(b_claimed.get(str(sid), False))
+                                                if not already_claimed:
+                                                    b_claimed[str(sid)] = True
+                                            elif isinstance(b_claimed, list):
+                                                already_claimed = (sid in b_claimed)
+                                                if not already_claimed:
+                                                    b_claimed.append(sid)
+                                            else:
+                                                savedata["BestiaryClaimed"] = {str(sid): True}
 
+                                            if not already_claimed:
+                                                savedata["StellarCactuses"] = savedata.get("StellarCactuses", 0) + r_star
+                                                savedata["DarkCactuses"] = savedata.get("DarkCactuses", 0) + r_dark
+                                                sfx_achievement.play()
+                                                save_data(savedata)
+                                            break
+
+                                    if not clicked_claim:
+                                        for sid, c_rect, is_disc in card_click_rects:
+                                            if is_disc and c_rect.collidepoint(touch_pos):
+                                                inspected_bestiary_slime = sid
+                                                sfx_click.play()
+                                                break
+
+            render_achievement_toasts(screen, raw_dt)
             pygame.display.flip()
             continue
 
@@ -1914,6 +2133,7 @@ def run_game():
                         save_data(savedata)
                         sfx_click.play()
 
+            render_achievement_toasts(screen, raw_dt)
             pygame.display.flip()
             continue
 
@@ -1921,9 +2141,6 @@ def run_game():
         # ЭКРАН 8: НАСТРОЙКИ И ОПЦИИ
         # =================================================================
         elif current_state == STATE_SETTINGS:
-            generate_background(bg_surface, bg_time)
-            screen.blit(bg_surface, (0, 0))
-
             ui_rects = draw_settings_screen(
                 screen, savedata, mouse_pos,
                 confirming_reset=confirming_reset,
@@ -2275,6 +2492,31 @@ def run_game():
                                 save_data(savedata)
                                 sfx_click.play()
 
+                            elif ui_rects.get("fps_toggle") and ui_rects["fps_toggle"].collidepoint(mouse_pos):
+                                cur_sf = savedata.setdefault("Settings", {}).get("show_fps", True)
+                                savedata["Settings"]["show_fps"] = not cur_sf
+                                save_data(savedata)
+                                sfx_click.play()
+
+                            elif ui_rects.get("fps_prev") and ui_rects["fps_prev"].collidepoint(mouse_pos):
+                                fps_opts = [30, 60, 120, 144, 156, 240, 300, 0]
+                                cur_fps = savedata.setdefault("Settings", {}).get("fps_limit", 60)
+                                cur_idx = fps_opts.index(cur_fps) if cur_fps in fps_opts else 1
+                                new_idx = (cur_idx - 1) % len(fps_opts)
+                                savedata["Settings"]["fps_limit"] = fps_opts[new_idx]
+                                save_data(savedata)
+                                sfx_click.play()
+
+                            elif (ui_rects.get("fps_next") and ui_rects["fps_next"].collidepoint(mouse_pos)) or \
+                                 (ui_rects.get("fps_val") and ui_rects["fps_val"].collidepoint(mouse_pos)):
+                                fps_opts = [30, 60, 120, 144, 156, 240, 300, 0]
+                                cur_fps = savedata.setdefault("Settings", {}).get("fps_limit", 60)
+                                cur_idx = fps_opts.index(cur_fps) if cur_fps in fps_opts else 1
+                                new_idx = (cur_idx + 1) % len(fps_opts)
+                                savedata["Settings"]["fps_limit"] = fps_opts[new_idx]
+                                save_data(savedata)
+                                sfx_click.play()
+
                             elif ui_rects.get("credits") and ui_rects["credits"].collidepoint(mouse_pos):
                                 if savedata.get("GameCompleted", False) or savedata.get("CreditsSeen", False):
                                     current_state = STATE_CREDITS
@@ -2348,8 +2590,10 @@ def run_game():
                                         new_data = switch_active_save(sa["id"])
                                         savedata.clear()
                                         savedata.update(new_data)
+                                        set_global_savedata(savedata)
                                         apply_audio_settings(savedata)
                                         set_graphics_preset(savedata.get("Settings", {}).get("graphics_preset", "normal"))
+                                        play_soundtrack(MAP_SOUNDTRACKS[game_map][1] if current_state == STATE_PLAYING else MAP_SOUNDTRACKS[0][1])
                                         sfx_sprout_collect.play()
                                         break
                                     elif sa.get("rename") and sa["rename"].collidepoint(mouse_pos):
@@ -2389,6 +2633,7 @@ def run_game():
                                         sfx_click.play()
                                         break
 
+            render_achievement_toasts(screen, raw_dt)
             pygame.display.flip()
             continue
 
@@ -2400,32 +2645,79 @@ def run_game():
             ui_dt = (raw_dt * (1.0 + 0.10 * max(0.0, game_speed - 1.0))) if not is_paused else 0.0
             if not is_paused:
                 pause_frozen_frame = None
+                # Учёт проведённого времени боя в текущем сохранении и непрерывная проверка достижений во время боя
+                stats_data = savedata.setdefault("Stats", {})
+                stats_data["play_time_seconds"] = stats_data.get("play_time_seconds", 0.0) + raw_dt
+                playtime_check_timer += raw_dt
+                if playtime_check_timer >= 0.5:
+                    playtime_check_timer = 0.0
+                    new_achs = check_achievements(savedata)
+                    if new_achs:
+                        save_data(savedata)
+                        push_achievement_toasts(new_achs)
+
+            # Актуализация ауры орошения кактусовых ферм для всех башен
+            update_farm_auras(towers, savedata)
 
             # Проверка наведения на башню или на её открытую инфо-карточку
             if not IS_ANDROID:
-                new_hovered = None
                 if not is_paused:
                     mx, my = mouse_pos[0], mouse_pos[1]
-                    for tower in towers:
-                        dx = mx - tower.x
-                        dy = my - tower.y
-                        if dx * dx + dy * dy < 1024:
-                            new_hovered = tower
-                            break
+                    in_card = bool(inspected_tower and last_card_rect and last_card_rect.collidepoint(mouse_pos))
 
-                if new_hovered:
-                    if not rally_targeting_tent:
-                        inspected_tower = new_hovered
-                elif last_card_rect and last_card_rect.collidepoint(mouse_pos) and not is_paused:
-                    # Курсор внутри карточки башни — меню остаётся открытым
-                    pass
-                elif rally_targeting_tent and not is_paused:
-                    # Режим выбора точки сбора — сохраняем выделение палатки
-                    inspected_tower = rally_targeting_tent
-                else:
-                    if not is_paused:
-                        inspected_tower = None
+                    if in_card:
+                        # Курсор внутри открытой карточки:
+                        # 1. Меню остаётся открытым.
+                        # 2. Башни, оказавшиеся ПОД карточкой, НЕ перехватывают наведение!
+                        card_linger_timer = 0.15
+                    elif rally_targeting_tent:
+                        # Режим выбора точки сбора — сохраняем выделение палатки
+                        inspected_tower = rally_targeting_tent
+                        card_linger_timer = 0.15
+                    else:
+                        # 1. Если мышь наведена прямо на ЛЮБУЮ другую башню (не закрытую карточкой) — мгновенно переключаем!
+                        hovered_other = None
+                        for tower in towers:
+                            if tower != inspected_tower:
+                                dx = mx - tower.x
+                                dy = my - tower.y
+                                if dx * dx + dy * dy <= 1156:  # 34px радиус башни
+                                    hovered_other = tower
+                                    break
 
+                        if hovered_other:
+                            inspected_tower = hovered_other
+                            card_linger_timer = 0.15
+                        elif inspected_tower:
+                            # 2. Проверяем, находится ли курсор на текущей башне или на пути к её карточке
+                            dx = mx - inspected_tower.x
+                            dy = my - inspected_tower.y
+                            on_current_tower = (dx * dx + dy * dy <= 1156)
+                            in_bridge = False
+                            if not on_current_tower and last_card_rect:
+                                # Узкий коридор прямо по соединительной линии между башней и карточкой
+                                bx_min = min(inspected_tower.x, last_card_rect.centerx) - 16
+                                bx_max = max(inspected_tower.x, last_card_rect.centerx) + 16
+                                by_min = min(inspected_tower.y, last_card_rect.centery)
+                                by_max = max(inspected_tower.y, last_card_rect.centery)
+                                in_bridge = (bx_min <= mx <= bx_max and by_min <= my <= by_max)
+
+                            if on_current_tower or in_bridge:
+                                card_linger_timer = 0.15
+                            else:
+                                # Курсор убран в пустое поле — меню само быстро закрывается!
+                                card_linger_timer -= raw_dt
+                                if card_linger_timer <= 0.0:
+                                    inspected_tower = None
+                                    last_card_rect = None
+                        else:
+                            for tower in towers:
+                                dx = mx - tower.x
+                                dy = my - tower.y
+                                if dx * dx + dy * dy <= 1156:
+                                    inspected_tower = tower
+                                    card_linger_timer = 0.15
+                                    break
             hovered_tower = inspected_tower
 
             for event in pygame.event.get():
@@ -2463,6 +2755,12 @@ def run_game():
                                 save_data(savedata)
                                 effects.append(FloatingText(SCREEN_WIDTH // 2, 200, f"РЕЛИКВИЯ НАЙДЕНА: {dig_session.relic_info['name']}!", (255, 235, 120)))
                                 effects.append(RingEffect(SCREEN_WIDTH // 2, 200, 80, GOLD))
+                            elif res == "gold_vein":
+                                cacti += dig_session.last_gold_vein_cacti
+                                session_cacti += dig_session.last_gold_vein_cacti
+                                save_data(savedata)
+                                effects.append(FloatingText(SCREEN_WIDTH // 2, 200, f"ЗОЛОТАЯ ЖИЛА! +{dig_session.last_gold_vein_cacti} 🌵, +{dig_session.last_gold_vein_stars} ⭐", (255, 215, 60)))
+                                effects.append(RingEffect(SCREEN_WIDTH // 2, 200, 70, (255, 215, 60)))
                         continue
 
                 # События фейкового окна раскопок (Android и встроенный режим)
@@ -2494,6 +2792,12 @@ def run_game():
                                     save_data(savedata)
                                     effects.append(FloatingText(SCREEN_WIDTH // 2, 200, f"РЕЛИКВИЯ НАЙДЕНА: {dig_session.relic_info['name']}!", (255, 235, 120)))
                                     effects.append(RingEffect(SCREEN_WIDTH // 2, 200, 80, GOLD))
+                                elif res == "gold_vein":
+                                    cacti += dig_session.last_gold_vein_cacti
+                                    session_cacti += dig_session.last_gold_vein_cacti
+                                    save_data(savedata)
+                                    effects.append(FloatingText(SCREEN_WIDTH // 2, 200, f"ЗОЛОТАЯ ЖИЛА! +{dig_session.last_gold_vein_cacti} 🌵, +{dig_session.last_gold_vein_stars} ⭐", (255, 215, 60)))
+                                    effects.append(RingEffect(SCREEN_WIDTH // 2, 200, 70, (255, 215, 60)))
                             continue
                         else:
                             # Клик мимо окна раскопок закрывает его
@@ -2613,7 +2917,7 @@ def run_game():
                                 strike_lvl = savedata["Upgrades"].get("orbital_strike", 1)
                                 orbital_strike_cd = 45.0 if strike_lvl <= 1 else (38.0 if strike_lvl == 2 else 30.0)
                                 orbital_targeting = False
-                                tx, ty = mouse_pos[0], mouse_pos[1]
+                                tx, ty, _, _ = get_orbital_target_coords(mouse_pos[0], mouse_pos[1], path, active_meteorite)
                                 strike_rad = 125
                                 effects.append(OrbitalBeamEffect(tx, ty, radius=strike_rad))
                                 shake_amount = 20.0
@@ -2621,20 +2925,17 @@ def run_game():
 
                                 wave_scale = 1.0 + min(2.5, max(0, wave - 1) * 0.04)
                                 if active_meteorite and math.hypot(active_meteorite.x - tx, active_meteorite.y - ty) <= (strike_rad + active_meteorite.radius):
-                                    m_dmg = int((380 + strike_lvl * 180) * wave_scale)
+                                    m_dmg = int((500 + strike_lvl * 250) * wave_scale)
                                     active_meteorite.take_damage(m_dmg, effects)
 
-                                b_dmg = int((280 + strike_lvl * 140) * wave_scale)
-                                void_amp = savedata.get("Upgrades", {}).get("void_amplifier", 0)
+                                b_dmg = int((420 + strike_lvl * 180) * wave_scale)
                                 hits = 0
                                 for ne in enemies:
                                     if math.hypot(ne.x - tx, ne.y - ty) <= strike_rad:
                                         actual_dmg = b_dmg
-                                        # Сопротивление боссов к прямому орбитальному лучу снижено до -25%
+                                        # Сопротивление боссов к прямому орбитальному лучу снижено (-15%)
                                         if ne.type >= 1000:
-                                            actual_dmg = int(actual_dmg * 0.75)
-                                        if void_amp > 0 and (ne.type in (10, 3000, 4000) or ne.type >= 1000):
-                                            actual_dmg = int(actual_dmg * (1.0 + 0.30 * void_amp))
+                                            actual_dmg = int(actual_dmg * 0.85)
                                         # Лимит по урону в 75% от HP слайма
                                         max_limit = max(1, int(getattr(ne, "max_health", ne.health) * 0.75))
                                         actual_dmg = min(actual_dmg, max_limit)
@@ -2647,17 +2948,13 @@ def run_game():
                                 # Талант «Горизонт Событий»: сингулярность стягивает врагов и замедляет на 60%
                                 eh_lvl = savedata.get("Upgrades", {}).get("event_horizon", 0)
                                 if eh_lvl > 0:
-                                    effects.append(RingEffect(tx, ty, strike_rad + 35, (170, 45, 240)))
-                                    for ne in enemies:
-                                        if ne.type < 1000:
-                                            dist = math.hypot(ne.x - tx, ne.y - ty)
-                                            if dist <= (strike_rad + 55) and dist > 4:
-                                                ne.x += (tx - ne.x) * 0.55
-                                                ne.y += (ty - ne.y) * 0.55
-                                                ne.freeze_timer = max(ne.freeze_timer, 2.0 + eh_lvl)
-                                                ne.speed_multiplier = min(ne.speed_multiplier, 0.40)
+                                    eh_dur = 2.0 + eh_lvl * 0.5
+                                    effects.append(EventHorizonVortexEffect(tx, ty, radius=strike_rad + 45, duration=eh_dur, level=eh_lvl, enemies_ref=enemies))
+                                    effects.append(FloatingText(tx, ty - 75, f"ГОРИЗОНТ СОБЫТИЙ ({eh_dur:.1f}с)", (210, 140, 255)))
                     elif event.key == pygame.K_s and inspected_tower and not is_paused:
-                        sell_val = max(20, int(inspected_tower.total_invested * 0.70))
+                        refund_lvl = savedata.get("Upgrades", {}).get("sell_refund", 0) if isinstance(savedata, dict) else 0
+                        sell_ratio = min(1.0, 0.50 + refund_lvl * 0.10)
+                        sell_val = max(20, int(inspected_tower.total_invested * sell_ratio))
                         cacti += sell_val
                         for s_idx, slot in enumerate(tower_slots):
                             if math.hypot(inspected_tower.x - slot[0], inspected_tower.y - slot[1]) < 10:
@@ -2727,6 +3024,7 @@ def run_game():
                             bestiary_return_state = STATE_PLAYING
                             current_state = STATE_BESTIARY
                             bestiary_scroll_y = 0
+                            inspected_bestiary_slime = None
                             sfx_click.play()
                     elif event.key == pygame.K_p:
                         if not game_over:
@@ -2765,6 +3063,8 @@ def run_game():
                                 rally_targeting_tent._rally_selecting = False
                                 rally_targeting_tent = None
                             inspected_tower = None
+                            pinned_tower = None
+                            card_linger_timer = 0.0
                         elif upgrade_mode:
                             upgrade_mode = False
                         else:
@@ -2833,6 +3133,8 @@ def run_game():
                             continue
                         if inspected_tower:
                             inspected_tower = None
+                            pinned_tower = None
+                            card_linger_timer = 0.0
                             last_card_rect = last_btn_rect = last_target_rect = last_sell_rect = last_max_rect = None
                             continue
 
@@ -2860,7 +3162,7 @@ def run_game():
                         # Клик по кургану раскопок (Морской Бой)
                         if active_dig_site and active_dig_site.collidepoint(mouse_pos) and not is_paused and not game_over:
                             if dig_window is None and dig_session is None:
-                                dig_session = DigMinigameSession(game_map, savedata)
+                                dig_session = DigMinigameSession(game_map, savedata, cur_wave=wave)
                                 dig_window_close_timer = 0.0
                                 effects.append(FloatingText(active_dig_site.x, active_dig_site.y - 25, "РАСКОПКИ НАЧАТЫ!", (255, 235, 140)))
                                 effects.append(RingEffect(active_dig_site.x, active_dig_site.y, 60, (255, 215, 80)))
@@ -2914,6 +3216,7 @@ def run_game():
                                                     0, 0, 0, 0,
                                                     0x0001 | 0x0002 | 0x0040  # SWP_NOSIZE | SWP_NOMOVE | SWP_SHOWWINDOW
                                                 )
+                                                setup_smooth_window_drag(hwnd)
                                             except Exception:
                                                 pass
                                         dig_window.focus()
@@ -2961,6 +3264,7 @@ def run_game():
                                         bestiary_return_state = STATE_PLAYING
                                         current_state = STATE_BESTIARY
                                         bestiary_scroll_y = 0
+                                        inspected_bestiary_slime = None
                                         sfx_click.play()
                                     elif b_id == "guide":
                                         guide_modal_context = "combat"
@@ -3063,7 +3367,7 @@ def run_game():
                                 effects.append(FloatingText(SCREEN_WIDTH // 2, 140, "УСТАНОВКА СЛОТА: ВЫБЕРИТЕ МЕСТО НА КАРТЕ (ПКМ - ОТМЕНА)", (220, 120, 255)))
                         else:
                             laser.play()
-                            effects.append(FloatingText(astral_slot_btn_rect.centerx, astral_slot_btn_rect.top - 20, f"НЕ ХВАТАЕТ 🌵 ({cur_cost:,})", (255, 100, 100)))
+                            effects.append(FloatingText(astral_slot_btn_rect.centerx, astral_slot_btn_rect.top - 20, f"НЕ ХВАТАЕТ КАКТУСОВ ({cur_cost:,})", (255, 100, 100)))
                         continue
 
                     # Размещение Астрального Слота на карте
@@ -3124,7 +3428,7 @@ def run_game():
                             strike_lvl = savedata["Upgrades"].get("orbital_strike", 1)
                             orbital_strike_cd = 45.0 if strike_lvl <= 1 else (38.0 if strike_lvl == 2 else 30.0)
                             orbital_targeting = False
-                            tx, ty = mouse_pos[0], mouse_pos[1]
+                            tx, ty, _, _ = get_orbital_target_coords(mouse_pos[0], mouse_pos[1], path, active_meteorite)
                             strike_rad = 125
                             effects.append(OrbitalBeamEffect(tx, ty, radius=strike_rad))
                             shake_amount = 20.0
@@ -3132,20 +3436,17 @@ def run_game():
 
                             wave_scale = 1.0 + min(2.5, max(0, wave - 1) * 0.04)
                             if active_meteorite and math.hypot(active_meteorite.x - tx, active_meteorite.y - ty) <= (strike_rad + active_meteorite.radius):
-                                m_dmg = int((380 + strike_lvl * 180) * wave_scale)
+                                m_dmg = int((500 + strike_lvl * 250) * wave_scale)
                                 active_meteorite.take_damage(m_dmg, effects)
 
-                            b_dmg = int((280 + strike_lvl * 140) * wave_scale)
-                            void_amp = savedata.get("Upgrades", {}).get("void_amplifier", 0)
+                            b_dmg = int((420 + strike_lvl * 180) * wave_scale)
                             hits = 0
                             for ne in enemies:
                                 if math.hypot(ne.x - tx, ne.y - ty) <= strike_rad:
                                     actual_dmg = b_dmg
-                                    # Сопротивление боссов к прямому орбитальному лучу снижено до -25%
+                                    # Сопротивление боссов к прямому орбитальному лучу снижено (-15%)
                                     if ne.type >= 1000:
-                                        actual_dmg = int(actual_dmg * 0.75)
-                                    if void_amp > 0 and (ne.type in (10, 3000, 4000) or ne.type >= 1000):
-                                        actual_dmg = int(actual_dmg * (1.0 + 0.30 * void_amp))
+                                        actual_dmg = int(actual_dmg * 0.85)
                                     # Лимит по урону в 75% от HP слайма
                                     max_limit = max(1, int(getattr(ne, "max_health", ne.health) * 0.75))
                                     actual_dmg = min(actual_dmg, max_limit)
@@ -3158,15 +3459,9 @@ def run_game():
                             # Талант «Горизонт Событий»: сингулярность стягивает врагов и замедляет на 60%
                             eh_lvl = savedata.get("Upgrades", {}).get("event_horizon", 0)
                             if eh_lvl > 0:
-                                effects.append(RingEffect(tx, ty, strike_rad + 35, (170, 45, 240)))
-                                for ne in enemies:
-                                    if ne.type < 1000:
-                                        dist = math.hypot(ne.x - tx, ne.y - ty)
-                                        if dist <= (strike_rad + 55) and dist > 4:
-                                            ne.x += (tx - ne.x) * 0.55
-                                            ne.y += (ty - ne.y) * 0.55
-                                            ne.freeze_timer = max(ne.freeze_timer, 2.0 + eh_lvl)
-                                            ne.speed_multiplier = min(ne.speed_multiplier, 0.40)
+                                eh_dur = 2.0 + eh_lvl * 0.5
+                                effects.append(EventHorizonVortexEffect(tx, ty, radius=strike_rad + 45, duration=eh_dur, level=eh_lvl, enemies_ref=enemies))
+                                effects.append(FloatingText(tx, ty - 75, f"ГОРИЗОНТ СОБЫТИЙ ({eh_dur:.1f}с)", (210, 140, 255)))
                             continue
 
                     # Установка точки сбора солдат палатки при активном прицеливании
@@ -3260,7 +3555,9 @@ def run_game():
                             if rally_targeting_tent:
                                 rally_targeting_tent._rally_selecting = False
                                 rally_targeting_tent = None
-                            sell_val = max(20, int(inspected_tower.total_invested * 0.70))
+                            refund_lvl = savedata.get("Upgrades", {}).get("sell_refund", 0) if isinstance(savedata, dict) else 0
+                            sell_ratio = min(1.0, 0.50 + refund_lvl * 0.10)
+                            sell_val = max(20, int(inspected_tower.total_invested * sell_ratio))
                             cacti += sell_val
                             for s_idx, slot in enumerate(tower_slots):
                                 if math.hypot(inspected_tower.x - slot[0], inspected_tower.y - slot[1]) < 10:
@@ -3370,6 +3667,7 @@ def run_game():
                                 rally_targeting_tent._rally_selecting = False
                                 rally_targeting_tent = None
                             inspected_tower = clicked_map_tower
+                            card_linger_timer = 0.15
                             sfx_click.play()
                         else:
                             # Базовая способность: клик по слайму наносит 1 чистый урон
@@ -3389,6 +3687,10 @@ def run_game():
                                 sfx_click.play()
                                 st_stats = savedata.setdefault("Stats", {})
                                 st_stats["slime_clicks"] = st_stats.get("slime_clicks", 0) + 1
+                                new_achs = check_achievements(savedata)
+                                if new_achs:
+                                    save_data(savedata)
+                                    push_achievement_toasts(new_achs)
                             elif inspected_tower and not (last_card_rect and last_card_rect.collidepoint(mouse_pos)):
                                 # Клик по свободному полю карты снимает выделение башни
                                 if mouse_pos[1] < SCREEN_HEIGHT - 72:
@@ -3396,6 +3698,7 @@ def run_game():
                                         rally_targeting_tent._rally_selecting = False
                                         rally_targeting_tent = None
                                     inspected_tower = None
+                                    card_linger_timer = 0.0
                                     last_card_rect = last_btn_rect = last_target_rect = last_sell_rect = last_max_rect = None
 
             # Логика боя
@@ -3462,8 +3765,10 @@ def run_game():
                         wave += 1
 
                         # Рекорд карты обновляется только при успешном завершении волны
-                        if completed_wave > savedata["LevelsRecords"][game_map]:
-                            savedata["LevelsRecords"][game_map] = completed_wave
+                        recs = savedata.setdefault("LevelsRecords", [0] * len(MAP_NAMES_LIST))
+                        while len(recs) < len(MAP_NAMES_LIST): recs.append(0)
+                        if completed_wave > recs[game_map]:
+                            recs[game_map] = completed_wave
                             save_data(savedata)
 
                         wave_rush_lvl = savedata.get("Upgrades", {}).get("wave_rush", 0)
@@ -3520,10 +3825,10 @@ def run_game():
                             sfx_achievement.play()
 
                         # Проверка разблокировки новых достижений
-                        if check_achievements(savedata):
+                        new_achs = check_achievements(savedata)
+                        if new_achs:
                             save_data(savedata)
-                            effects.append(FloatingText(SCREEN_WIDTH // 2, 150, "ДОСТИЖЕНИЕ РАЗБЛОКИРОВАНО!", GOLD))
-                            sfx_achievement.play()
+                            push_achievement_toasts(new_achs)
 
 
                         # Талант «Звёздная Алхимия»: +1 Звёздный Кактус каждые 5 / 4 / 3 волн
@@ -3578,6 +3883,7 @@ def run_game():
                         for t in towers:
                             if t.type == "farm":
                                 inc = max(1, int(t.get_stats_at_level(t.level).get("income", 35) * wave_c_mult))
+                                t.total_gold_earned += inc
                                 total_farm_income += inc
                                 effects.append(FloatingText(t.x, t.y - 26, f"+{inc}", GOLD))
                                 effects.append(RingEffect(t.x, t.y, 42, GOLD))
@@ -3617,6 +3923,19 @@ def run_game():
                         for bi in range(num_m_stars):
                             ox = (bi - (num_m_stars - 1) / 2) * 22
                             item_drops.append(StellarCactusDrop(active_meteorite.x + ox, active_meteorite.y - 10))
+                        # Талант «Сверхновая Раскола»: колоссальный взрыв при разрушении метеорита
+                        sn_lvl = savedata.get("Upgrades", {}).get("shatter_nova", 0)
+                        if sn_lvl > 0:
+                            sn_dmg = 1000 if sn_lvl == 1 else (2500 if sn_lvl == 2 else 5000)
+                            sn_rad = 180
+                            sn_freeze = 1.0 + sn_lvl
+                            effects.append(ShatterNovaEffect(active_meteorite.x, active_meteorite.y, damage=sn_dmg, max_radius=sn_rad, freeze_dur=sn_freeze))
+                            effects.append(FloatingText(active_meteorite.x, active_meteorite.y - 60, f"СВЕРХНОВАЯ РАСКОЛА! -{sn_dmg}", (220, 160, 255)))
+                            for ne in enemies:
+                                if ne.active and math.hypot(ne.x - active_meteorite.x, ne.y - active_meteorite.y) <= sn_rad:
+                                    ne.take_damage(sn_dmg, damage_type="pure", savedata=savedata)
+                                    ne.freeze_timer = max(ne.freeze_timer, sn_freeze)
+                                    ne.speed_multiplier = min(ne.speed_multiplier, 0.20)
                         effects.append(RingEffect(active_meteorite.x, active_meteorite.y, 85, (180, 50, 255)))
                         for _ in range(25):
                             effects.append(DropSpark(active_meteorite.x, active_meteorite.y, burst=True))
@@ -3629,24 +3948,16 @@ def run_game():
                         active_dig_site = None
 
                 if cactus_drone:
-                    cactus_drone.update(game_dt, enemies, projectiles, effects, active_meteorite=active_meteorite)
+                    cactus_drone.update(game_dt, enemies, projectiles, effects, active_meteorite=active_meteorite, savedata=savedata)
 
                 if orbital_strike_cd > 0:
                     orbital_strike_cd = max(0.0, orbital_strike_cd - game_dt)
 
                 # Аура орошения от Кактусовых Ферм (зависит строго от таланта «Система Орошения» в Древе)
-                irrig_lvl = savedata["Upgrades"].get("farm_irrigation", 0)
-                active_farms = [f for f in towers if f.type == "farm"] if irrig_lvl > 0 else []
+                update_farm_auras(towers, savedata)
 
                 for t in towers:
-                    f_boost = 0.0
-                    if t.type != "farm" and active_farms:
-                        f_pct = [0, 0.10, 0.20, 0.35][irrig_lvl]
-                        for f in active_farms:
-                            f_range = getattr(f, "range", 90 + (irrig_lvl - 1) * 40 + f.level * 3)
-                            if math.hypot(t.x - f.x, t.y - f.y) <= f_range:
-                                f_boost = max(f_boost, f_pct)
-                    farm_inc = t.update(game_dt, enemies, projectiles, path, effects, active_meteorite=active_meteorite, farm_boost=f_boost)
+                    farm_inc = t.update(game_dt, enemies, projectiles, path, effects, active_meteorite=active_meteorite, farm_boost=t.farm_boost)
                     if farm_inc:
                         actual_farm_inc = max(1, int(farm_inc * get_wave_cacti_multiplier(wave)))
                         cacti += actual_farm_inc
@@ -3663,13 +3974,35 @@ def run_game():
                         if is_boss:
                             # У босса бесконечный урон и БЕЗ возможности блокировки/отражения!
                             lives = 0
-                            shake_amount = 26.0
-                            effects.append(RingEffect(e.x, e.y, 260, (255, 30, 30)))
-                            effects.append(FloatingText(SCREEN_WIDTH // 2, 220, "БОСС СОКРУШИЛ БАЗУ! МГНОВЕННОЕ ПОРАЖЕНИЕ!", (255, 50, 50)))
-                            sfx_boss_defeat.play()
-                            enemies.remove(e)
-                            game_over = True
-                            break
+                            rewind_lvl = savedata.get("Upgrades", {}).get("astral_rewind", 0)
+                            if rewind_lvl > 0 and not astral_rewind_used:
+                                astral_rewind_used = True
+                                lives = max(1, int(max_lives * 0.10))
+                                game_over = False
+                                shake_amount = 26.0
+                                e.active = True
+                                for mob in enemies:
+                                    mob.path_index = max(0, mob.path_index - 5)
+                                    if hasattr(mob, "path") and mob.path and len(mob.path) > mob.path_index:
+                                        mob.x = float(mob.path[mob.path_index][0])
+                                        mob.y = float(mob.path[mob.path_index][1])
+                                        nxt_idx = min(len(mob.path) - 1, mob.path_index + 1)
+                                        mob.target_x = float(mob.path[nxt_idx][0])
+                                        mob.target_y = float(mob.path[nxt_idx][1])
+                                        mob.rect.center = (int(mob.x), int(mob.y))
+                                    mob.freeze_timer = max(getattr(mob, "freeze_timer", 0.0), 3.5)
+                                    mob.speed_multiplier = 0.0
+                                effects.append(RingEffect(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2, 550, (180, 50, 255)))
+                                effects.append(FloatingText(SCREEN_WIDTH // 2, 220, "ВРЕМЕННАЯ ПЕТЛЯ! БОСС ОТБРОШЕН НАЗАД!", (210, 130, 255)))
+                                sfx_tesla.play()
+                            else:
+                                shake_amount = 26.0
+                                effects.append(RingEffect(e.x, e.y, 260, (255, 30, 30)))
+                                effects.append(FloatingText(SCREEN_WIDTH // 2, 220, "БОСС СОКРУШИЛ БАЗУ! МГНОВЕННОЕ ПОРАЖЕНИЕ!", (255, 50, 50)))
+                                sfx_boss_defeat.play()
+                                enemies.remove(e)
+                                game_over = True
+                                break
                         else:
                             dmg = getattr(e, "base_damage", 1)
                             thorn_lvl = savedata["Upgrades"].get("thorn_armor", 0)
@@ -3696,17 +4029,42 @@ def run_game():
                                 effects.append(FloatingText(e.x, e.y - 22, f"-{dmg} {heart_lbl}!", (255, 70, 70)))
                                 laser.play()
                                 if thorn_lvl > 0:
-                                    # Ответный залп шипов: фиксированный урон (150 / 220 / 290)
-                                    spike_dmg = 80 + thorn_lvl * 70
+                                    # Ответный залп шипов: фиксированный урон (150 / 220 / 290) + бонус Сагуаро
+                                    gh_b = get_greenhouse_buffs(savedata)
+                                    spike_dmg = int((80 + thorn_lvl * 70) * (1.0 + gh_b.get("thorn_dmg_mult", 0.0)))
                                     effects.append(RingEffect(e.x, e.y, 180, (255, 80, 80)))
                                     effects.append(FloatingText(e.x, e.y - 18, f"ОТВЕТНЫЙ ЗАЛП ШИПОВ! -{spike_dmg}", (255, 120, 120)))
                                     for other in enemies:
                                         if other != e:
                                             other.health -= spike_dmg
                                             effects.append(DropSpark(other.x, other.y, burst=True))
-                            enemies.remove(e)
+                            rewind_lvl = savedata.get("Upgrades", {}).get("astral_rewind", 0)
                             if lives <= 0:
-                                game_over = True
+                                if rewind_lvl > 0 and not astral_rewind_used:
+                                    astral_rewind_used = True
+                                    lives = max(1, int(max_lives * 0.10))
+                                    game_over = False
+                                    shake_amount = 22.0
+                                    e.active = True
+                                    for mob in enemies:
+                                        mob.path_index = max(0, mob.path_index - 5)
+                                        if hasattr(mob, "path") and mob.path and len(mob.path) > mob.path_index:
+                                            mob.x = float(mob.path[mob.path_index][0])
+                                            mob.y = float(mob.path[mob.path_index][1])
+                                            nxt_idx = min(len(mob.path) - 1, mob.path_index + 1)
+                                            mob.target_x = float(mob.path[nxt_idx][0])
+                                            mob.target_y = float(mob.path[nxt_idx][1])
+                                            mob.rect.center = (int(mob.x), int(mob.y))
+                                        mob.freeze_timer = max(getattr(mob, "freeze_timer", 0.0), 3.5)
+                                        mob.speed_multiplier = 0.0
+                                    effects.append(RingEffect(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2, 500, (180, 50, 255)))
+                                    effects.append(FloatingText(SCREEN_WIDTH // 2, 220, "ВРЕМЕННАЯ ПЕТЛЯ ОАЗИСА! (+10% HP)", (210, 130, 255)))
+                                    sfx_tesla.play()
+                                else:
+                                    enemies.remove(e)
+                                    game_over = True
+                            else:
+                                enemies.remove(e)
                     elif e.health <= 0:
                         bk = savedata.setdefault("BestiaryKills", {})
                         bk[str(e.type)] = bk.get(str(e.type), 0) + 1
@@ -3813,6 +4171,21 @@ def run_game():
 
                             shake_amount = 22.0 if e.type >= 4000 else 18.0
                             sfx_boss_defeat.play()
+
+                            # Талант «Сверхновая Раскола»: колоссальный взрыв при гибели босса
+                            sn_lvl = savedata.get("Upgrades", {}).get("shatter_nova", 0)
+                            if sn_lvl > 0:
+                                sn_dmg = 1000 if sn_lvl == 1 else (2500 if sn_lvl == 2 else 5000)
+                                sn_rad = 180
+                                sn_freeze = 1.0 + sn_lvl
+                                effects.append(ShatterNovaEffect(e.x, e.y, damage=sn_dmg, max_radius=sn_rad, freeze_dur=sn_freeze))
+                                effects.append(FloatingText(e.x, e.y - 70, f"СВЕРХНОВАЯ РАСКОЛА! -{sn_dmg}", (220, 160, 255)))
+                                for ne in enemies:
+                                    if ne.active and math.hypot(ne.x - e.x, ne.y - e.y) <= sn_rad:
+                                        ne.take_damage(sn_dmg, damage_type="pure", savedata=savedata)
+                                        ne.freeze_timer = max(ne.freeze_timer, sn_freeze)
+                                        ne.speed_multiplier = min(ne.speed_multiplier, 0.20)
+
                             for _ in range(30 if e.type >= 4000 else 25):
                                 effects.append(DropSpark(e.x, e.y, burst=True))
                             
@@ -3860,7 +4233,7 @@ def run_game():
                         map_mob_mult = 1.0 + (map_stellar_mult - 1.0) * 0.5
                         b_stars_lvl = savedata["Upgrades"].get("bestiary_stars", 0)
                         bestiary_s_bonus = (b_stars_lvl * 0.01 * mob_tier) if (b_stars_lvl > 0 and mob_tier > 0) else 0.0
-                        base_star_chance = mob_star_base * magnet_mult * map_mob_mult * (1.0 + bestiary_s_bonus)
+                        base_star_chance = (mob_star_base + gh_buffs.get("star_drop_bonus", 0.0)) * magnet_mult * map_mob_mult * (1.0 + bestiary_s_bonus)
                         if not getattr(e, "is_golden", False) and e.type < 1000:
                             guar_stars = int(base_star_chance)
                             rem_star_chance = base_star_chance - guar_stars
@@ -3940,42 +4313,48 @@ def run_game():
                 else:
                     ox, oy = 0, 0
 
-                generate_background(field_surf, bg_time, map_id=game_map)
+                draw_surf = screen if (ox == 0 and oy == 0) else field_surf
+
+                generate_background(draw_surf, bg_time, map_id=game_map)
 
                 # Атмосферный фоновый декор биома (кристаллы, камни, кактусы, лавовые трещины)
-                map_decor.draw(field_surf, bg_time)
+                map_decor.draw(draw_surf, bg_time)
 
                 # Дорога биома (двойная окантовка и цвет грунта)
                 biome = MAP_BIOMES_DATA.get(game_map, MAP_BIOMES_DATA[0])
                 r_border = biome["road_border"]
                 r_col = biome["road_col"]
                 for i in range(len(path) - 1):
-                    pygame.draw.line(field_surf, r_border, path[i], path[i + 1], 40)
-                    pygame.draw.circle(field_surf, r_border, path[i + 1], 20)
+                    pygame.draw.line(draw_surf, r_border, path[i], path[i + 1], 40)
+                    pygame.draw.circle(draw_surf, r_border, path[i + 1], 20)
                 for i in range(len(path) - 1):
-                    pygame.draw.line(field_surf, r_col, path[i], path[i + 1], 32)
-                    pygame.draw.circle(field_surf, r_col, path[i + 1], 16)
+                    pygame.draw.line(draw_surf, r_col, path[i], path[i + 1], 32)
+                    pygame.draw.circle(draw_surf, r_col, path[i + 1], 16)
 
                 # Желейные пятна слаймов на земле и дороге (только на нормальной графике)
                 for splat in slime_splats:
-                    splat.draw(field_surf)
+                    splat.draw(draw_surf)
 
                 # Слоты под башни
+                base_slots_count = len(tower_slots_list[game_map]) if (0 <= game_map < len(tower_slots_list)) else len(tower_slots)
                 for i, slot in enumerate(tower_slots):
                     if not occupied_slots[i]:
-                        field_surf.blit(slot_img, (slot[0] - 22, slot[1] - 22))
-                        if i >= len(tower_slots_list.get(game_map, [])):
-                            # Астральный слот: мерцающее пурпурное кольцо
+                        draw_surf.blit(slot_img, (slot[0] - 22, slot[1] - 22))
+                        if i >= base_slots_count:
+                            # Астральный слот: мерцающее пурпурное кольцо (переиспользуем поверхность)
                             a_pulse = int(140 + 70 * math.sin(pygame.time.get_ticks() * 0.006 + i))
-                            a_surf = pygame.Surface((44, 44), pygame.SRCALPHA)
+                            if not hasattr(run_game, "_astral_slot_surf"):
+                                run_game._astral_slot_surf = pygame.Surface((44, 44), pygame.SRCALPHA)
+                            a_surf = run_game._astral_slot_surf
+                            a_surf.fill((0, 0, 0, 0))
                             pygame.draw.circle(a_surf, (210, 110, 255, a_pulse), (22, 22), 20, width=2)
                             pygame.draw.circle(a_surf, (255, 200, 255, a_pulse // 2), (22, 22), 12, width=1)
-                            field_surf.blit(a_surf, (slot[0] - 22, slot[1] - 22))
+                            draw_surf.blit(a_surf, (slot[0] - 22, slot[1] - 22))
 
                 # Атмосферные частицы биома (снежинки, пепел, песчинки, споры)
                 if get_graphics_preset() != "optimized":
                     ambient_particles.update(game_dt)
-                    ambient_particles.draw(field_surf)
+                    ambient_particles.draw(draw_surf)
 
                 # Подсветка радиусов всех башен (Талант «Тактическая Сетка»)
                 if savedata.get("Upgrades", {}).get("range_grid", 0) > 0 and savedata.get("Toggles", {}).get("range_grid", False):
@@ -3992,46 +4371,90 @@ def run_game():
                         if getattr(t, "range", 0) > 0:
                             rad = int(t.range)
                             col = t_cols.get(t.type, (100, 200, 255))
-                            pygame.draw.circle(field_surf, col, (int(t.x), int(t.y)), rad, width=1)
+                            pygame.draw.circle(draw_surf, col, (int(t.x), int(t.y)), rad, width=1)
 
-                if active_meteorite: active_meteorite.draw(field_surf)
-                if active_dig_site: active_dig_site.draw(field_surf)
-                for e in sorted(enemies, key=lambda m: m.y): e.draw(field_surf)
+                # Визуальные эффекты орошения ферм (активны при таланте Система Орошения)
+                irrig_lvl = savedata.get("Upgrades", {}).get("farm_irrigation", 0) if isinstance(savedata, dict) else 0
+                if irrig_lvl > 0:
+                    t_ticks = pygame.time.get_ticks()
+                    for f in towers:
+                        if f.type == "farm" and getattr(f, "range", 0) > 0:
+                            fr = int(f.range)
+                            surf_aura = getattr(f, "_farm_aura_surf", None)
+                            req_dim = fr * 2 + 10
+                            if surf_aura is None or surf_aura.get_size() != (req_dim, req_dim):
+                                surf_aura = pygame.Surface((req_dim, req_dim), pygame.SRCALPHA)
+                                f._farm_aura_surf = surf_aura
+                            else:
+                                surf_aura.fill((0, 0, 0, 0))
+                            pulse_a = int(22 + 6 * math.sin(t_ticks * 0.003 + f.x))
+                            pygame.draw.circle(surf_aura, (50, 160, 255, pulse_a), (fr + 5, fr + 5), fr)
+                            pygame.draw.circle(surf_aura, (80, 200, 255, 60), (fr + 5, fr + 5), fr, width=1)
+                            wave_p = (t_ticks * 0.0007 + f.x * 0.03) % 1.0
+                            w_r = int(fr * wave_p)
+                            w_alpha = int(75 * (1.0 - wave_p))
+                            if w_r > 6:
+                                pygame.draw.circle(surf_aura, (120, 220, 255, w_alpha), (fr + 5, fr + 5), w_r, width=1)
+                            draw_surf.blit(surf_aura, (int(f.x) - fr - 5, int(f.y) - fr - 5))
+
+                    # Водный индикатор полива у основания ускоренных башен
+                    if not hasattr(run_game, "_w_puddle"):
+                        run_game._w_puddle = pygame.Surface((38, 18), pygame.SRCALPHA)
+                    w_puddle = run_game._w_puddle
+                    for t in towers:
+                        if t.type != "farm" and getattr(t, "farm_boost", 0) > 0:
+                            bx, by = int(t.x), int(t.y + 14)
+                            p_w = (math.sin(t_ticks * 0.006 + t.x) + 1.0) * 0.5
+                            w_puddle.fill((0, 0, 0, 0))
+                            pygame.draw.ellipse(w_puddle, (40, 160, 255, int(45 + 35 * p_w)), (2, 2, 34, 14))
+                            pygame.draw.ellipse(w_puddle, (130, 230, 255, int(120 + 70 * p_w)), (2, 2, 34, 14), width=1)
+                            draw_surf.blit(w_puddle, (bx - 19, by - 9))
+
+                if active_meteorite: active_meteorite.draw(draw_surf)
+                if active_dig_site: active_dig_site.draw(draw_surf)
+                for e in sorted(enemies, key=lambda m: m.y): e.draw(draw_surf)
                 is_rg_active = (savedata.get("Upgrades", {}).get("range_grid", 0) > 0 and savedata.get("Toggles", {}).get("range_grid", False))
                 any_tent_selected = (inspected_tower is not None and getattr(inspected_tower, "type", "") == "tent") or (rally_targeting_tent is not None)
                 show_all_tent_flags = is_rg_active or any_tent_selected
 
                 for t in towers:
                     t._is_inspected = (t == inspected_tower)
-                    t.draw(field_surf, hovered=(t == hovered_tower), upgrade_mode=upgrade_mode, show_rally_flag=show_all_tent_flags)
-                for p in projectiles: p.draw(field_surf)
-                if cactus_drone: cactus_drone.draw(field_surf)
-                for drop in item_drops: drop.draw(field_surf)
-                for eff in effects: eff.draw(field_surf)
+                    t.draw(draw_surf, hovered=(t == hovered_tower or t == inspected_tower), upgrade_mode=upgrade_mode, show_rally_flag=show_all_tent_flags)
+                for p in projectiles: p.draw(draw_surf)
+                if cactus_drone: cactus_drone.draw(draw_surf)
+                for drop in item_drops: drop.draw(draw_surf)
+                for eff in effects: eff.draw(draw_surf)
 
                 # --- Призрак башни при установке (Placement Preview) ---
                 if selected_tower_type:
                     near_slot = None
                     for i, slot in enumerate(tower_slots):
                         if not occupied_slots[i]:
-                            if math.hypot(mouse_pos[0] - slot[0], mouse_pos[1] - slot[1]) < 38:
+                            if math.hypot(mouse_pos[0] - slot[0], mouse_pos[1] - slot[1]) < 45:
                                 near_slot = slot
                                 break
 
-                    preview_x, preview_y = near_slot if near_slot else mouse_pos
                     t_ranges = {"magic": 150, "rock": 125, "freeze": 135, "tent": 105, "tesla": 145, "farm": 60, "sun": 140}
                     pr_range = t_ranges.get(selected_tower_type, 130)
 
-                    # Радиус установки с полупрозрачным кругом (кэшированный, 0 аллокаций)
-                    if selected_tower_type == "farm":
-                        col = (255, 195, 45, 40) if near_slot else (220, 40, 40, 40)
-                        bcol = (255, 195, 45, 180) if near_slot else (220, 40, 40, 180)
-                    else:
-                        col = (60, 240, 100, 45) if near_slot else (220, 40, 40, 40)
-                        bcol = (40, 180, 70, 180) if near_slot else (220, 40, 40, 180)
-                    pr_surf = get_cached_range_surf(pr_range, col, bcol, 2)
-                    if pr_surf:
-                        field_surf.blit(pr_surf, (int(preview_x - pr_range), int(preview_y - pr_range)))
+                    # Подсветка доступных слотов при установке башни (очень удобно на смартфонах)
+                    for i, slot in enumerate(tower_slots):
+                        if not occupied_slots[i]:
+                            s_col = (100, 255, 160) if slot == near_slot else (60, 190, 240)
+                            pygame.draw.circle(draw_surf, s_col, (int(slot[0]), int(slot[1])), 18, width=1)
+
+                    preview_x, preview_y = near_slot if near_slot else mouse_pos
+                    # Рисуем круг радиуса установки, если курсор на поле, а не в нижнем доке
+                    if near_slot or preview_y < SCREEN_HEIGHT - 90:
+                        if selected_tower_type == "farm":
+                            col = (255, 195, 45, 40) if near_slot else (220, 40, 40, 40)
+                            bcol = (255, 195, 45, 180) if near_slot else (220, 40, 40, 180)
+                        else:
+                            col = (60, 240, 100, 45) if near_slot else (220, 40, 40, 40)
+                            bcol = (40, 180, 70, 180) if near_slot else (220, 40, 40, 180)
+                        pr_surf = get_cached_range_surf(pr_range, col, bcol, 2)
+                        if pr_surf:
+                            draw_surf.blit(pr_surf, (int(preview_x - pr_range), int(preview_y - pr_range)))
 
                     # Полупрозрачная иконка башни
                     t_imgs = {
@@ -4045,10 +4468,11 @@ def run_game():
                     }
                     p_img = t_imgs.get(selected_tower_type, magic_tower_img).copy()
                     p_img.set_alpha(170)
-                    field_surf.blit(p_img, (preview_x - p_img.get_width() // 2, preview_y - p_img.get_height() // 2 - 8))
+                    draw_surf.blit(p_img, (preview_x - p_img.get_width() // 2, preview_y - p_img.get_height() // 2 - 8))
 
-                screen.fill((16, 20, 26))
-                screen.blit(field_surf, (ox, oy))
+                if draw_surf != screen:
+                    screen.fill((16, 20, 26))
+                    screen.blit(field_surf, (ox, oy))
 
                 saved_field_backdrop = None
                 if not IS_ANDROID and get_graphics_preset() != "optimized" and battle_ui_fade_alpha < 255.0:
@@ -4060,7 +4484,7 @@ def run_game():
                 cacti_panel = pygame.Rect(16, 6, 185, 38)
                 pygame.draw.rect(screen, (245, 252, 246), cacti_panel, border_radius=10)
                 pygame.draw.rect(screen, (65, 170, 90), cacti_panel, width=2, border_radius=10)
-                c_icon_scaled = pygame.transform.smoothscale(cactus_img, (30, 30))
+                c_icon_scaled = get_cached_hud_icon(cactus_img, (30, 30))
                 screen.blit(c_icon_scaled, (24, cacti_panel.centery - 15))
                 cacti_txt = large_font.render(f"{cacti:,}".replace(",", " "), True, (15, 55, 22))
                 screen.blit(cacti_txt, (64, cacti_panel.centery - cacti_txt.get_height() // 2))
@@ -4124,7 +4548,7 @@ def run_game():
                 pygame.draw.rect(screen, border_col, hb_rect, width=2, border_radius=10)
 
                 # Иконка сердечка слева
-                h_icon = pygame.transform.smoothscale(heart_img, (26, 26))
+                h_icon = get_cached_hud_icon(heart_img, (26, 26))
                 screen.blit(h_icon, (hb_x + 8, hb_y + 6))
 
                 # Внутренняя дорожка полосы здоровья
@@ -4212,7 +4636,7 @@ def run_game():
                     if fill_w > 0:
                         pygame.draw.rect(screen, (225, 45, 55), (bb_x, bb_y, fill_w, bb_h), border_radius=6)
                         pygame.draw.rect(screen, (255, 125, 135), (bb_x, bb_y, fill_w, bb_h // 2), border_radius=4)
-                    crown_scaled = pygame.transform.smoothscale(crown_upg_icon, (24, 24))
+                    crown_scaled = get_cached_hud_icon(crown_upg_icon, (24, 24))
                     screen.blit(crown_scaled, (bb_x - 28, bb_y - 1))
                     if boss.type >= 4000:
                         boss_title = "КОРОЛЬ СЛАЙМОВ"
@@ -4224,11 +4648,6 @@ def run_game():
                         boss_title = "ЦАРЬ-СЛИЗЕНЬ"
                     b_info_txt = tiny_font.render(f"{boss_title}: {int(boss.health):,} / {int(boss.max_health):,} HP", True, WHITE)
                     screen.blit(b_info_txt, (bb_x + bb_w // 2 - b_info_txt.get_width() // 2, bb_y + bb_h // 2 - b_info_txt.get_height() // 2))
-
-                # ФПС
-                fps_val = int(clock.get_fps())
-                fps_txt = tiny_font.render(f"FPS: {fps_val}", True, (80, 100, 80))
-                screen.blit(fps_txt, (SCREEN_WIDTH - 85, 42))
 
                 # 5. Компактная панель управления (нижний правый угол, не перекрывает дорогу)
                 ctrl_dock_x = 1052
@@ -4334,8 +4753,22 @@ def run_game():
                         pygame.draw.rect(screen, as_bg, astral_slot_btn_rect, border_radius=8)
                         pygame.draw.rect(screen, as_border, astral_slot_btn_rect, width=2 if (as_hov and can_afford_slot) else 1, border_radius=8)
                         cost_str = "5k" if cur_slot_cost == 5000 else "25k"
-                        as_txt = tiny_font.render(f"[+] СЛОТ: {cost_str} 🌵 ({custom_slots_placed + 1}/{astral_slot_lvl})", True, (230, 190, 255) if can_afford_slot else (160, 145, 175))
-                    screen.blit(as_txt, (astral_slot_btn_rect.centerx - as_txt.get_width() // 2, astral_slot_btn_rect.centery - as_txt.get_height() // 2))
+                        col_t = (230, 190, 255) if can_afford_slot else (160, 145, 175)
+                        col_c = (255, 235, 140) if can_afford_slot else (160, 145, 175)
+                        t_lbl = tiny_font.render("[+] СЛОТ:", True, col_t)
+                        t_cost = tiny_font.render(cost_str, True, col_c)
+                        t_slot = tiny_font.render(f"({custom_slots_placed + 1}/{astral_slot_lvl})", True, col_t)
+                        tot_w = t_lbl.get_width() + 4 + 14 + t_cost.get_width() + 4 + t_slot.get_width()
+                        bx = astral_slot_btn_rect.centerx - tot_w // 2
+                        by = astral_slot_btn_rect.centery - t_lbl.get_height() // 2
+                        screen.blit(t_lbl, (bx, by))
+                        bx += t_lbl.get_width() + 4
+                        c_xs = cactus_img_xs if ('cactus_img_xs' in globals() and cactus_img_xs is not None) else pygame.transform.smoothscale(cactus_img, (14, 14))
+                        screen.blit(c_xs, (bx, by - 1))
+                        bx += 14
+                        screen.blit(t_cost, (bx, by))
+                        bx += t_cost.get_width() + 4
+                        screen.blit(t_slot, (bx, by))
 
                 has_magic = savedata["Upgrades"].get("magic_tower", 1) > 0
                 has_rock = savedata["Upgrades"].get("rock_tower", 0) > 0
@@ -4411,7 +4844,7 @@ def run_game():
                 # Всплывающая подсказка над кнопкой дока при наведении (если башня на поле не инспектируется)
                 if hovered_dock_btn and not inspected_tower:
                     hb_key, hb_name, hb_cost, hb_rect, hb_action, hb_unlocked = hovered_dock_btn
-                    tip_w, tip_h = 248, 72
+                    tip_w, tip_h = 280, 74
                     tip_x = max(10, min(SCREEN_WIDTH - tip_w - 10, hb_rect.centerx - tip_w // 2))
                     tip_y = hb_rect.top - tip_h - 10
 
@@ -4429,20 +4862,55 @@ def run_game():
                     elif hb_action == "upgrade":
                         pygame.draw.rect(tip_surf, GOLD if upgrade_mode else (70, 160, 240), (0, 0, tip_w, tip_h), width=1, border_radius=8)
                         t1 = small_font.render("[U] РЕЖИМ ПРОКАЧКИ", True, GOLD)
-                        t2 = tiny_font.render("Активирует режим апгрейда башен.", True, WHITE)
-                        t3 = tiny_font.render("Кликните на башню на поле для улучшения.", True, (160, 215, 255))
+                        t2 = tiny_font.render("Активирует режим улучшения башен.", True, WHITE)
+                        t3 = tiny_font.render("Кликните на башню на поле для прокачки.", True, (160, 215, 255))
                         tip_surf.blit(t1, (10, 8))
                         tip_surf.blit(t2, (10, 30))
                         tip_surf.blit(t3, (10, 48))
                     else:
                         tip_info = {
-                            "magic": ("Магическая Башня", (130, 210, 255), "Урон: 1.0 (Магия)  |  Радиус: 145px", "Пассивно: Пробивает броню и критует"),
-                            "rock": ("Огненная Башня", (255, 150, 60), "Урон: 1.8 (Огонь)  |  Сплэш: 50px", "Синергия: +75% комбо-урона по льду"),
-                            "freeze": ("Ледяная Башня", (90, 230, 255), "Урон: 0.5 (Лёд)  |  Замедление: 45%", "Аура: Замедляет толпы и тушит огонь"),
-                            "tent": ("Палатка Солдат", (130, 235, 130), "Гарнизон: 2 воина (30 HP) | Урон: 2.0", "Тактика: Блокирует мобов на тропе"),
-                            "tesla": ("Башня Тесла", (100, 225, 255), "Урон: 2.0 (Электро) | Рикошет: 3 цели", "Эффект: Цепной электрический разряд"),
-                            "farm": ("Кактусовая Ферма", (255, 215, 60), "Доход: +35 какт. в конце волны", "Экономика: Чистая пассивная прибыль"),
-                            "sun": ("Обелиск Солнца", (255, 215, 80), "Урон: 1.8..15 (Солнце) | Потолок: до x5.0", "Эффект: Непрерывный разгоняющийся луч")
+                            "magic": (
+                                "Магическая Башня",
+                                (130, 210, 255),
+                                "Стреляет быстрыми сгустками магии.",
+                                "Игнорирует броню врагов и наносит криты."
+                            ),
+                            "rock": (
+                                "Огненная Башня",
+                                (255, 150, 60),
+                                "Атакует огненными снарядами по площади.",
+                                "Сжигает группы врагов и бьёт комбо по льду."
+                            ),
+                            "freeze": (
+                                "Ледяная Башня",
+                                (90, 230, 255),
+                                "Поливает область ледяным дыханием.",
+                                "Замедляет толпы слаймов и тушит огненных."
+                            ),
+                            "tent": (
+                                "Палатка Солдат",
+                                (130, 235, 130),
+                                "Призывает кактусов-воинов на тропу.",
+                                "Блокирует движение слаймов и рубит вблизи."
+                            ),
+                            "tesla": (
+                                "Башня Тесла",
+                                (100, 225, 255),
+                                "Бьёт электрической дугой с отскоком.",
+                                "Поражает сразу цепочку идущих врагов."
+                            ),
+                            "farm": (
+                                "Кактусовая Ферма",
+                                (255, 215, 60),
+                                "Выращивает кактусы для казны оазиса.",
+                                "Приносит доход в конце каждой волны."
+                            ),
+                            "sun": (
+                                "Обелиск Солнца",
+                                (255, 215, 80),
+                                "Фокусирует луч палящего солнца.",
+                                "Урон луча непрерывно растёт по одной цели."
+                            )
                         }
                         info = tip_info.get(hb_action, ("Башня", WHITE, "", ""))
                         pygame.draw.rect(tip_surf, info[1], (0, 0, tip_w, tip_h), width=1, border_radius=8)
@@ -4487,31 +4955,54 @@ def run_game():
                                 _wave_preview_icon_cache[t_val] = pygame.transform.smoothscale(spr, (20, 20))
                             screen.blit(_wave_preview_icon_cache[t_val], (i_start_x + i_idx * 24, prep_rect.top + 27))
 
-                # Прицельная сетка орбитального удара
+                # Прицельная сетка орбитального удара с умной привязкой к пути/метеориту
                 if orbital_targeting and not is_paused and not game_over:
                     mx, my = mouse_pos
-                    r_surf = pygame.Surface((360, 360), pygame.SRCALPHA)
-                    p_alpha = int(45 + 25 * math.sin(pygame.time.get_ticks() * 0.008))
-                    pygame.draw.circle(r_surf, (200, 60, 255, p_alpha), (180, 180), 180)
-                    pygame.draw.circle(r_surf, (240, 150, 255, 180), (180, 180), 180, width=2)
-                    pygame.draw.circle(r_surf, (255, 200, 255, 120), (180, 180), 60, width=1)
-                    pygame.draw.line(r_surf, (255, 220, 255, 200), (180, 20), (180, 340), 1)
-                    pygame.draw.line(r_surf, (255, 220, 255, 200), (20, 180), (340, 180), 1)
-                    pygame.draw.circle(r_surf, (255, 255, 255, 230), (180, 180), 4)
-                    screen.blit(r_surf, (mx - 180, my - 180))
+                    tx, ty, is_snapped, snap_type = get_orbital_target_coords(mx, my, path, active_meteorite)
+                    strike_rad = 125
+                    pull_rad = strike_rad + 45  # 170px радиус горизонта событий (сингулярности)
 
-                    t_txt = small_font.render("ЗОНА ПОРАЖЕНИЯ (R=180)", True, (255, 230, 255))
+                    # Лазерный маркер-направитель от курсора к привязанной точке на дороге
+                    if is_snapped and math.hypot(mx - tx, my - ty) > 10:
+                        pygame.draw.line(screen, (220, 100, 255, 180), (mx, my), (tx, ty), 2)
+                        pygame.draw.circle(screen, (255, 140, 255), (mx, my), 4, width=1)
+
+                    # Рисуем прицел в точке попадания (tx, ty)
+                    r_surf = pygame.Surface((pull_rad * 2 + 20, pull_rad * 2 + 20), pygame.SRCALPHA)
+                    cx, cy = pull_rad + 10, pull_rad + 10
+                    p_pulse = (math.sin(pygame.time.get_ticks() * 0.008) + 1.0) * 0.5
+                    p_alpha = int(35 + 25 * p_pulse)
+
+                    # Внешняя зона гравитации (Горизонт событий)
+                    pygame.draw.circle(r_surf, (160, 40, 230, p_alpha), (cx, cy), pull_rad)
+                    pygame.draw.circle(r_surf, (190, 80, 255, 110), (cx, cy), pull_rad, width=1)
+
+                    # Ядро прямого орбитального удара (125px)
+                    core_alpha = int(170 + 70 * p_pulse)
+                    pygame.draw.circle(r_surf, (220, 60, 255, 45), (cx, cy), strike_rad)
+                    pygame.draw.circle(r_surf, (240, 150, 255, core_alpha), (cx, cy), strike_rad, width=2)
+                    pygame.draw.circle(r_surf, (255, 210, 255, 160), (cx, cy), 45, width=1)
+
+                    # Перекрестие
+                    pygame.draw.line(r_surf, (255, 230, 255, 210), (cx, cy - strike_rad - 8), (cx, cy + strike_rad + 8), 1)
+                    pygame.draw.line(r_surf, (255, 230, 255, 210), (cx - strike_rad - 8, cy), (cx + strike_rad + 8, cy), 1)
+                    pygame.draw.circle(r_surf, (255, 255, 255, 240), (cx, cy), 5)
+                    screen.blit(r_surf, (tx - cx, ty - cy))
+
+                    # Бейджик информации о прицеле
+                    snap_hint = " • ПРИВЯЗКА К ПУТИ" if snap_type == "road" else (" • МЕТЕОРИТ" if snap_type == "meteorite" else "")
+                    t_txt = small_font.render(f"ОРБИТАЛЬНЫЙ УДАР (R={strike_rad}){snap_hint}", True, (255, 230, 255))
                     t_sub = tiny_font.render("[ЛКМ / F] - Залп  |  [ПКМ / ESC] - Отмена", True, (230, 200, 240))
-                    bw = max(t_txt.get_width(), t_sub.get_width()) + 20
-                    bh = 42
-                    bx = max(10, min(SCREEN_WIDTH - bw - 10, mx - bw // 2))
-                    by = max(40, my - 215)
+                    bw = max(t_txt.get_width(), t_sub.get_width()) + 24
+                    bh = 44
+                    bx = max(10, min(SCREEN_WIDTH - bw - 10, tx - bw // 2))
+                    by = max(40, ty - strike_rad - 52)
                     b_surf = pygame.Surface((bw, bh), pygame.SRCALPHA)
-                    pygame.draw.rect(b_surf, (30, 15, 45, 220), (0, 0, bw, bh), border_radius=6)
-                    pygame.draw.rect(b_surf, (220, 100, 255, 240), (0, 0, bw, bh), width=1, border_radius=6)
+                    pygame.draw.rect(b_surf, (30, 15, 45, 225), (0, 0, bw, bh), border_radius=7)
+                    pygame.draw.rect(b_surf, (220, 100, 255, 240), (0, 0, bw, bh), width=1, border_radius=7)
                     screen.blit(b_surf, (bx, by))
-                    screen.blit(t_txt, (bx + 10, by + 4))
-                    screen.blit(t_sub, (bx + 10, by + 23))
+                    screen.blit(t_txt, (bx + 12, by + 5))
+                    screen.blit(t_sub, (bx + 12, by + 24))
 
                 # Подсветка и прицел точки сбора солдат палатки
                 if rally_targeting_tent and not is_paused and not game_over:
@@ -4609,29 +5100,39 @@ def run_game():
                     screen.blit(disc_s, (mx - 35, my - 35))
 
                     if is_valid:
-                        t_txt = small_font.render(f"РАЗМЕСТИТЬ СЛОТ ({cur_slot_cost:,} 🌵)", True, (230, 180, 255))
+                        t_txt1 = small_font.render("РАЗМЕСТИТЬ СЛОТ: ", True, (230, 180, 255))
+                        t_cost = small_font.render(f"{cur_slot_cost:,}", True, (255, 235, 140))
                         t_sub = tiny_font.render("[ЛКМ] - Установить  |  [ПКМ / ESC] - Отмена", True, (240, 210, 255))
                         b_border = (200, 100, 255, 240)
+                        tw = t_txt1.get_width() + 18 + t_cost.get_width()
                     else:
                         if cacti < cur_slot_cost:
-                            reason = f"НЕ ХВАТАЕТ 🌵 ({cur_slot_cost:,})"
-                        elif dist_to_path < 32:
-                            reason = "СЛИШКОМ БЛИЗКО К ДОРОГЕ"
-                        elif dist_to_other_slots < 40:
-                            reason = "ПЕРЕКРЫВАЕТ ДРУГОЙ СЛОТ"
+                            t_txt1 = small_font.render("НЕ ХВАТАЕТ: ", True, (255, 120, 120))
+                            t_cost = small_font.render(f"{cur_slot_cost:,}", True, (255, 160, 160))
+                            tw = t_txt1.get_width() + 18 + t_cost.get_width()
                         else:
-                            reason = "НЕДОСТУПНАЯ ЗОНА"
-                        t_txt = small_font.render(reason, True, (255, 120, 120))
+                            if dist_to_path < 32:
+                                reason = "СЛИШКОМ БЛИЗКО К ДОРОГЕ"
+                            elif dist_to_other_slots < 40:
+                                reason = "ПЕРЕКРЫВАЕТ ДРУГОЙ СЛОТ"
+                            else:
+                                reason = "НЕДОСТУПНАЯ ЗОНА"
+                            t_txt1 = small_font.render(reason, True, (255, 120, 120))
+                            t_cost = None
+                            tw = t_txt1.get_width()
                         t_sub = tiny_font.render("Нельзя разместить здесь", True, (255, 180, 180))
                         b_border = (255, 80, 80, 240)
-                    bw = max(t_txt.get_width(), t_sub.get_width()) + 20
+                    bw = max(tw, t_sub.get_width()) + 20
                     bh = 42
                     bx = max(10, min(SCREEN_WIDTH - bw - 10, mx - bw // 2))
                     by = max(40, my - 65)
                     b_surf = pygame.Surface((bw, bh), pygame.SRCALPHA)
                     pygame.draw.rect(b_surf, (30, 15, 45, 230), (0, 0, bw, bh), border_radius=6)
                     pygame.draw.rect(b_surf, b_border, (0, 0, bw, bh), width=1, border_radius=6)
-                    b_surf.blit(t_txt, (10, 4))
+                    b_surf.blit(t_txt1, (10, 4))
+                    if t_cost is not None:
+                        b_surf.blit(cactus_img_s, (10 + t_txt1.get_width(), 4))
+                        b_surf.blit(t_cost, (10 + t_txt1.get_width() + 18, 4))
                     b_surf.blit(t_sub, (10, 23))
                     screen.blit(b_surf, (bx, by))
 
@@ -4736,8 +5237,12 @@ def run_game():
                     t_names = {"magic": "Маг", "rock": "Огонь", "freeze": "Мороз", "tent": "Палатка", "tesla": "Тесла", "farm": "Ферма", "sun": "Обелиск"}
                     mvp_str = f"{t_names.get(mvp_t.type, 'Башня')} (Ур. {mvp_t.level}) - {mvp_t.damage_dealt:.0f} урона"
 
+                recs = savedata.setdefault("LevelsRecords", [0] * len(MAP_NAMES_LIST))
+                while len(recs) < len(MAP_NAMES_LIST): recs.append(0)
+                cur_map_rec = recs[game_map] if game_map < len(recs) else 0
+
                 stats_lines = [
-                    ("Достигнутая волна:", f"{wave} (Рекорд: {savedata['LevelsRecords'][game_map]})", GOLD),
+                    ("Достигнутая волна:", f"{wave} (Рекорд: {cur_map_rec})", GOLD),
                     ("Уничтожено слаймов:", f"{session_kills}", WHITE),
                     ("Заработано кактусов:", f"+{session_cacti}", GREEN),
                     ("Звёздных кактусов:", f"+{session_stellar}", (255, 215, 80)),
@@ -4813,6 +5318,7 @@ def run_game():
                         dig_session = None
                         dig_window_close_timer = 0.0
 
+            render_achievement_toasts(screen, raw_dt)
             pygame.display.flip()
 
     if dig_window:

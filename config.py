@@ -42,10 +42,13 @@ if IS_ANDROID:
         SAVE_BASE_DIR = app_storage_path()
     except Exception:
         SAVE_BASE_DIR = os.environ.get("ANDROID_APP_DATA", os.environ.get("ANDROID_PRIVATE", "."))
-elif getattr(sys, 'frozen', False):
-    SAVE_BASE_DIR = os.path.dirname(sys.executable)
+elif sys.platform == "win32":
+    appdata_dir = os.environ.get("APPDATA")
+    if not appdata_dir:
+        appdata_dir = os.path.expanduser("~")
+    SAVE_BASE_DIR = os.path.join(appdata_dir, "CactusTD")
 else:
-    SAVE_BASE_DIR = BASE_DIR
+    SAVE_BASE_DIR = os.path.join(os.path.expanduser("~"), ".local", "share", "CactusTD")
 
 # Читаем сохранённую настройку чёткости масштаба до инициализации окна Pygame/SDL2
 _init_scale_val = "0"
@@ -296,6 +299,150 @@ def apply_app_icon():
         except Exception:
             pass
 
+# =========================================================================
+# БЕСШОВНОЕ ПЕРЕМЕЩЕНИЕ ОКНА WINDOWS БЕЗ ЗАВИСАНИЯ ИГРОВОГО ЦИКЛА
+# =========================================================================
+_hooked_hwnd = None
+_old_wndproc = None
+_wndproc_callback_ref = None
+_is_dragging_win = False
+
+if sys.platform == 'win32' and not IS_ANDROID:
+    try:
+        from ctypes import wintypes
+
+        class _POINT(ctypes.Structure):
+            _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
+
+        class _RECT(ctypes.Structure):
+            _fields_ = [("left", ctypes.c_long), ("top", ctypes.c_long),
+                        ("right", ctypes.c_long), ("bottom", ctypes.c_long)]
+
+        _WM_NCLBUTTONDOWN = 0x00A1
+        _WM_LBUTTONUP = 0x0202
+        _WM_MOUSEMOVE = 0x0200
+        _WM_CAPTURECHANGED = 0x0215
+        _WM_CANCELMODE = 0x001F
+        _HTCAPTION = 2
+        _GWLP_WNDPROC = -4
+        _SWP_NOSIZE = 0x0001
+        _SWP_NOZORDER = 0x0004
+        _SWP_NOACTIVATE = 0x0010
+        _VK_LBUTTON = 0x01
+
+        _is_64bit = (ctypes.sizeof(ctypes.c_void_p) == 8)
+        _INT_PTR = ctypes.c_int64 if _is_64bit else ctypes.c_long
+
+        _WNDPROC_T = ctypes.WINFUNCTYPE(
+            _INT_PTR,
+            wintypes.HWND,
+            wintypes.UINT,
+            wintypes.WPARAM,
+            wintypes.LPARAM
+        )
+
+        _u32 = ctypes.windll.user32
+
+        if _is_64bit:
+            _SetWindowLongPtr = _u32.SetWindowLongPtrW
+            _SetWindowLongPtr.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_void_p]
+            _SetWindowLongPtr.restype = ctypes.c_void_p
+            _CallWindowProc = _u32.CallWindowProcW
+            _CallWindowProc.argtypes = [ctypes.c_void_p, wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+            _CallWindowProc.restype = _INT_PTR
+        else:
+            _SetWindowLongPtr = _u32.SetWindowLongW
+            _SetWindowLongPtr.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_void_p]
+            _SetWindowLongPtr.restype = ctypes.c_void_p
+            _CallWindowProc = _u32.CallWindowProcW
+            _CallWindowProc.argtypes = [ctypes.c_void_p, wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+            _CallWindowProc.restype = _INT_PTR
+
+        _old_wndprocs = {}
+        _hooked_hwnds = set()
+        _is_dragging_win = False
+        _dragging_hwnd = None
+        _drag_start_cursor = _POINT()
+        _drag_start_win = _RECT()
+
+        def _subclassed_wndproc(hwnd, msg, wparam, lparam):
+            global _is_dragging_win, _dragging_hwnd, _drag_start_cursor, _drag_start_win, _old_wndprocs
+            try:
+                if msg == _WM_NCLBUTTONDOWN and wparam == _HTCAPTION:
+                    # Если окно распахнуто, оставляем стандартный Aero Snap
+                    if _u32.IsZoomed(hwnd):
+                        old = _old_wndprocs.get(hwnd)
+                        if old:
+                            return _CallWindowProc(old, hwnd, msg, wparam, lparam)
+                        return _u32.DefWindowProcW(hwnd, msg, wparam, lparam)
+                    _u32.GetCursorPos(ctypes.byref(_drag_start_cursor))
+                    _u32.GetWindowRect(hwnd, ctypes.byref(_drag_start_win))
+                    _u32.SetCapture(hwnd)
+                    _is_dragging_win = True
+                    _dragging_hwnd = hwnd
+                    return 0
+
+                elif _is_dragging_win and hwnd == _dragging_hwnd:
+                    if msg == _WM_MOUSEMOVE:
+                        # Проверяем, зажата ли ещё кнопка мыши
+                        if not (_u32.GetAsyncKeyState(_VK_LBUTTON) & 0x8000):
+                            _u32.ReleaseCapture()
+                            _is_dragging_win = False
+                            _dragging_hwnd = None
+                        else:
+                            cur = _POINT()
+                            _u32.GetCursorPos(ctypes.byref(cur))
+                            dx = cur.x - _drag_start_cursor.x
+                            dy = cur.y - _drag_start_cursor.y
+                            _u32.SetWindowPos(
+                                hwnd, 0,
+                                _drag_start_win.left + dx,
+                                _drag_start_win.top + dy,
+                                0, 0,
+                                _SWP_NOSIZE | _SWP_NOZORDER | _SWP_NOACTIVATE
+                            )
+                        return 0
+
+                    elif msg in (_WM_LBUTTONUP, _WM_CAPTURECHANGED, _WM_CANCELMODE):
+                        _u32.ReleaseCapture()
+                        _is_dragging_win = False
+                        _dragging_hwnd = None
+                        return 0
+            except Exception:
+                _is_dragging_win = False
+                _dragging_hwnd = None
+
+            old_proc = _old_wndprocs.get(hwnd)
+            if not old_proc:
+                return _u32.DefWindowProcW(hwnd, msg, wparam, lparam)
+            return _CallWindowProc(old_proc, hwnd, msg, wparam, lparam)
+
+        _wndproc_callback_ref = _WNDPROC_T(_subclassed_wndproc)
+
+        def setup_smooth_window_drag(hwnd=None):
+            global _hooked_hwnds, _old_wndprocs
+            if hwnd is None:
+                try:
+                    hwnd = pygame.display.get_wm_info().get("window")
+                except Exception:
+                    hwnd = None
+            if not hwnd or hwnd in _hooked_hwnds:
+                return
+            try:
+                _new_proc = ctypes.cast(_wndproc_callback_ref, ctypes.c_void_p).value
+                _old = _SetWindowLongPtr(hwnd, _GWLP_WNDPROC, ctypes.cast(_wndproc_callback_ref, ctypes.c_void_p))
+                if _old and _old != _new_proc:
+                    _old_wndprocs[hwnd] = _old
+                _hooked_hwnds.add(hwnd)
+            except Exception:
+                pass
+    except Exception:
+        def setup_smooth_window_drag(hwnd=None):
+            pass
+else:
+    def setup_smooth_window_drag(hwnd=None):
+        pass
+
 if IS_ANDROID:
     pass
 else:
@@ -305,6 +452,7 @@ else:
     except Exception:
         screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
     apply_app_icon()
+    setup_smooth_window_drag()
 
     PENDING_SCALE_QUALITY = None
 
@@ -341,6 +489,7 @@ else:
                             ctypes.windll.user32.ShowWindow(_new_hwnd, 3)  # SW_MAXIMIZE
                     except Exception:
                         pass
+                setup_smooth_window_drag()
                 pygame.event.pump()
             except Exception as e:
                 print(f"[DISPLAY] Failed to reapply scale quality: {e}", flush=True)
@@ -491,63 +640,9 @@ apply_app_icon()
 
 pygame.display.set_caption("Cactus Tower Defense: Remastered")
 
-try:
-    _hwnd = pygame.display.get_wm_info().get("window") if (sys.platform == 'win32' and not IS_ANDROID) else None
-    if _hwnd:
-        # Неблокирующее перемещение окна за заголовок (игра не замирает при перетаскивании)
-        from ctypes import wintypes
-        _user32 = ctypes.windll.user32
-
-        _WM_NCLBUTTONDOWN = 0x00A1
-        _WM_LBUTTONUP = 0x0202
-        _WM_MOUSEMOVE = 0x0200
-        _WM_CAPTURECHANGED = 0x0215
-        _HTCAPTION = 2
-        _GWLP_WNDPROC = -4
-
-        _WNDPROC = ctypes.WINFUNCTYPE(ctypes.c_longlong, wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM)
-        _user32.CallWindowProcW.argtypes = [ctypes.c_void_p, wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
-        _user32.CallWindowProcW.restype = ctypes.c_longlong
-
-        _is_dragging = False
-        _drag_mouse_origin = wintypes.POINT()
-        _drag_win_origin = wintypes.RECT()
-        _old_wndproc = None
-
-        def _smooth_drag_wndproc(h, msg, wp, lp):
-            global _is_dragging
-            if msg == _WM_NCLBUTTONDOWN and wp == _HTCAPTION:
-                _user32.GetCursorPos(ctypes.byref(_drag_mouse_origin))
-                _user32.GetWindowRect(h, ctypes.byref(_drag_win_origin))
-                _user32.SetCapture(h)
-                _is_dragging = True
-                return 0
-            elif msg == _WM_MOUSEMOVE and _is_dragging:
-                cur = wintypes.POINT()
-                _user32.GetCursorPos(ctypes.byref(cur))
-                dx = cur.x - _drag_mouse_origin.x
-                dy = cur.y - _drag_mouse_origin.y
-                _user32.SetWindowPos(h, 0, _drag_win_origin.left + dx, _drag_win_origin.top + dy, 0, 0, 0x0015)
-                return 0
-            elif msg in (_WM_LBUTTONUP, _WM_CAPTURECHANGED) and _is_dragging:
-                _is_dragging = False
-                _user32.ReleaseCapture()
-                return 0
-            return _user32.CallWindowProcW(_old_wndproc, h, msg, wp, lp)
-
-        _c_wndproc = _WNDPROC(_smooth_drag_wndproc)
-        _GetWindowLongPtr = _user32.GetWindowLongPtrW
-        _SetWindowLongPtr = _user32.SetWindowLongPtrW
-        _GetWindowLongPtr.restype = ctypes.c_void_p
-        _SetWindowLongPtr.restype = ctypes.c_void_p
-        _SetWindowLongPtr.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_void_p]
-
-        _old_wndproc = _GetWindowLongPtr(_hwnd, _GWLP_WNDPROC)
-        _SetWindowLongPtr(_hwnd, _GWLP_WNDPROC, ctypes.cast(_c_wndproc, ctypes.c_void_p))
-except Exception:
-    pass
 
 clock = pygame.time.Clock()
+FPS_CHOICES = [30, 60, 120, 144, 156, 240, 300, 0]
 FPS = 60
 
 # -------------------------------------------------------------------------
@@ -669,7 +764,9 @@ def load_texture(filename, target_size=None):
 # Кактусы и валюта
 cactus_img = load_texture("Cactus.png", target_size=(44, 44))
 cactus_img_xl = load_texture("Cactus.png", target_size=(112, 112))
+cactus_img_m = load_texture("Cactus.png", target_size=(36, 36))
 cactus_img_s = load_texture("Cactus.png", target_size=(22, 22))
+cactus_img_xs = load_texture("Cactus.png", target_size=(14, 14))
 stellar_cactus_img = load_texture("Stellar_Cactus.png", target_size=(48, 48))
 stellar_cactus_img_m = load_texture("Stellar_Cactus.png", target_size=(36, 36))
 stellar_cactus_img_s = load_texture("Stellar_Cactus.png", target_size=(24, 24))
@@ -1105,6 +1202,13 @@ def apply_audio_settings(sdata):
     try:
         if pygame.mixer.get_init():
             pygame.mixer.music.set_volume(mus_v)
+            if mus_v > 0 and not pygame.mixer.music.get_busy():
+                track = current_playing_track or os.path.join(BASE_DIR, "assets", "sounds", "main_music.ogg")
+                if os.path.exists(track):
+                    pygame.mixer.music.load(track)
+                    pygame.mixer.music.set_volume(mus_v)
+                    pygame.mixer.music.play(-1)
+                    current_playing_track = track
     except Exception:
         pass
     for s in ALL_MANAGED_SOUNDS:
@@ -1683,7 +1787,7 @@ def play_soundtrack(filename):
     if not pygame.mixer.get_init():
         return
     full_path = os.path.join(BASE_DIR, "assets", "sounds", filename)
-    if full_path == current_playing_track:
+    if full_path == current_playing_track and pygame.mixer.music.get_busy():
         return
     if os.path.exists(full_path):
         try:

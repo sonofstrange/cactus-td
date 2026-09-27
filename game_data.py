@@ -418,17 +418,17 @@ GREENHOUSE_CACTI = [
         "buff_name": "Каменная кора Оазиса",
         "buff_desc": [
             "+1 к максимальным жизням базы",
-            "+2 к жизням базы, +10% урона шипов",
-            "+4 к жизням базы, +20% урона шипов",
-            "+6 к жизням базы, +30% урона шипов, 3% блок урона",
-            "+8 к жизням базы, +40% урона шипов, 5% блок урона"
+            "+2 к жизням базы, +15% урона шипов базы",
+            "+4 к жизням базы, +30% урона шипов базы",
+            "+6 к жизням базы, +50% урона шипов базы",
+            "+8 к жизням базы, +75% урона шипов базы"
         ],
         "stats": [
-            {"base_hp": 1, "thorn_mult": 0.0, "block_chance": 0.0},
-            {"base_hp": 2, "thorn_mult": 0.10, "block_chance": 0.0},
-            {"base_hp": 4, "thorn_mult": 0.20, "block_chance": 0.0},
-            {"base_hp": 6, "thorn_mult": 0.30, "block_chance": 0.03},
-            {"base_hp": 8, "thorn_mult": 0.40, "block_chance": 0.05},
+            {"base_hp": 1, "thorn_dmg_mult": 0.0},
+            {"base_hp": 2, "thorn_dmg_mult": 0.15},
+            {"base_hp": 4, "thorn_dmg_mult": 0.30},
+            {"base_hp": 6, "thorn_dmg_mult": 0.50},
+            {"base_hp": 8, "thorn_dmg_mult": 0.75},
         ]
     },
     {
@@ -441,132 +441,132 @@ GREENHOUSE_CACTI = [
         "buff_name": "Щедрый урожай",
         "buff_desc": [
             "+25 кактусов на старте боя",
-            "+50 кактусов, +3% семян за слаймов",
-            "+75 кактусов, +6% семян за слаймов",
-            "+100 кактусов, +10% семян, +6% дохода ферм",
-            "+140 кактусов, +14% семян, +12% дохода ферм"
+            "+50 кактусов, +3% кактусов за слаймов",
+            "+75 кактусов, +6% кактусов за слаймов",
+            "+100 кактусов, +10% кактусов, +6% дохода ферм",
+            "+150 кактусов, +15% кактусов, +12% дохода ферм"
         ],
         "stats": [
             {"start_gold": 25, "bounty_mult": 0.0, "farm_mult": 0.0},
             {"start_gold": 50, "bounty_mult": 0.03, "farm_mult": 0.0},
             {"start_gold": 75, "bounty_mult": 0.06, "farm_mult": 0.0},
             {"start_gold": 100, "bounty_mult": 0.10, "farm_mult": 0.06},
-            {"start_gold": 140, "bounty_mult": 0.14, "farm_mult": 0.12},
+            {"start_gold": 150, "bounty_mult": 0.15, "farm_mult": 0.12},
         ]
     },
     {
         "id": "fire_barrel",
         "name": "Огненный Бочонок",
         "title": "Магматический колючник",
-        "desc": "Ствол этого кактуса наполнен кипящей смолой. Распаляет ярость Огненных башен и поджигает слаймов.",
+        "desc": "Ствол этого кактуса наполнен кипящей смолой. Распаляет ярость Огненных башен, увеличивая их урон и радиус взрыва.",
         "img_key": "gh_fire_barrel",
         "req_sprouts": [1, 3, 8, 18, 35],
         "buff_name": "Негасимое пламя",
         "buff_desc": [
-            "+3% урона Огненной башни",
-            "+6% урона Огненной башни, горение длится +0.5 сек.",
-            "+10% урона Огненной башни, горение длится +1.0 сек.",
-            "+14% урона Огня, горящие мобы получают +5% от всех башен",
-            "+18% урона Огня, взрыв магмы при гибели горящего моба"
+            "+4% урона Огненной башни",
+            "+8% урона, +5% радиуса сплэша огня",
+            "+12% урона, +10% радиуса сплэша огня",
+            "+16% урона, +15% радиуса сплэша огня",
+            "+22% урона, +20% радиуса сплэша огня"
         ],
         "stats": [
-            {"fire_dmg_mult": 0.03, "burn_extra_sec": 0.0, "burn_vuln": 0.0, "magma_burst": False},
-            {"fire_dmg_mult": 0.06, "burn_extra_sec": 0.5, "burn_vuln": 0.0, "magma_burst": False},
-            {"fire_dmg_mult": 0.10, "burn_extra_sec": 1.0, "burn_vuln": 0.0, "magma_burst": False},
-            {"fire_dmg_mult": 0.14, "burn_extra_sec": 1.2, "burn_vuln": 0.05, "magma_burst": False},
-            {"fire_dmg_mult": 0.18, "burn_extra_sec": 1.5, "burn_vuln": 0.08, "magma_burst": True},
+            {"fire_dmg_mult": 0.04, "fire_splash_mult": 0.0},
+            {"fire_dmg_mult": 0.08, "fire_splash_mult": 0.05},
+            {"fire_dmg_mult": 0.12, "fire_splash_mult": 0.10},
+            {"fire_dmg_mult": 0.16, "fire_splash_mult": 0.15},
+            {"fire_dmg_mult": 0.22, "fire_splash_mult": 0.20},
         ]
     },
     {
         "id": "frost_aloe",
         "name": "Ледяной Алоэ",
         "title": "Хрустальная прохлада",
-        "desc": "Листья наполнены прозрачным гелевым льдом. Усиливает морозное поле и сковывает даже быстрых слаймов.",
+        "desc": "Листья наполнены прозрачным гелевым льдом. Усиливает морозное поле и радиус действия Ледяной башни.",
         "img_key": "gh_frost_aloe",
         "req_sprouts": [1, 3, 8, 18, 35],
         "buff_name": "Глубокая заморозка",
         "buff_desc": [
-            "+4% к силе замедления Ледяной башни",
-            "+7% к замедлению, +6% к радиусу действия",
-            "+11% к замедлению, +10% к радиусу действия",
-            "+15% к замедлению, замороженные враги теряют 8% брони",
-            "+20% к замедлению, 6% шанс вморозить моба в глыбу на 1.0 с."
+            "+3% к силе замедления Ледяной башни",
+            "+6% к замедлению, +5% к радиусу действия",
+            "+9% к замедлению, +10% к радиусу действия",
+            "+12% к замедлению, +15% к радиусу действия",
+            "+16% к замедлению, +20% к радиусу действия"
         ],
         "stats": [
-            {"frost_slow_mult": 0.04, "frost_range_mult": 0.0, "armor_shred": 0.0, "permafrost": False},
-            {"frost_slow_mult": 0.07, "frost_range_mult": 0.06, "armor_shred": 0.0, "permafrost": False},
-            {"frost_slow_mult": 0.11, "frost_range_mult": 0.10, "armor_shred": 0.0, "permafrost": False},
-            {"frost_slow_mult": 0.15, "frost_range_mult": 0.14, "armor_shred": 0.08, "permafrost": False},
-            {"frost_slow_mult": 0.20, "frost_range_mult": 0.18, "armor_shred": 0.12, "permafrost": True},
+            {"frost_slow_mult": 0.03, "frost_range_mult": 0.0},
+            {"frost_slow_mult": 0.06, "frost_range_mult": 0.05},
+            {"frost_slow_mult": 0.09, "frost_range_mult": 0.10},
+            {"frost_slow_mult": 0.12, "frost_range_mult": 0.15},
+            {"frost_slow_mult": 0.16, "frost_range_mult": 0.20},
         ]
     },
     {
         "id": "thunder_echino",
         "name": "Громовой Эхино",
         "title": "Электростатический шар",
-        "desc": "Сферический колючий шар, накапливающий разряды бурь. Заряжает молнии Башни Тесла дополнительными скачками.",
+        "desc": "Сферический колючий шар, накапливающий разряды бурь. Заряжает молнии Башни Тесла дополнительными отскоками и уроном.",
         "img_key": "gh_thunder_echino",
         "req_sprouts": [1, 3, 8, 18, 35],
         "buff_name": "Ионизация воздуха",
         "buff_desc": [
-            "+1 рикошет цепной молнии Башни Тесла",
-            "+1 рикошет, +5% к урону молний",
-            "+1 рикошет, +9% к урону молний",
-            "+2 рикошета, +13% к урону, 3% шанс оглушить на 0.5 с.",
-            "+2 рикошета, +18% к урону, 6% шанс оглушить на 0.5 с."
+            "+1 отскок цепной молнии Башни Тесла",
+            "+1 отскок, +5% к урону молний",
+            "+1 отскок, +10% к урону молний",
+            "+2 отскока, +15% к урону молний",
+            "+2 отскока, +22% к урону молний"
         ],
         "stats": [
-            {"extra_jumps": 1, "tesla_dmg_mult": 0.0, "stun_chance": 0.0},
-            {"extra_jumps": 1, "tesla_dmg_mult": 0.05, "stun_chance": 0.0},
-            {"extra_jumps": 1, "tesla_dmg_mult": 0.09, "stun_chance": 0.0},
-            {"extra_jumps": 2, "tesla_dmg_mult": 0.13, "stun_chance": 0.03},
-            {"extra_jumps": 2, "tesla_dmg_mult": 0.18, "stun_chance": 0.06},
+            {"extra_jumps": 1, "tesla_dmg_mult": 0.0},
+            {"extra_jumps": 1, "tesla_dmg_mult": 0.05},
+            {"extra_jumps": 1, "tesla_dmg_mult": 0.10},
+            {"extra_jumps": 2, "tesla_dmg_mult": 0.15},
+            {"extra_jumps": 2, "tesla_dmg_mult": 0.22},
         ]
     },
     {
         "id": "void_astrophytum",
         "name": "Астрофитум Бездны",
         "title": "Поглотитель мрака",
-        "desc": "Звёздчатый чёрно-фиолетовый кактус из глубинных шахт. Пробивает теневой покров и уничтожает элиту.",
+        "desc": "Звёздчатый чёрно-фиолетовый кактус из глубинных шахт. Увеличивает урон по боссам и шанс крита Магической башни.",
         "img_key": "gh_void_astrophytum",
         "req_sprouts": [1, 3, 8, 18, 35],
         "buff_name": "Анти-Энтропия",
         "buff_desc": [
-            "+6% урона всех башен по Теневым слаймам и боссам",
-            "+11% урона по ним, игнорирует 10% маг. защиты",
-            "+16% урона по ним, игнорирует 16% маг. защиты",
-            "+22% урона, +8% урона Орбитального удара",
-            "+28% урона, +15% урона Орбиталки, 1% дроп Зв. кактуса с элиты"
+            "+6% урона башен по Теневым слаймам и боссам",
+            "+12% урона по боссам, +2% крит-шанс Магической башни",
+            "+18% урона по боссам, +4% крит-шанс Магической башни",
+            "+24% урона по боссам, +6% крит-шанс Магической башни",
+            "+32% урона по боссам, +8% крит-шанс Магической башни"
         ],
         "stats": [
-            {"void_dmg_mult": 0.06, "pierce_magic": 0.0, "orbital_mult": 0.0, "elite_star_drop": False},
-            {"void_dmg_mult": 0.11, "pierce_magic": 0.10, "orbital_mult": 0.0, "elite_star_drop": False},
-            {"void_dmg_mult": 0.16, "pierce_magic": 0.16, "orbital_mult": 0.0, "elite_star_drop": False},
-            {"void_dmg_mult": 0.22, "pierce_magic": 0.22, "orbital_mult": 0.08, "elite_star_drop": False},
-            {"void_dmg_mult": 0.28, "pierce_magic": 0.30, "orbital_mult": 0.15, "elite_star_drop": True},
+            {"void_dmg_mult": 0.06, "crit_chance_bonus": 0.0},
+            {"void_dmg_mult": 0.12, "crit_chance_bonus": 0.02},
+            {"void_dmg_mult": 0.18, "crit_chance_bonus": 0.04},
+            {"void_dmg_mult": 0.24, "crit_chance_bonus": 0.06},
+            {"void_dmg_mult": 0.32, "crit_chance_bonus": 0.08},
         ]
     },
     {
         "id": "stellar_queen",
         "name": "Звёздный Цереус",
         "title": "Царица Ночи",
-        "desc": "Цветёт один раз в столетие в час парада планет. Усиливает Боевой Дрон и притягивает звёздную пыль.",
+        "desc": "Цветёт один раз в столетие в час парада планет. Усиливает Боевой Дрон и притягивает звёздную пыль со слаймов.",
         "img_key": "gh_stellar_queen",
         "req_sprouts": [1, 3, 8, 18, 35],
         "buff_name": "Астральный резонанс",
         "buff_desc": [
-            "+10% урона Боевого Дрона",
-            "+20% урона Дрона, +3% шанс дропа Звёздных кактусов",
-            "+30% урона Дрона, +6% шанс дропа Звёздных кактусов",
-            "+40% урона Дрона, +10% скорость атаки, +9% шанс дропа звёзд",
-            "+50% урона Дрона, +15% скорость атаки, Дрон атакует 2 цели!"
+            "+15% урона Боевого Дрона",
+            "+30% урона Дрона, +2% шанс дропа Звёздных кактусов",
+            "+45% урона Дрона, +4% шанс дропа Звёздных кактусов",
+            "+65% урона Дрона, +10% скорострельность, +6% шанс звёзд",
+            "+90% урона Дрона, +15% скорострельность, двойной залп!"
         ],
         "stats": [
-            {"drone_dmg_mult": 0.10, "star_drop_bonus": 0.0, "drone_spd_mult": 0.0, "dual_drone": False},
-            {"drone_dmg_mult": 0.20, "star_drop_bonus": 0.03, "drone_spd_mult": 0.0, "dual_drone": False},
-            {"drone_dmg_mult": 0.30, "star_drop_bonus": 0.06, "drone_spd_mult": 0.0, "dual_drone": False},
-            {"drone_dmg_mult": 0.40, "star_drop_bonus": 0.09, "drone_spd_mult": 0.10, "dual_drone": False},
-            {"drone_dmg_mult": 0.50, "star_drop_bonus": 0.12, "drone_spd_mult": 0.15, "dual_drone": True},
+            {"drone_dmg_mult": 0.15, "star_drop_bonus": 0.0, "drone_spd_mult": 0.0, "dual_drone": False},
+            {"drone_dmg_mult": 0.30, "star_drop_bonus": 0.02, "drone_spd_mult": 0.0, "dual_drone": False},
+            {"drone_dmg_mult": 0.45, "star_drop_bonus": 0.04, "drone_spd_mult": 0.0, "dual_drone": False},
+            {"drone_dmg_mult": 0.65, "star_drop_bonus": 0.06, "drone_spd_mult": 0.10, "dual_drone": False},
+            {"drone_dmg_mult": 0.90, "star_drop_bonus": 0.08, "drone_spd_mult": 0.15, "dual_drone": True},
         ]
     },
     {
@@ -578,46 +578,40 @@ GREENHOUSE_CACTI = [
         "req_sprouts": [1, 3, 8, 18, 35],
         "buff_name": "Боевое братство",
         "buff_desc": [
-            "Воины в Палатке возрождаются на 10% быстрее",
-            "Возрождение на 16% быстрее, +15% HP воинам",
-            "Возрождение на 22% быстрее, +28% HP, +10% урона",
-            "Воины получают щит, поглощающий первый удар",
-            "Воины контратакуют залпом шипов при получении урона!"
+            "Воины Палатки возрождаются на 15% быстрее",
+            "Возрождение на 25% быстрее, +15% HP воинам",
+            "Возрождение на 35% быстрее, +25% HP, +8% урона",
+            "Возрождение на 50% быстрее, +40% HP, +15% урона",
+            "Возрождение на 70% быстрее, +60% HP, +25% урона!"
         ],
         "stats": [
-            {"respawn_mult": 0.10, "soldier_hp_mult": 0.0, "soldier_dmg_mult": 0.0, "soldier_shield": False, "soldier_thorns": False},
-            {"respawn_mult": 0.16, "soldier_hp_mult": 0.15, "soldier_dmg_mult": 0.0, "soldier_shield": False, "soldier_thorns": False},
-            {"respawn_mult": 0.22, "soldier_hp_mult": 0.28, "soldier_dmg_mult": 0.10, "soldier_shield": False, "soldier_thorns": False},
-            {"respawn_mult": 0.30, "soldier_hp_mult": 0.42, "soldier_dmg_mult": 0.16, "soldier_shield": True, "soldier_thorns": False},
-            {"respawn_mult": 0.38, "soldier_hp_mult": 0.55, "soldier_dmg_mult": 0.22, "soldier_shield": True, "soldier_thorns": True},
+            {"respawn_mult": 0.15, "soldier_hp_mult": 0.0, "soldier_dmg_mult": 0.0},
+            {"respawn_mult": 0.25, "soldier_hp_mult": 0.15, "soldier_dmg_mult": 0.0},
+            {"respawn_mult": 0.35, "soldier_hp_mult": 0.25, "soldier_dmg_mult": 0.08},
+            {"respawn_mult": 0.50, "soldier_hp_mult": 0.40, "soldier_dmg_mult": 0.15},
+            {"respawn_mult": 0.70, "soldier_hp_mult": 0.60, "soldier_dmg_mult": 0.25},
         ]
     }
 ]
 
 def get_greenhouse_buffs(savedata):
+    if not isinstance(savedata, dict):
+        return {}
     gh = savedata.get("Greenhouse", {})
     aggregated = {
         "base_hp": 0,
-        "thorn_mult": 0.0,
-        "block_chance": 0.0,
+        "thorn_dmg_mult": 0.0,
         "start_gold": 0,
         "bounty_mult": 0.0,
         "farm_mult": 0.0,
         "fire_dmg_mult": 0.0,
-        "burn_extra_sec": 0.0,
-        "burn_vuln": 0.0,
-        "magma_burst": False,
+        "fire_splash_mult": 0.0,
         "frost_slow_mult": 0.0,
         "frost_range_mult": 0.0,
-        "armor_shred": 0.0,
-        "permafrost": False,
         "extra_jumps": 0,
         "tesla_dmg_mult": 0.0,
-        "stun_chance": 0.0,
         "void_dmg_mult": 0.0,
-        "pierce_magic": 0.0,
-        "orbital_mult": 0.0,
-        "elite_star_drop": False,
+        "crit_chance_bonus": 0.0,
         "drone_dmg_mult": 0.0,
         "star_drop_bonus": 0.0,
         "drone_spd_mult": 0.0,
@@ -625,8 +619,6 @@ def get_greenhouse_buffs(savedata):
         "respawn_mult": 0.0,
         "soldier_hp_mult": 0.0,
         "soldier_dmg_mult": 0.0,
-        "soldier_shield": False,
-        "soldier_thorns": False,
     }
     for item in GREENHOUSE_CACTI:
         cid = item["id"]
@@ -873,7 +865,7 @@ def get_wave_analysis(map_id, wave_num, sdata=None):
         elif t == 4: base_hp, base_spd, base_rew, base_dmg, traits = 4.0, 130.0, 3, 1, "Быстрый бегун (Урон: 1)"
         elif t == 5: base_hp, base_spd, base_rew, base_dmg, traits = 15.0, 50.0, 10, 3, "Тяжёлая броня (Урон: 3)"
         elif t == 6: base_hp, base_spd, base_rew, base_dmg, traits = 10.0, 60.0, 10, 2, "Целитель, щит 45% (Урон: 2)"
-        elif t == 777: base_hp, base_spd, base_rew, base_dmg, traits = 22.0, 105.0, 60, 1, "Золотой (+60 🌵, Урон: 1)"
+        elif t == 777: base_hp, base_spd, base_rew, base_dmg, traits = 22.0, 105.0, 60, 1, "Золотой (+60 к., Урон: 1)"
         elif t == 51: base_hp, base_spd, base_rew, base_dmg, traits = 25.0, 85.0, 20, 3, "Элитный страж, броня (Урон: 3)"
         elif t == 52: base_hp, base_spd, base_rew, base_dmg, traits = 50.0, 60.0, 35, 4, "Элитный таран, броня (Урон: 4)"
         elif t == 53: base_hp, base_spd, base_rew, base_dmg, traits = 90.0, 45.0, 60, 5, "Элитный исполин (Урон: 5)"
@@ -947,8 +939,19 @@ def has_unclaimed_bestiary(sdata):
     return False
 
 # -------------------------------------------------------------------------
-# СИСТЕМА СОХРАНЕНИЙ
-# -------------------------------------------------------------------------
+DEFAULT_SETTINGS = {
+    "sfx_volume": 0.7,
+    "music_volume": 0.5,
+    "window_shake": True,
+    "screen_shake": False,
+    "damage_numbers": True,
+    "auto_wave": False,
+    "graphics_preset": "normal",
+    "scale_quality": "sharp",
+    "fps_limit": 60,
+    "show_fps": True
+}
+
 DEFAULT_SAVE = {
     "PlayerName": "Игрок",
     "LevelsRecords": [0] * len(MAP_NAMES_LIST),
@@ -1067,19 +1070,12 @@ DEFAULT_SAVE = {
     "Achievements": {},
     "CreditsSeen": False,
     "GameCompleted": False,
-    "Settings": {
-        "sfx_volume": 0.7,
-        "music_volume": 0.5,
-        "window_shake": True,
-        "screen_shake": False,
-        "damage_numbers": True,
-        "auto_wave": False,
-        "graphics_preset": "normal"
-    },
+    "Settings": dict(DEFAULT_SETTINGS),
     "Stats": {
         "total_towers_built": 0,
         "total_crits": 0,
         "total_kills": 0,
+        "total_stellar_earned": 0,
         "meteorites_destroyed": 0,
         "killed_golden": 0,
         "bosses_defeated": 0,
@@ -1156,10 +1152,13 @@ if IS_ANDROID:
         SAVE_BASE_DIR = app_storage_path()
     except Exception:
         SAVE_BASE_DIR = os.environ.get("ANDROID_APP_DATA", os.environ.get("ANDROID_PRIVATE", "."))
-elif getattr(sys, 'frozen', False):
-    SAVE_BASE_DIR = os.path.dirname(sys.executable)
+elif sys.platform == "win32":
+    appdata_dir = os.environ.get("APPDATA")
+    if not appdata_dir:
+        appdata_dir = os.path.expanduser("~")
+    SAVE_BASE_DIR = os.path.join(appdata_dir, "CactusTD")
 else:
-    SAVE_BASE_DIR = BASE_DIR
+    SAVE_BASE_DIR = os.path.join(os.path.expanduser("~"), ".local", "share", "CactusTD")
 
 SAVES_DIR = os.path.join(SAVE_BASE_DIR, "saves")
 ACTIVE_PROFILE_FILE = os.path.join(SAVES_DIR, "active_profile.json")
@@ -1180,6 +1179,17 @@ def format_play_time(total_seconds):
         return f"{minutes} мин. {secs} сек."
     else:
         return f"{secs} сек."
+
+def sanitize_save_name(name: str, fallback: str = "Основное сохранение") -> str:
+    """Очищает имя сохранения от повреждённых/суррогатных символов или пустых строк."""
+    if not name or not isinstance(name, str):
+        return fallback
+    clean = name.strip()
+    if not clean or "\ufffd" in clean or any(0xD800 <= ord(c) <= 0xDFFF for c in clean):
+        return fallback
+    if len(clean) <= 4 and not any(c.isalnum() for c in clean):
+        return fallback
+    return clean
 
 def xor_crypt(data: bytes, key: bytes) -> bytes:
     k_len = len(key)
@@ -1386,14 +1396,110 @@ def get_all_save_slot_files():
     """Возвращает список файлов слотов сохранений, исключая служебные файлы."""
     if not os.path.exists(SAVES_DIR):
         return []
-    ignored = {"active_profile.json", "global_achievements.json", "global_achievements.ctd"}
+    ignored = {"active_profile.json", "global_achievements.json", "global_achievements.ctd", "settings.json", "settings.ctd"}
     return [
         f for f in os.listdir(SAVES_DIR)
-        if f.endswith(".json") and f not in ignored and not f.startswith("global_") and not f.startswith("active_") and not f.startswith("export_")
+        if f.endswith(".json") and f not in ignored and not f.startswith("global_") and not f.startswith("active_") and not f.startswith("export_") and not f.startswith("settings")
     ]
 
-def _init_saves_system():
+def migrate_legacy_saves():
+    """
+    Автоматически переносит сохранения из старых путей (папка проекта, dist, exe)
+    в системную директорию AppData (%APPDATA%/CactusTD/saves).
+    На Android не выполняется, так как Android уже использует изолированный app_storage_path.
+    """
+    if IS_ANDROID:
+        return
+
     os.makedirs(SAVES_DIR, exist_ok=True)
+    os.makedirs(os.path.join(SAVES_DIR, "backups"), exist_ok=True)
+
+    candidate_dirs = []
+    # 1. Корневая папка исходников (BASE_DIR)
+    if BASE_DIR:
+        candidate_dirs.append(os.path.join(BASE_DIR, "saves"))
+        candidate_dirs.append(os.path.join(BASE_DIR, "dist", "saves"))
+    # 2. Папка исполняемого файла (если frozen exe)
+    if getattr(sys, 'frozen', False):
+        exe_d = os.path.dirname(sys.executable)
+        candidate_dirs.append(os.path.join(exe_d, "saves"))
+        candidate_dirs.append(os.path.join(os.path.dirname(exe_d), "saves"))
+        candidate_dirs.append(os.path.join(os.path.dirname(exe_d), "dist", "saves"))
+    # 3. Текущая рабочая директория
+    candidate_dirs.append(os.path.join(os.getcwd(), "saves"))
+
+    import shutil
+
+    for c_dir in candidate_dirs:
+        c_dir_abs = os.path.abspath(c_dir)
+        if not os.path.exists(c_dir_abs) or c_dir_abs == os.path.abspath(SAVES_DIR):
+            continue
+
+        marker = os.path.join(c_dir_abs, ".migrated_to_appdata")
+        if os.path.exists(marker):
+            continue
+
+        try:
+            migrated_any = False
+            for item in os.listdir(c_dir_abs):
+                s_item = os.path.join(c_dir_abs, item)
+                d_item = os.path.join(SAVES_DIR, item)
+
+                if os.path.isdir(s_item):
+                    if item == "backups":
+                        d_backups = os.path.join(SAVES_DIR, "backups")
+                        os.makedirs(d_backups, exist_ok=True)
+                        for bf in os.listdir(s_item):
+                            s_bf = os.path.join(s_item, bf)
+                            d_bf = os.path.join(d_backups, bf)
+                            if not os.path.exists(d_bf) and os.path.isfile(s_bf):
+                                shutil.copy2(s_bf, d_bf)
+                                migrated_any = True
+                    continue
+
+                if not (item.endswith(".json") or item.endswith(".bak") or item.endswith(".cactussave") or item.endswith(".ctd")):
+                    continue
+
+                # Копируем в AppData: никогда не затираем актуальный файл, если в AppData уже есть сохранение!
+                should_copy = False
+                if not os.path.exists(d_item):
+                    should_copy = True
+                else:
+                    try:
+                        s_sz = os.path.getsize(s_item)
+                        d_sz = os.path.getsize(d_item)
+                        # Если существующий файл в AppData пустой/дефолтный, а в старой папке реальный прогресс
+                        if d_sz < 500 and s_sz > 1000:
+                            should_copy = True
+                    except Exception:
+                        pass
+
+                if should_copy:
+                    shutil.copy2(s_item, d_item)
+                    migrated_any = True
+                    print(f"[Migration] Copied {item} from {c_dir_abs} to {SAVES_DIR}")
+
+            # Также проверяем одиночный legacy savedata.json в родительской папке
+            old_parent = os.path.dirname(c_dir_abs)
+            old_legacy = os.path.join(old_parent, "savedata.json")
+            if os.path.exists(old_legacy) and os.path.isfile(old_legacy):
+                d_legacy = os.path.join(SAVE_BASE_DIR, "savedata.json")
+                if not os.path.exists(d_legacy):
+                    shutil.copy2(old_legacy, d_legacy)
+                    migrated_any = True
+
+            # Ставим отметку о завершении миграции в старой папке
+            try:
+                with open(marker, "w", encoding="utf-8") as mf:
+                    mf.write(f"Migrated to {SAVES_DIR} on {datetime.now().isoformat()}\n")
+            except Exception:
+                pass
+
+        except Exception as e:
+            print(f"[Migration] Error migrating from {c_dir_abs}: {e}")
+
+def _init_saves_system():
+    migrate_legacy_saves()
     active_id = None
     if os.path.exists(ACTIVE_PROFILE_FILE):
         try:
@@ -1427,7 +1533,11 @@ def _init_saves_system():
             print(f"Error initializing slot_main: {e}")
         active_id = "slot_main"
     elif not active_id or not os.path.exists(os.path.join(SAVES_DIR, f"{active_id}.json")):
-        active_id = slot_files[0][:-5]
+        if os.path.exists(os.path.join(SAVES_DIR, "slot_main.json")):
+            active_id = "slot_main"
+        else:
+            sorted_files = sorted(slot_files, key=lambda fn: (0 if "main" in fn else 1, fn))
+            active_id = sorted_files[0][:-5]
 
     set_active_save_id(active_id)
     return active_id
@@ -1436,9 +1546,17 @@ def get_active_save_id():
     if os.path.exists(ACTIVE_PROFILE_FILE):
         try:
             with open(ACTIVE_PROFILE_FILE, 'r', encoding='utf-8') as f:
-                return json.load(f).get("active_id", "slot_main")
+                sid = json.load(f).get("active_id", "slot_main")
+                if os.path.exists(os.path.join(SAVES_DIR, f"{sid}.json")):
+                    return sid
         except Exception:
             pass
+    if os.path.exists(os.path.join(SAVES_DIR, "slot_main.json")):
+        return "slot_main"
+    slot_files = get_all_save_slot_files()
+    if slot_files:
+        sorted_files = sorted(slot_files, key=lambda fn: (0 if "main" in fn else 1, fn))
+        return sorted_files[0][:-5]
     return "slot_main"
 
 def set_active_save_id(save_id):
@@ -1446,15 +1564,44 @@ def set_active_save_id(save_id):
     try:
         with open(ACTIVE_PROFILE_FILE, 'w', encoding='utf-8') as f:
             json.dump({"active_id": save_id}, f, ensure_ascii=False, indent=4)
+        dist_saves = os.path.join(SAVE_BASE_DIR, "dist", "saves")
+        if os.path.exists(dist_saves) and dist_saves != SAVES_DIR:
+            try:
+                with open(os.path.join(dist_saves, "active_profile.json"), 'w', encoding='utf-8') as f:
+                    json.dump({"active_id": save_id}, f, ensure_ascii=False, indent=4)
+            except Exception:
+                pass
     except Exception as e:
         print(f"Error setting active save ID: {e}")
+    invalidate_profiles_cache()
 
 def get_save_slot_path(save_id=None):
     if not save_id:
         save_id = get_active_save_id()
     return os.path.join(SAVES_DIR, f"{save_id}.json")
 
-def list_save_profiles():
+_PROFILES_CACHE = None
+_PROFILES_CACHE_TIME = 0.0
+
+def invalidate_profiles_cache():
+    global _PROFILES_CACHE
+    _PROFILES_CACHE = None
+
+def get_save_profiles_count():
+    global _PROFILES_CACHE
+    if _PROFILES_CACHE is not None:
+        return len(_PROFILES_CACHE)
+    try:
+        return len(get_all_save_slot_files())
+    except Exception:
+        return 1
+
+def list_save_profiles(force_refresh=False):
+    global _PROFILES_CACHE, _PROFILES_CACHE_TIME
+    now = time.time()
+    if not force_refresh and _PROFILES_CACHE is not None and (now - _PROFILES_CACHE_TIME < 5.0):
+        return _PROFILES_CACHE
+
     _init_saves_system()
     active_id = get_active_save_id()
     profiles = []
@@ -1513,6 +1660,8 @@ def list_save_profiles():
         except Exception as e:
             print(f"Error reading profile {fname}: {e}")
     profiles.sort(key=lambda p: (0 if p["is_active"] else 1, p["updated_at"]), reverse=False)
+    _PROFILES_CACHE = profiles
+    _PROFILES_CACHE_TIME = now
     return profiles
 
 def create_save_profile(name=None, make_active=True, difficulty="normal"):
@@ -1536,6 +1685,7 @@ def create_save_profile(name=None, make_active=True, difficulty="normal"):
     if make_active:
         set_active_save_id(sid)
         save_data(new_data)
+    invalidate_profiles_cache()
     return sid, new_data
 
 def rename_save_profile(save_id, new_name):
@@ -1550,6 +1700,7 @@ def rename_save_profile(save_id, new_name):
         if save_id == get_active_save_id():
             savedata["SaveName"] = data["SaveName"]
             save_data(savedata)
+        invalidate_profiles_cache()
         return True
     except Exception as e:
         print(f"Error renaming profile: {e}")
@@ -1569,6 +1720,7 @@ def duplicate_save_profile(save_id):
         data["UpdatedAt"] = now_str
         new_slot_path = os.path.join(SAVES_DIR, f"{new_sid}.json")
         write_save_file(new_slot_path, data)
+        invalidate_profiles_cache()
         return new_sid
     except Exception as e:
         print(f"Error duplicating profile: {e}")
@@ -1621,16 +1773,40 @@ def import_save_profile(cipher_or_json_str, as_new_slot=True, make_active=True):
     if make_active:
         set_active_save_id(sid)
         save_data(data)
+    invalidate_profiles_cache()
     return sid, data
 
 def delete_save_profile(save_id):
     slot_path = os.path.join(SAVES_DIR, f"{save_id}.json")
     if os.path.exists(slot_path):
         try:
+            # 1. Автоматический резервный бекап перед удалением
+            backup_dir = os.path.join(SAVES_DIR, "backups")
+            os.makedirs(backup_dir, exist_ok=True)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_path = os.path.join(backup_dir, f"{save_id}_deleted_{timestamp}.json")
+            bak_path = os.path.join(SAVES_DIR, f"{save_id}.bak")
+            import shutil
+            shutil.copy2(slot_path, backup_path)
+            shutil.copy2(slot_path, bak_path)
+            print(f"[Backup] Profile {save_id} safely backed up to {backup_path}")
+            # Синхронизация бекапа в dist/saves, если папка существует
+            dist_saves = os.path.join(os.path.dirname(os.path.abspath(SAVES_DIR)), "dist", "saves")
+            if os.path.exists(dist_saves) and dist_saves != SAVES_DIR:
+                try:
+                    dist_backup_dir = os.path.join(dist_saves, "backups")
+                    os.makedirs(dist_backup_dir, exist_ok=True)
+                    shutil.copy2(slot_path, os.path.join(dist_backup_dir, f"{save_id}_deleted_{timestamp}.json"))
+                    dist_slot = os.path.join(dist_saves, f"{save_id}.json")
+                    if os.path.exists(dist_slot):
+                        os.remove(dist_slot)
+                except Exception:
+                    pass
             os.remove(slot_path)
         except Exception as e:
-            print(f"Error deleting profile {save_id}: {e}")
+            print(f"Error backing up / deleting profile {save_id}: {e}")
 
+    invalidate_profiles_cache()
     active_id = get_active_save_id()
     if save_id == active_id:
         slot_files = get_all_save_slot_files()
@@ -1649,6 +1825,7 @@ def switch_active_save(save_id):
     set_active_save_id(save_id)
     new_data = load_data(save_id)
     save_data(new_data)
+    invalidate_profiles_cache()
     return new_data
 
 def load_data(save_id=None):
@@ -1666,8 +1843,7 @@ def load_data(save_id=None):
         data = read_save_file(slot_path)
         if "SaveId" not in data:
             data["SaveId"] = save_id
-        if "SaveName" not in data:
-            data["SaveName"] = "Основное сохранение"
+        data["SaveName"] = sanitize_save_name(data.get("SaveName"), "Основное сохранение")
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
         if "CreatedAt" not in data:
             data["CreatedAt"] = now_str
@@ -1729,12 +1905,8 @@ def load_data(save_id=None):
             for sk, sv in DEFAULT_SAVE["Stats"].items():
                 if sk not in data["Stats"]:
                     data["Stats"][sk] = sv
-        if "Settings" not in data:
-            data["Settings"] = dict(DEFAULT_SAVE["Settings"])
-        else:
-            for sk, sv in DEFAULT_SAVE["Settings"].items():
-                if sk not in data["Settings"]:
-                    data["Settings"][sk] = sv
+        # Глобальные настройки игры, независимые от слота сохранения
+        data["Settings"] = load_settings()
         if "CreditsSeen" not in data:
             data["CreditsSeen"] = False
         if "GameCompleted" not in data:
@@ -1759,8 +1931,18 @@ def load_data(save_id=None):
             data["Relics"] = {}
         if "difficulty" not in data:
             data["difficulty"] = "normal"
-        if "difficulty_selected" not in data:
-            has_prog = any(r > 0 for r in data.get("LevelsRecords", [])) or data.get("Stats", {}).get("total_kills", 0) > 0
+
+        # Определяем, начата ли уже игра в этом сохранении
+        has_prog = (
+            any(r > 0 for r in data.get("LevelsRecords", []))
+            or data.get("Stats", {}).get("total_kills", 0) > 0
+            or data.get("Stats", {}).get("play_time_seconds", 0) > 10
+            or data.get("StellarCactuses", 15) != 15
+            or data.get("DarkCactuses", 0) > 0
+            or any(v > 1 for v in data.get("Upgrades", {}).values())
+            or len(data.get("Relics", {})) > 0
+        )
+        if "difficulty_selected" not in data or (has_prog and not data.get("difficulty_selected")):
             data["difficulty_selected"] = True if has_prog else False
         check_retroactive_mastery(data)
 
@@ -1777,6 +1959,44 @@ def load_data(save_id=None):
         return d
 
 GLOBAL_ACHIEVEMENTS_PATH = os.path.join(SAVES_DIR, "global_achievements.json")
+GLOBAL_SETTINGS_PATH = os.path.join(SAVES_DIR, "settings.json")
+
+def load_settings():
+    """Загружает глобальные настройки игры, независимые от слота профиля."""
+    s = dict(DEFAULT_SETTINGS)
+    if os.path.exists(GLOBAL_SETTINGS_PATH):
+        try:
+            loaded = read_save_file(GLOBAL_SETTINGS_PATH)
+            if isinstance(loaded, dict):
+                s.update(loaded)
+                return s
+        except Exception as e:
+            print(f"Error loading global settings: {e}")
+    # Миграция из активного слота сохранения, если settings.json ещё не был создан
+    legacy_path = os.path.join(SAVES_DIR, f"{get_active_save_id()}.json")
+    if os.path.exists(legacy_path):
+        try:
+            legacy_data = read_save_file(legacy_path)
+            if isinstance(legacy_data, dict) and "Settings" in legacy_data:
+                s.update(legacy_data["Settings"])
+                save_settings(s)
+        except Exception:
+            pass
+    return s
+
+def save_settings(settings):
+    """Сохраняет глобальные настройки игры в saves/settings.json в зашифрованном формате CTD."""
+    try:
+        os.makedirs(SAVES_DIR, exist_ok=True)
+        write_save_file(GLOBAL_SETTINGS_PATH, settings)
+        dist_saves = os.path.join(SAVE_BASE_DIR, "dist", "saves")
+        if os.path.exists(dist_saves) and dist_saves != SAVES_DIR:
+            try:
+                write_save_file(os.path.join(dist_saves, "settings.json"), settings)
+            except Exception:
+                pass
+    except Exception as e:
+        print(f"Error saving global settings: {e}")
 
 def load_global_achievements():
     """Загружает глобальные достижения, разделяемые между всеми сейвами."""
@@ -1797,12 +2017,25 @@ def save_global_achievements(global_data):
 
 def save_data(data):
     try:
+        try:
+            get_total_stellar_earned(data)
+        except Exception:
+            pass
+        if "Settings" in data and isinstance(data["Settings"], dict):
+            save_settings(data["Settings"])
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
         data["UpdatedAt"] = now_str
         save_id = data.get("SaveId") or get_active_save_id()
         slot_path = os.path.join(SAVES_DIR, f"{save_id}.json")
         write_save_file(slot_path, data)
         write_save_file(LEGACY_SAVE_PATH, data)
+        dist_saves = os.path.join(SAVE_BASE_DIR, "dist", "saves")
+        if os.path.exists(dist_saves) and dist_saves != SAVES_DIR:
+            try:
+                write_save_file(os.path.join(dist_saves, f"{save_id}.json"), data)
+                write_save_file(os.path.join(SAVE_BASE_DIR, "dist", "savedata.json"), data)
+            except Exception:
+                pass
         update_global_achievements(data)
     except Exception as e:
         print(f"Save error: {e}")
@@ -1813,6 +2046,58 @@ savedata = load_data()
 # ДРЕВО ТАЛАНТОВ
 # -------------------------------------------------------------------------
 UPGRADE_TREE_NODES = get_all_81_nodes()
+
+def get_tree_total_nodes():
+    nodes = globals().get("UPGRADE_TREE_NODES")
+    if not nodes:
+        from tree_data_v02 import get_all_81_nodes
+        nodes = get_all_81_nodes()
+    return max(1, sum(1 for nid in nodes if nid != "oasis_core"))
+
+def get_tree_total_levels():
+    nodes = globals().get("UPGRADE_TREE_NODES")
+    if not nodes:
+        from tree_data_v02 import get_all_81_nodes
+        nodes = get_all_81_nodes()
+    return max(1, sum(n.get("max_lvl", 1) for nid, n in nodes.items() if nid != "oasis_core"))
+
+
+def get_total_stellar_earned(sdata):
+    """
+    Возвращает суммарное количество Звёздных кактусов, когда-либо заработанных игроком.
+    Учитывает:
+    - Текущий баланс в кошельке sdata['StellarCactuses']
+    - Все кактусы, потраченные на прокачку талантов Древа
+    - Монотонный счётчик sdata['Stats']['total_stellar_earned']
+    Счётчик никогда не уменьшается при трате звёздных кактусов!
+    """
+    if not sdata or not isinstance(sdata, dict):
+        return 0
+    wallet = max(0, sdata.get("StellarCactuses", 0))
+
+    spent_tree = 0
+    upgrades = sdata.get("Upgrades", {})
+    nodes = globals().get("UPGRADE_TREE_NODES")
+    if not nodes:
+        from tree_data_v02 import get_all_81_nodes
+        nodes = get_all_81_nodes()
+
+    if nodes and isinstance(upgrades, dict):
+        for nid, lvl in upgrades.items():
+            if lvl > 0 and nid in nodes:
+                node = nodes[nid]
+                curr = node.get("currency", "stellar")
+                if curr in ("stellar", "hybrid"):
+                    costs = node.get("costs", [])
+                    if costs:
+                        spent_tree += sum(costs[:lvl])
+
+    stats = sdata.setdefault("Stats", {})
+    recorded = stats.get("total_stellar_earned", 0)
+    total_val = max(recorded, wallet + spent_tree)
+    if stats.get("total_stellar_earned", 0) < total_val:
+        stats["total_stellar_earned"] = total_val
+    return total_val
 
 
 def check_node_requirements(node_id, savedata):
@@ -1928,10 +2213,7 @@ def check_node_requirements(node_id, savedata):
             per_lvl = g_req.get("per_lvl", 0)
             cur_node_lvl = upgrades.get(node_id, 0)
             target_val = base_val + cur_node_lvl * per_lvl
-            total_earned = max(
-                savedata.get("Stats", {}).get("total_stellar_earned", 0),
-                savedata.get("StellarCactuses", 0) + sum(upgrades.values())
-            )
+            total_earned = get_total_stellar_earned(savedata)
             cur_val = total_earned
             met = (cur_val >= target_val)
             g_val = target_val
@@ -2899,24 +3181,34 @@ GLOBAL_ACHIEVEMENTS_DATA = [
         "category": "global",
         "cat_name": "Глобальные",
         "title": "Архитектор Древа",
-        "desc": "Изучите абсолютно все 80 узлов в Древе улучшений Оазиса",
+        "desc": "Изучите абсолютно все узлы в Древе улучшений Оазиса",
         "reward": 0,
-        "max_val": 80,
+        "max_val": get_tree_total_nodes,
         "icon": trophy_icon,
-        "check": lambda s: sum(1 for nid in globals().get("UPGRADE_TREE_NODES", {}) if nid != "oasis_core" and s.get("Upgrades", {}).get(nid, 0) >= 1) >= 80,
-        "progress": lambda s: (min(80, sum(1 for nid in globals().get("UPGRADE_TREE_NODES", {}) if nid != "oasis_core" and s.get("Upgrades", {}).get(nid, 0) >= 1)), 80)
+        "check": lambda s: (
+            sum(1 for nid in globals().get("UPGRADE_TREE_NODES", {}) if nid != "oasis_core" and s.get("Upgrades", {}).get(nid, 0) >= 1) >= get_tree_total_nodes()
+        ),
+        "progress": lambda s: (
+            min(get_tree_total_nodes(), sum(1 for nid in globals().get("UPGRADE_TREE_NODES", {}) if nid != "oasis_core" and s.get("Upgrades", {}).get(nid, 0) >= 1)),
+            get_tree_total_nodes()
+        )
     },
     {
         "id": "global_tree_levels_max",
         "category": "global",
         "cat_name": "Глобальные",
         "title": "Венец Эволюции",
-        "desc": "Прокачайте все 80 улучшений Древа до абсолютного максимума",
+        "desc": "Прокачайте все улучшения Древа до абсолютного максимума",
         "reward": 0,
-        "max_val": 256,
+        "max_val": get_tree_total_levels,
         "icon": crown_upg_icon,
-        "check": lambda s: sum(min(n.get("max_lvl", 1), s.get("Upgrades", {}).get(nid, 0)) for nid, n in globals().get("UPGRADE_TREE_NODES", {}).items() if nid != "oasis_core") >= 256,
-        "progress": lambda s: (min(256, sum(min(n.get("max_lvl", 1), s.get("Upgrades", {}).get(nid, 0)) for nid, n in globals().get("UPGRADE_TREE_NODES", {}).items() if nid != "oasis_core")), 256)
+        "check": lambda s: (
+            sum(min(n.get("max_lvl", 1), s.get("Upgrades", {}).get(nid, 0)) for nid, n in globals().get("UPGRADE_TREE_NODES", {}).items() if nid != "oasis_core") >= get_tree_total_levels()
+        ),
+        "progress": lambda s: (
+            min(get_tree_total_levels(), sum(min(n.get("max_lvl", 1), s.get("Upgrades", {}).get(nid, 0)) for nid, n in globals().get("UPGRADE_TREE_NODES", {}).items() if nid != "oasis_core")),
+            get_tree_total_levels()
+        )
     },
     {
         "id": "global_bestiary_tier5",
@@ -2991,15 +3283,16 @@ GLOBAL_ACHIEVEMENTS_DATA = [
         "reward": 0,
         "max_val": 1000,
         "icon": stellar_cactus_img,
-        "check": lambda s: s.get("StellarCactuses", 0) >= 1000,
-        "progress": lambda s: (min(1000, s.get("StellarCactuses", 0)), 1000)
+        "check": lambda s: get_total_stellar_earned(s) >= 1000,
+        "progress": lambda s: (min(1000, get_total_stellar_earned(s)), 1000)
     }
 ]
 
 def update_global_achievements(savedata):
-    """Обновляет статус 10 глобальных достижений в saves/global_achievements.json."""
+    """Обновляет статус 10 глобальных достижений в saves/global_achievements.json. Возвращает список вновь открытых."""
     global_meta = load_global_achievements()
     changed = False
+    newly_unlocked = []
 
     # Удаляем старые неактуальные ключи, если они были сохранены
     valid_ids = {g["id"] for g in GLOBAL_ACHIEVEMENTS_DATA}
@@ -3020,15 +3313,33 @@ def update_global_achievements(savedata):
         try:
             cur_p, max_p = gach["progress"](savedata)
             entry["max"] = max_p
-            is_valid = gach["check"](savedata) or cur_p >= max_p
+            is_valid = bool(gach["check"](savedata) and cur_p >= max_p)
 
-            if gid == "global_game_completed" and not is_valid:
-                # Сбрасываем ошибочное открытие и завышенный прогресс от прошлых версий
-                if entry.get("unlocked", False) or entry.get("progress", 0) > cur_p:
-                    entry["unlocked"] = False
-                    entry["unlocked_at"] = ""
-                    entry["progress"] = cur_p
-                    changed = True
+            # Для достижений древа и завершения игры обязательно синхронизируем актуальный прогресс и сбрасываем статус, если требования выросли
+            if gid in ["global_tree_nodes_all", "global_tree_levels_max", "global_game_completed"]:
+                if not is_valid:
+                    if entry.get("unlocked", False):
+                        entry["unlocked"] = False
+                        entry["unlocked_at"] = ""
+                        changed = True
+                    if entry.get("progress", 0) != cur_p:
+                        entry["progress"] = cur_p
+                        changed = True
+                else:
+                    if not entry.get("unlocked", False):
+                        entry["unlocked"] = True
+                        entry["unlocked_at"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+                        changed = True
+                        newly_unlocked.append({
+                            "id": gid,
+                            "title": gach.get("title", gid),
+                            "desc": gach.get("desc", ""),
+                            "icon": gach.get("icon", None),
+                            "is_global": True
+                        })
+                    if entry.get("progress", 0) != cur_p:
+                        entry["progress"] = cur_p
+                        changed = True
             else:
                 if cur_p > entry.get("progress", 0):
                     entry["progress"] = cur_p
@@ -3037,16 +3348,23 @@ def update_global_achievements(savedata):
                     entry["unlocked"] = True
                     entry["unlocked_at"] = datetime.now().strftime("%Y-%m-%d %H:%M")
                     changed = True
+                    newly_unlocked.append({
+                        "id": gid,
+                        "title": gach.get("title", gid),
+                        "desc": gach.get("desc", ""),
+                        "icon": gach.get("icon", None),
+                        "is_global": True
+                    })
         except Exception:
             pass
 
     if changed:
         save_global_achievements(global_meta)
-    return global_meta
+    return newly_unlocked
 
 def check_achievements(savedata):
-    """Проверяет только локальные достижения текущего сейва."""
-    unlocked_any = False
+    """Проверяет локальные и глобальные достижения сейва. Возвращает список вновь открытых."""
+    newly_unlocked = []
     ach_dict = savedata.setdefault("Achievements", {})
 
     for ach in ACHIEVEMENTS_DATA:
@@ -3055,12 +3373,20 @@ def check_achievements(savedata):
         if not status["unlocked"]:
             if ach["check"](savedata):
                 status["unlocked"] = True
-                unlocked_any = True
+                newly_unlocked.append({
+                    "id": aid,
+                    "title": ach.get("title", aid),
+                    "desc": ach.get("desc", ""),
+                    "icon": ach.get("icon", None),
+                    "is_global": False
+                })
 
     # Заодно синхронизируем прогресс глобальных достижений
-    update_global_achievements(savedata)
+    newly_globals = update_global_achievements(savedata)
+    if newly_globals:
+        newly_unlocked.extend(newly_globals)
 
-    return unlocked_any
+    return newly_unlocked
 
 def has_unclaimed_achievements(savedata):
     check_achievements(savedata)

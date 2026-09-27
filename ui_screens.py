@@ -29,8 +29,38 @@ _bestiary_btn_cache = {}
 _unknown_slime_texts = None
 _ach_icon_cache = {}
 _tower_inspect_btn_cache = {}
+_tree_zone_surf_cache = {}
+_tree_metro_world_pts = {}
+_tree_cactus_icon_cache = {}
+_tree_hud_bg = None
+_tree_aura_cache = {}
+_tree_title_cache = {}
+_settings_grid_surf = None
+_TEXT_CACHE = {}
 
+def get_rendered_text(font_obj, text, color):
+    key = (id(font_obj), text, color)
+    surf = _TEXT_CACHE.get(key)
+    if surf is None:
+        surf = font_obj.render(text, True, color)
+        if len(_TEXT_CACHE) > 1000:
+            _TEXT_CACHE.clear()
+        _TEXT_CACHE[key] = surf
+    return surf
 
+_bg_dot_cache = {}
+
+def get_cached_bg_dot(color_rgb, rad, alpha):
+    rad = max(1, min(10, int(rad)))
+    q_alpha = max(16, min(240, (int(alpha) // 16) * 16))
+    key = (color_rgb, rad, q_alpha)
+    s = _bg_dot_cache.get(key)
+    if s is None:
+        dim = rad * 2 + 2
+        s = pygame.Surface((dim, dim), pygame.SRCALPHA)
+        pygame.draw.circle(s, (*color_rgb, q_alpha), (rad + 1, rad + 1), rad)
+        _bg_dot_cache[key] = s
+    return s
 
 def generate_background(surf, bg_time, map_id=None, custom_cols=None):
     if custom_cols is not None:
@@ -46,36 +76,63 @@ def generate_background(surf, bg_time, map_id=None, custom_cols=None):
     cell_size = 50
     sw, sh = surf.get_width(), surf.get_height()
 
-    # Делаем линии в подменю и на экранах более выразительными и четкими
+    # Делаем линии в подменю и на экранах значительно более выразительными, сочными и четкими
     line_col = (
-        min(255, int(col_b[0] * 1.45 + 18)),
-        min(255, int(col_b[1] * 1.45 + 18)),
-        min(255, int(col_b[2] * 1.45 + 18))
+        min(255, int(col_b[0] * 1.85 + 32)),
+        min(255, int(col_b[1] * 1.85 + 32)),
+        min(255, int(col_b[2] * 1.85 + 36))
     ) if col_a[0] < 50 else (
-        min(255, int(col_b[0] * 1.12 + 12)),
-        min(255, int(col_b[1] * 1.12 + 12)),
-        min(255, int(col_b[2] * 1.12 + 12))
+        min(255, int(col_b[0] * 1.35 + 24)),
+        min(255, int(col_b[1] * 1.35 + 24)),
+        min(255, int(col_b[2] * 1.35 + 24))
     )
 
     if get_graphics_preset() == "optimized":
-        ox = int((bg_time * 0.025) % cell_size)
-        oy = int((bg_time * 0.025) % cell_size)
+        ox = int((bg_time * 0.035) % cell_size)
+        oy = int((bg_time * 0.035) % cell_size)
         for x in range(ox - cell_size, sw + cell_size, cell_size):
             pygame.draw.line(surf, line_col, (x, 0), (x, sh), 2)
         for y in range(oy - cell_size, sh + cell_size, cell_size):
             pygame.draw.line(surf, line_col, (0, y), (sw, y), 2)
         return
 
-    offset_x = math.sin(bg_time * 0.001) * 30
-    offset_y = math.cos(bg_time * 0.001) * 30
+    # Интенсивные гармонические волны движения сетки (эффект шёлка, приливов и дыхания пространства)
+    t = bg_time * 0.001
+    sway_x = math.sin(t * 0.9) * 22.0 + math.sin(t * 1.7) * 8.0
+    sway_y = math.cos(t * 0.8) * 20.0 + math.cos(t * 1.5) * 7.0
 
-    for x in range(-cell_size, sw + cell_size, cell_size):
-        warp = math.sin(x * 0.01 + bg_time * 0.002) * 15
-        pygame.draw.line(surf, line_col, (x + offset_x + warp, 0), (x + offset_y - warp, sh), 2)
+    for x in range(-cell_size * 2, sw + cell_size * 3, cell_size):
+        wave_top = math.sin(x * 0.008 + t * 1.6) * 25.0 + math.cos(x * 0.018 - t * 1.1) * 12.0
+        wave_bot = math.sin(x * 0.007 - t * 1.3 + 1.2) * 26.0 + math.sin(x * 0.015 + t * 1.9) * 12.0
+        pygame.draw.line(surf, line_col, (x + sway_x + wave_top, 0), (x + sway_x * 0.7 + wave_bot, sh), 2)
 
-    for y in range(-cell_size, sh + cell_size, cell_size):
-        warp = math.cos(y * 0.015 + bg_time * 0.0018) * 15
-        pygame.draw.line(surf, line_col, (0, y + offset_y + warp), (sw, y + offset_x - warp), 2)
+    for y in range(-cell_size * 2, sh + cell_size * 3, cell_size):
+        wave_left = math.cos(y * 0.009 + t * 1.5) * 24.0 + math.sin(y * 0.016 - t * 1.2) * 11.0
+        wave_right = math.cos(y * 0.008 - t * 1.2 + 1.5) * 25.0 + math.cos(y * 0.014 + t * 1.8) * 11.0
+        pygame.draw.line(surf, line_col, (0, y + sway_y + wave_left), (sw, y + sway_y * 0.7 + wave_right), 2)
+
+    # Атмосферные парящие светящиеся пылинки/звёздочки на фоне (прямой блит микро-спрайтов без полноэкранного альфа-буфера)
+    num_particles = 32
+    for i in range(num_particles):
+        speed_x = 0.016 + (i % 5) * 0.008
+        speed_y = 0.011 + ((i * 3) % 6) * 0.006
+        px = int((i * 127.3 + bg_time * speed_x) % (sw + 60) - 30)
+        py = int((i * 79.7 + math.sin(t * 1.1 + i) * 42.0 + bg_time * speed_y) % (sh + 60) - 30)
+        p_rad = 1.7 + (i % 4) * 0.9
+        alpha = int(75 + 55 * math.sin(t * 2.0 + i * 1.3))
+        if i % 3 == 0:
+            p_rgb = (min(255, line_col[0] + 90), min(255, line_col[1] + 95), min(255, line_col[2] + 125))
+        elif i % 3 == 1:
+            p_rgb = (min(255, line_col[0] + 120), min(255, line_col[1] + 115), min(255, line_col[2] + 75))
+        else:
+            p_rgb = (min(255, line_col[0] + 75), min(255, line_col[1] + 125), min(255, line_col[2] + 135))
+        pr = max(1, int(p_rad))
+        dot_s = get_cached_bg_dot(p_rgb, pr, alpha)
+        surf.blit(dot_s, (px - pr - 1, py - pr - 1))
+        if p_rad > 2.2:
+            gr = max(1, int(p_rad * 2.2))
+            glow_s = get_cached_bg_dot(p_rgb, gr, alpha // 3)
+            surf.blit(glow_s, (px - gr - 1, py - gr - 1))
 
 
 def draw_dark_cactus_counter(surface, rect, savedata, mouse_pos=None):
@@ -856,50 +913,46 @@ def draw_greenhouse_screen(surface, savedata, mouse_pos, inspected_cactus_id=Non
 
     if gh_buffs.get("base_hp", 0) > 0:
         active_chips.append(f"+{gh_buffs['base_hp']} HP базы")
+    if gh_buffs.get("thorn_dmg_mult", 0) > 0:
+        active_chips.append(f"+{int(gh_buffs['thorn_dmg_mult']*100)}% шипы базы")
     if gh_buffs.get("start_gold", 0) > 0:
         active_chips.append(f"+{gh_buffs['start_gold']} кактусов на старте")
     if gh_buffs.get("bounty_mult", 0) > 0:
-        active_chips.append(f"+{int(gh_buffs['bounty_mult']*100)}% семян за мобов")
+        active_chips.append(f"+{int(gh_buffs['bounty_mult']*100)}% кактусов за мобов")
     if gh_buffs.get("farm_mult", 0) > 0:
         active_chips.append(f"+{int(gh_buffs['farm_mult']*100)}% доход ферм")
     if gh_buffs.get("fire_dmg_mult", 0) > 0:
         active_chips.append(f"+{int(gh_buffs['fire_dmg_mult']*100)}% урон Огня")
+    if gh_buffs.get("fire_splash_mult", 0) > 0:
+        active_chips.append(f"+{int(gh_buffs['fire_splash_mult']*100)}% сплэш Огня")
     if gh_buffs.get("frost_slow_mult", 0) > 0:
         active_chips.append(f"+{int(gh_buffs['frost_slow_mult']*100)}% замедление")
     if gh_buffs.get("frost_range_mult", 0) > 0:
         active_chips.append(f"+{int(gh_buffs['frost_range_mult']*100)}% радиус Льда")
-    if gh_buffs.get("armor_shred", 0) > 0:
-        active_chips.append(f"+{int(gh_buffs['armor_shred']*100)}% пробив брони")
     if gh_buffs.get("extra_jumps", 0) > 0:
         active_chips.append(f"+{gh_buffs['extra_jumps']} отскока Теслы")
     if gh_buffs.get("tesla_dmg_mult", 0) > 0:
         active_chips.append(f"+{int(gh_buffs['tesla_dmg_mult']*100)}% урон Теслы")
-    if gh_buffs.get("stun_chance", 0) > 0:
-        active_chips.append(f"+{int(gh_buffs['stun_chance']*100)}% оглушение")
     if gh_buffs.get("void_dmg_mult", 0) > 0:
-        active_chips.append(f"+{int(gh_buffs['void_dmg_mult']*100)}% урон Бездны")
-    if gh_buffs.get("pierce_magic", 0) > 0:
-        active_chips.append(f"+{int(gh_buffs['pierce_magic']*100)}% пробив щита")
+        active_chips.append(f"+{int(gh_buffs['void_dmg_mult']*100)}% урон по боссам")
+    if gh_buffs.get("crit_chance_bonus", 0) > 0:
+        active_chips.append(f"+{int(gh_buffs['crit_chance_bonus']*100)}% крит Магии")
     if gh_buffs.get("drone_dmg_mult", 0) > 0:
         active_chips.append(f"+{int(gh_buffs['drone_dmg_mult']*100)}% урон Дрона")
+    if gh_buffs.get("star_drop_bonus", 0) > 0:
+        active_chips.append(f"+{int(gh_buffs['star_drop_bonus']*100)}% шанс звёзд")
     if gh_buffs.get("drone_spd_mult", 0) > 0:
         active_chips.append(f"+{int(gh_buffs['drone_spd_mult']*100)}% скор. Дрона")
+    if gh_buffs.get("dual_drone"):
+        active_chips.append("Двойной залп Дрона")
+    if gh_buffs.get("respawn_mult", 0) > 0:
+        active_chips.append(f"+{int(gh_buffs['respawn_mult']*100)}% призыв солдат")
     if gh_buffs.get("soldier_hp_mult", 0) > 0:
         active_chips.append(f"+{int(gh_buffs['soldier_hp_mult']*100)}% HP солдат")
     if gh_buffs.get("soldier_dmg_mult", 0) > 0:
         active_chips.append(f"+{int(gh_buffs['soldier_dmg_mult']*100)}% урон солдат")
     if gh_buffs.get("compost_dmg_mult", 0) > 0:
         active_chips.append(f"+{int(gh_buffs['compost_dmg_mult']*100)}% Компост")
-    if gh_buffs.get("magma_burst"):
-        active_chips.append("Взрыв магмы")
-    if gh_buffs.get("permafrost"):
-        active_chips.append("Вечная мерзлота")
-    if gh_buffs.get("dual_drone"):
-        active_chips.append("Двойной Дрон")
-    if gh_buffs.get("soldier_thorns"):
-        active_chips.append("Шипы воинов")
-    if gh_buffs.get("soldier_shield"):
-        active_chips.append("Щит воинов")
 
     bh_txt = font.render("АКТИВНЫЕ БОНУСЫ ОРАНЖЕРЕИ (ДЕЙСТВУЮТ ВО ВСЕХ БИТВАХ):", True, (140, 245, 180))
     surface.blit(bh_txt, (bot_rect.left + 16, bot_rect.top + 10))
@@ -994,7 +1047,205 @@ def _get_bestiary_btn_label(label_type):
     return surf
 
 
-def draw_bestiary_screen(surface, savedata, mouse_pos, scroll_y=0, bg_time=None):
+def _wrap_text_to_lines(text, f_obj, max_width):
+    lines = []
+    for paragraph in text.split("\n"):
+        paragraph = paragraph.strip()
+        if not paragraph:
+            continue
+        words = paragraph.split(" ")
+        cur_line = ""
+        for w in words:
+            test_line = cur_line + (" " if cur_line else "") + w
+            if f_obj.size(test_line)[0] <= max_width:
+                cur_line = test_line
+            else:
+                if cur_line:
+                    lines.append(cur_line)
+                cur_line = w
+        if cur_line:
+            lines.append(cur_line)
+    return lines
+
+
+def draw_bestiary_inspect_modal(surface, slime_id, savedata, mouse_pos):
+    slime = next((s for s in BESTIARY_DATA if s["id"] == slime_id), None)
+    if not slime:
+        return None, None, None, None
+
+    dim_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+    dim_surf.fill((0, 0, 0, 215))
+    surface.blit(dim_surf, (0, 0))
+
+    modal_w, modal_h = 850, 560
+    modal_rect = pygame.Rect((SCREEN_WIDTH - modal_w) // 2, (SCREEN_HEIGHT - modal_h) // 2, modal_w, modal_h)
+
+    is_boss = slime.get("is_boss", False)
+    bd_col = (220, 100, 255) if is_boss else (70, 180, 255)
+
+    pygame.draw.rect(surface, (16, 22, 34), modal_rect, border_radius=16)
+    pygame.draw.rect(surface, bd_col, modal_rect, width=2, border_radius=16)
+
+    # Заголовок
+    t_col = (255, 225, 75) if is_boss else WHITE
+    nm_surf = large_font.render(slime["name"], True, t_col)
+    surface.blit(nm_surf, (modal_rect.left + 28, modal_rect.top + 16))
+
+    sub_col = (230, 160, 255) if is_boss else (140, 205, 255)
+    sub_surf = font.render(f"[{slime.get('title', '').upper()}]", True, sub_col)
+    surface.blit(sub_surf, (modal_rect.left + 36 + nm_surf.get_width(), modal_rect.top + 20))
+
+    # Кнопка закрытия [X]
+    close_x_rect = pygame.Rect(modal_rect.right - 44, modal_rect.top + 16, 30, 30)
+    x_hov = close_x_rect.collidepoint(mouse_pos)
+    pygame.draw.rect(surface, (180, 45, 45) if x_hov else (40, 48, 62), close_x_rect, border_radius=6)
+    pygame.draw.rect(surface, WHITE, close_x_rect, width=1, border_radius=6)
+    x_lbl = font.render("X", True, WHITE)
+    surface.blit(x_lbl, (close_x_rect.centerx - x_lbl.get_width() // 2, close_x_rect.centery - x_lbl.get_height() // 2))
+
+    pygame.draw.line(surface, (45, 60, 85), (modal_rect.left + 24, modal_rect.top + 58), (modal_rect.right - 24, modal_rect.top + 58), 1)
+
+    # Левая колонка: Спрайт и боевые параметры
+    spr_box = pygame.Rect(modal_rect.left + 24, modal_rect.top + 70, 240, 175)
+    pygame.draw.rect(surface, (12, 16, 26), spr_box, border_radius=10)
+    pygame.draw.rect(surface, bd_col, spr_box, width=1, border_radius=10)
+
+    raw_tex = get_slime_texture(slime["img_key"])
+    scaled_tex = pygame.transform.scale(raw_tex, (100, 100))
+    surface.blit(scaled_tex, (spr_box.centerx - 50, spr_box.centery - 55))
+
+    badge_txt = font.render("БОСС КАРТЫ" if is_boss else "МОБ ОАЗИСА", True, GOLD if is_boss else (100, 220, 255))
+    surface.blit(badge_txt, (spr_box.centerx - badge_txt.get_width() // 2, spr_box.bottom - 30))
+
+    stats_box = pygame.Rect(modal_rect.left + 24, modal_rect.top + 258, 240, 225)
+    pygame.draw.rect(surface, (14, 20, 30), stats_box, border_radius=10)
+    pygame.draw.rect(surface, (45, 60, 80), stats_box, width=1, border_radius=10)
+
+    st_hdr = font.render("ХАРАКТЕРИСТИКИ", True, GOLD)
+    surface.blit(st_hdr, (stats_box.left + 14, stats_box.top + 10))
+
+    hp_val = slime.get("base_hp", 1)
+    rows = [
+        ("Здоровье (HP):", f"{hp_val:,}", (255, 120, 120)),
+        ("Скорость:", f"{slime.get('speed', 'Обычная')}", (255, 185, 90)),
+        ("Урон базе:", f"{slime.get('base_damage', 1)}", (255, 100, 100)),
+        ("Награда:", f"+{max(1, hp_val // 3)} какт.", (120, 245, 140)),
+        ("Дроп звёзд:", "100% (Гарант)" if is_boss else "~5-15%", (255, 230, 80)),
+    ]
+    ry = stats_box.top + 38
+    for lbl, val, val_c in rows:
+        l_surf = tiny_font.render(lbl, True, (170, 185, 205))
+        v_surf = tiny_font.render(val, True, val_c)
+        surface.blit(l_surf, (stats_box.left + 14, ry))
+        surface.blit(v_surf, (stats_box.right - 14 - v_surf.get_width(), ry))
+        ry += 24
+
+    if is_boss:
+        b_tag = tiny_font.render("Иммунитет к заморозке/стану", True, (240, 160, 255))
+        surface.blit(b_tag, (stats_box.centerx - b_tag.get_width() // 2, stats_box.bottom - 26))
+
+    # Правая колонка: Особенности, Лор, Бестиарий
+    rx = modal_rect.left + 280
+    rw = modal_w - 304
+
+    # 1. Особенности и механика
+    spec_box = pygame.Rect(rx, modal_rect.top + 70, rw, 140)
+    pygame.draw.rect(surface, (20, 16, 28) if is_boss else (16, 24, 36), spec_box, border_radius=10)
+    pygame.draw.rect(surface, (160, 70, 210) if is_boss else (55, 110, 175), spec_box, width=1, border_radius=10)
+
+    sp_hdr = font.render("ОСОБЕННОСТИ И СПОСОБНОСТИ", True, (240, 170, 255) if is_boss else (110, 220, 255))
+    surface.blit(sp_hdr, (spec_box.left + 16, spec_box.top + 10))
+
+    sp_lines = _wrap_text_to_lines(slime.get("special", "Нет особых способностей"), small_font, rw - 32)
+    sy = spec_box.top + 36
+    for line in sp_lines:
+        l_s = small_font.render(line, True, (240, 245, 255))
+        surface.blit(l_s, (spec_box.left + 16, sy))
+        sy += 22
+
+    # 2. Описание и лор
+    lore_box = pygame.Rect(rx, modal_rect.top + 222, rw, 105)
+    pygame.draw.rect(surface, (18, 22, 32), lore_box, border_radius=10)
+    pygame.draw.rect(surface, (45, 60, 85), lore_box, width=1, border_radius=10)
+
+    lr_hdr = font.render("ОПИСАНИЕ И ЛОР", True, (255, 215, 110))
+    surface.blit(lr_hdr, (lore_box.left + 16, lore_box.top + 10))
+
+    lr_lines = _wrap_text_to_lines(slime.get("desc", ""), tiny_font, rw - 32)
+    ly = lore_box.top + 36
+    for line in lr_lines:
+        l_s = tiny_font.render(line, True, (200, 215, 230))
+        surface.blit(l_s, (lore_box.left + 16, ly))
+        ly += 20
+
+    # 3. Бестиарий и бонусы талантов
+    prog_box = pygame.Rect(rx, modal_rect.top + 339, rw, 144)
+    pygame.draw.rect(surface, (16, 26, 32), prog_box, border_radius=10)
+    pygame.draw.rect(surface, (50, 130, 95), prog_box, width=1, border_radius=10)
+
+    pr_hdr = font.render("БЕСТИАРИЙ И БОНУСЫ ТАЛАНТОВ", True, (110, 245, 160))
+    surface.blit(pr_hdr, (prog_box.left + 16, prog_box.top + 10))
+
+    kills = savedata.get("BestiaryKills", {}).get(str(slime["id"]), 0)
+    tier, in_t, needed, ratio = get_mob_bestiary_progress(slime["id"], kills)
+
+    tier_txt = font.render(f"ТИР {ROMAN_TIERS[tier]} ({tier}/10)", True, GOLD if tier == 10 else (120, 240, 255))
+    surface.blit(tier_txt, (prog_box.left + 16, prog_box.top + 34))
+
+    k_txt = tiny_font.render(f"Убито в боях: {kills:,}", True, (220, 230, 245))
+    surface.blit(k_txt, (prog_box.right - 16 - k_txt.get_width(), prog_box.top + 36))
+
+    # Полоса прогресса
+    bar_rect = pygame.Rect(prog_box.left + 16, prog_box.top + 58, rw - 32, 14)
+    pygame.draw.rect(surface, (12, 16, 22), bar_rect, border_radius=4)
+    fill_w = int(bar_rect.width * ratio)
+    if fill_w > 0:
+        pygame.draw.rect(surface, GOLD if tier == 10 else (75, 220, 135), (bar_rect.left, bar_rect.top, fill_w, 14), border_radius=4)
+    pygame.draw.rect(surface, (50, 80, 70), bar_rect, width=1, border_radius=4)
+    p_str = "МАКСИМАЛЬНЫЙ ТИР" if tier == 10 else f"{in_t} / {needed} до следующего тира"
+    p_surf = tiny_font.render(p_str, True, WHITE)
+    surface.blit(p_surf, (bar_rect.centerx - p_surf.get_width() // 2, bar_rect.centery - p_surf.get_height() // 2))
+
+    # Активные бонусы от талантов игрока
+    upg = savedata.get("Upgrades", {})
+    b_dmg = tier * upg.get("bestiary_damage", 0)
+    b_cacti = tier * upg.get("bestiary_cacti", 0)
+    b_stars = tier * upg.get("bestiary_stars", 0)
+
+    b1 = tiny_font.render(f"• Анатомия Слаймов: +{b_dmg}% урона по этому виду", True, (255, 140, 140) if b_dmg > 0 else (140, 155, 170))
+    b2 = tiny_font.render(f"• Охотничья Премия: +{b_cacti}% кактусов за убийство", True, (120, 245, 140) if b_cacti > 0 else (140, 155, 170))
+    b3 = tiny_font.render(f"• Звёздный Трофей: +{b_stars}% к шансу Звёздного кактуса", True, (255, 230, 80) if b_stars > 0 else (140, 155, 170))
+    surface.blit(b1, (prog_box.left + 16, prog_box.top + 78))
+    surface.blit(b2, (prog_box.left + 16, prog_box.top + 98))
+    surface.blit(b3, (prog_box.left + 16, prog_box.top + 118))
+
+    # Нижняя панель модального окна
+    claimed = savedata.get("BestiaryClaimed", {})
+    is_claimed = (slime["id"] in claimed) if isinstance(claimed, list) else bool(claimed.get(str(slime["id"]), False))
+
+    claim_modal_btn = None
+    if not is_claimed:
+        c_btn_w = 260
+        claim_modal_btn = pygame.Rect(modal_rect.left + 280, modal_rect.bottom - 52, c_btn_w, 38)
+        cb_hov = claim_modal_btn.collidepoint(mouse_pos)
+        c_bg = (145, 45, 210) if (is_boss and cb_hov) else ((110, 30, 165) if is_boss else ((215, 145, 25) if cb_hov else (175, 115, 20)))
+        pygame.draw.rect(surface, c_bg, claim_modal_btn, border_radius=8)
+        pygame.draw.rect(surface, GOLD if not is_boss else (230, 160, 255), claim_modal_btn, width=1, border_radius=8)
+        r_txt = "ЗАБРАТЬ: +5 ЗВЁЗД +1 ТЁМН." if is_boss else "ЗАБРАТЬ: +2 ЗВЁЗДЫ"
+        r_surf = font.render(r_txt, True, WHITE)
+        surface.blit(r_surf, (claim_modal_btn.centerx - r_surf.get_width() // 2, claim_modal_btn.centery - r_surf.get_height() // 2))
+
+    close_btn = pygame.Rect(modal_rect.right - 220, modal_rect.bottom - 52, 196, 38)
+    cl_hov = close_btn.collidepoint(mouse_pos)
+    pygame.draw.rect(surface, (180, 45, 45) if cl_hov else (140, 35, 35), close_btn, border_radius=8)
+    pygame.draw.rect(surface, WHITE, close_btn, width=1, border_radius=8)
+    c_txt = font.render("ЗАКРЫТЬ [ESC]", True, WHITE)
+    surface.blit(c_txt, (close_btn.centerx - c_txt.get_width() // 2, close_btn.centery - c_txt.get_height() // 2))
+
+    return modal_rect, close_btn, close_x_rect, claim_modal_btn
+
+
+def draw_bestiary_screen(surface, savedata, mouse_pos, scroll_y=0, bg_time=None, inspected_slime_id=None):
     if bg_time is None:
         bg_time = pygame.time.get_ticks()
     generate_background(surface, bg_time, custom_cols=((16, 20, 28), (22, 28, 40)))
@@ -1026,13 +1277,14 @@ def draw_bestiary_screen(surface, savedata, mouse_pos, scroll_y=0, bg_time=None)
     discovered = savedata.get("BestiaryDiscovered", [])
     claimed = savedata.get("BestiaryClaimed", {})
 
-    sub_txt = tiny_font.render(f"Изучено слаймов: {len(discovered)} / {len(BESTIARY_DATA)}  |  Награды: +2 Звёздных кактуса за обычных, +5 Звёздных и +1 Тёмный за боссов!", True, (160, 190, 220))
+    sub_txt = tiny_font.render(f"Изучено слаймов: {len(discovered)} / {len(BESTIARY_DATA)}  |  Кликните по карточке для детального описания и способностей!", True, (160, 190, 220))
     surface.blit(sub_txt, (SCREEN_WIDTH // 2 - sub_txt.get_width() // 2, 44))
 
     view_rect = pygame.Rect(0, 72, SCREEN_WIDTH, SCREEN_HEIGHT - 72)
     surface.set_clip(view_rect)
 
     claim_buttons = []
+    card_click_rects = []
     card_w = 580
     card_h = 106
 
@@ -1047,7 +1299,8 @@ def draw_bestiary_screen(surface, savedata, mouse_pos, scroll_y=0, bg_time=None)
         is_claimed = (slime["id"] in claimed) if isinstance(claimed, list) else bool(claimed.get(str(slime["id"]), False))
 
         card_rect = pygame.Rect(cx, cy, card_w, card_h)
-        cd_hov = card_rect.collidepoint(mouse_pos)
+        card_click_rects.append((slime["id"], card_rect, is_disc))
+        cd_hov = card_rect.collidepoint(mouse_pos) and (inspected_slime_id is None)
 
         if not is_disc:
             bg_col = (18, 22, 28)
@@ -1103,7 +1356,7 @@ def draw_bestiary_screen(surface, savedata, mouse_pos, scroll_y=0, bg_time=None)
                 c_lbl = _get_bestiary_btn_label("claimed")
                 surface.blit(c_lbl, (btn_rect.centerx - c_lbl.get_width() // 2, btn_rect.centery - c_lbl.get_height() // 2))
             else:
-                b_hov_btn = btn_rect.collidepoint(mouse_pos)
+                b_hov_btn = btn_rect.collidepoint(mouse_pos) and (inspected_slime_id is None)
                 if is_boss:
                     pygame.draw.rect(surface, (145, 45, 210) if b_hov_btn else (110, 30, 165), btn_rect, border_radius=6)
                     pygame.draw.rect(surface, (230, 160, 255), btn_rect, width=1, border_radius=6)
@@ -1154,10 +1407,30 @@ def draw_bestiary_screen(surface, savedata, mouse_pos, scroll_y=0, bg_time=None)
         pygame.draw.rect(surface, (24, 34, 48), (SCREEN_WIDTH - 12, 74, 8, bar_area_h), border_radius=4)
         pygame.draw.rect(surface, (70, 140, 210), (SCREEN_WIDTH - 12, bar_y, 8, bar_h), border_radius=4)
 
-    return back_btn, claim_buttons, max_b_scroll
+    modal_rect = None
+    modal_close_btn = None
+    modal_x_btn = None
+    modal_claim_btn = None
+    if inspected_slime_id is not None:
+        modal_rect, modal_close_btn, modal_x_btn, modal_claim_btn = draw_bestiary_inspect_modal(
+            surface, inspected_slime_id, savedata, mouse_pos
+        )
+
+    return back_btn, claim_buttons, card_click_rects, modal_rect, modal_close_btn, modal_x_btn, modal_claim_btn, max_b_scroll
 
 
 def draw_map_selection_screen(surface, game_map, current_offset, savedata, mouse_pos):
+    if not isinstance(savedata, dict):
+        savedata = {}
+    recs = savedata.setdefault("LevelsRecords", [0] * len(MAP_NAMES_LIST))
+    while len(recs) < len(MAP_NAMES_LIST):
+        recs.append(0)
+    savedata.setdefault("Upgrades", {})
+    savedata.setdefault("Stats", {})
+    savedata.setdefault("StellarCactuses", 15)
+    savedata.setdefault("DarkCactuses", 0)
+    savedata.setdefault("MasteryClaimed", {})
+
     # 1. Верхняя панель: счётчики ресурсов, центрированный заголовок и Опции в правом углу
     st_panel = pygame.Rect(24, 20, 110, 48)
     pygame.draw.rect(surface, (18, 28, 40), st_panel, border_radius=8)
@@ -1286,7 +1559,7 @@ def draw_map_selection_screen(surface, game_map, current_offset, savedata, mouse
         surface.blit(sub_txt, (x_pos + card_w // 2 - sub_txt.get_width() // 2, y_pos + 192))
 
         # Рубежи мастерства (4 звезды: 15, 30, 50, 75 волн)
-        rec = savedata["LevelsRecords"][mid]
+        rec = recs[mid] if mid < len(recs) else 0
         stars_lbl = tiny_font.render("РУБЕЖИ:", True, (140, 165, 195) if unlocked else (90, 95, 105))
         surface.blit(stars_lbl, (x_pos + 14, y_pos + 219))
 
@@ -1431,7 +1704,7 @@ def draw_map_selection_screen(surface, game_map, current_offset, savedata, mouse
 
     # Селектор стартовой волны в темном стиле
     wave_step_lvl = savedata["Upgrades"].get("start_wave_step", 0)
-    current_rec = savedata["LevelsRecords"][game_map]
+    current_rec = recs[game_map] if game_map < len(recs) else 0
     max_allowed_start_wave = 1 + wave_step_lvl * 5
     if current_rec > 1:
         max_allowed_start_wave = min(max_allowed_start_wave, (current_rec // 5) * 5 + 1)
@@ -1815,7 +2088,10 @@ def get_node_texture(icon_key):
 def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selected_node_id, is_dragging=False, zoom=1.0, bg_time=None):
     if bg_time is None:
         bg_time = pygame.time.get_ticks()
-    generate_background(surface, bg_time, custom_cols=((14, 18, 26), (22, 30, 42)))
+    if IS_ANDROID or get_graphics_preset() == "optimized":
+        surface.fill((14, 18, 26))
+    else:
+        generate_background(surface, bg_time, custom_cols=((14, 18, 26), (22, 30, 42)))
 
     viewport_w = SCREEN_WIDTH - 350
     viewport_h = SCREEN_HEIGHT - 64
@@ -1886,7 +2162,7 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
             "id": "astral",
             "title": "ТЁМНЫЙ КОСМОС",
             "sub": "Астральные метеориты, орбита и мощь Бездны",
-            "bounds": (0, 1440, 600, 920),
+            "bounds": (20, 1370, 660, 1020),
             "color": (215, 120, 255),
             "bg": (28, 14, 38, 105),
             "border": (140, 60, 180, 140)
@@ -1904,10 +2180,17 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
         if z_rect.colliderect(viewport_rect):
             draw_w = max(10, zsw)
             draw_h = max(10, zsh)
-            z_surf = pygame.Surface((draw_w, draw_h), pygame.SRCALPHA)
             b_rad = max(6, int(14 * zoom))
-            pygame.draw.rect(z_surf, zone["bg"], (0, 0, draw_w, draw_h), border_radius=b_rad)
-            pygame.draw.rect(z_surf, zone["border"], (0, 0, draw_w, draw_h), width=max(1, int(1.5 * zoom)), border_radius=b_rad)
+            b_w = max(1, int(1.5 * zoom))
+            z_key = (zone["id"], draw_w, draw_h, b_rad, b_w)
+            z_surf = _tree_zone_surf_cache.get(z_key)
+            if z_surf is None:
+                if len(_tree_zone_surf_cache) > 24:
+                    _tree_zone_surf_cache.clear()
+                z_surf = pygame.Surface((draw_w, draw_h), pygame.SRCALPHA)
+                pygame.draw.rect(z_surf, zone["bg"], (0, 0, draw_w, draw_h), border_radius=b_rad)
+                pygame.draw.rect(z_surf, zone["border"], (0, 0, draw_w, draw_h), width=b_w, border_radius=b_rad)
+                _tree_zone_surf_cache[z_key] = z_surf
             surface.blit(z_surf, (zsx, zsy))
 
             if zoom >= 0.45:
@@ -1951,8 +2234,12 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
                 line_w = max(1, int(1.2 * zoom))
 
             # Metro-маршрутизация: строго 0, 90, 45 градусов со скруглением углов в мировых координатах
-            raw_world_route = get_metro_route((parent["x"], parent["y"]), (node["x"], node["y"]))
-            world_pts = get_fillet_points(raw_world_route, radius=12.0)
+            m_key = (parent_id, node_id)
+            world_pts = _tree_metro_world_pts.get(m_key)
+            if world_pts is None:
+                raw_world_route = get_metro_route((parent["x"], parent["y"]), (node["x"], node["y"]))
+                world_pts = get_fillet_points(raw_world_route, radius=12.0)
+                _tree_metro_world_pts[m_key] = world_pts
             pts = [((wx - cam_x) * zoom, (wy - cam_y) * zoom) for wx, wy in world_pts]
 
             int_pts = [(int(round(px)), int(round(py))) for px, py in pts]
@@ -2021,10 +2308,16 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
             t_now = pygame.time.get_ticks()
             pulse = math.sin(t_now * 0.005) * 4 * zoom
             aura_rad = max(12, int(base_rad + 8 * zoom + pulse))
-            aura_surf = pygame.Surface((aura_rad * 2 + 10, aura_rad * 2 + 10), pygame.SRCALPHA)
-            aura_col = (80, 240, 150, 48 if unlocked else 20)
-            pygame.draw.circle(aura_surf, aura_col, (aura_rad + 5, aura_rad + 5), aura_rad)
-            pygame.draw.circle(aura_surf, (140, 255, 190, 90 if unlocked else 35), (aura_rad + 5, aura_rad + 5), aura_rad - max(1, int(4 * zoom)), width=max(1, int(2 * zoom)))
+            a_key = (aura_rad, unlocked, max(1, int(4 * zoom)), max(1, int(2 * zoom)))
+            aura_surf = _tree_aura_cache.get(a_key)
+            if aura_surf is None:
+                if len(_tree_aura_cache) > 24:
+                    _tree_aura_cache.clear()
+                aura_surf = pygame.Surface((aura_rad * 2 + 10, aura_rad * 2 + 10), pygame.SRCALPHA)
+                aura_col = (80, 240, 150, 48 if unlocked else 20)
+                pygame.draw.circle(aura_surf, aura_col, (aura_rad + 5, aura_rad + 5), aura_rad)
+                pygame.draw.circle(aura_surf, (140, 255, 190, 90 if unlocked else 35), (aura_rad + 5, aura_rad + 5), aura_rad - max(1, int(4 * zoom)), width=max(1, int(2 * zoom)))
+                _tree_aura_cache[a_key] = aura_surf
             surface.blit(aura_surf, (nsx - aura_rad - 5, nsy - aura_rad - 5))
 
         if is_selected:
@@ -2078,34 +2371,49 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
                 "core": GOLD,
                 "astral": (210, 110, 255)
             }
-            t_col = b_colors.get(node["branch"], WHITE)
-            t_font = font if eff_scale > 1.2 else tiny_font
-            words = node["title"].split(" ")
-            if len(words) == 2 and t_font.size(node["title"])[0] > (95 if scale > 1.2 else 75):
-                l1 = t_font.render(words[0], True, t_col)
-                l2 = t_font.render(words[1], True, t_col)
-                l1_sh = t_font.render(words[0], True, (6, 8, 12))
-                l2_sh = t_font.render(words[1], True, (6, 8, 12))
-                th = l1.get_height() + l2.get_height()
+            cached_title = _tree_title_cache.get((node_id, eff_scale > 1.2))
+            if cached_title is None:
+                t_col = b_colors.get(node["branch"], WHITE)
+                t_font = font if eff_scale > 1.2 else tiny_font
+                words = node["title"].split(" ")
+                if len(words) == 2 and t_font.size(node["title"])[0] > (95 if scale > 1.2 else 75):
+                    l1 = t_font.render(words[0], True, t_col)
+                    l2 = t_font.render(words[1], True, t_col)
+                    l1_sh = t_font.render(words[0], True, (6, 8, 12))
+                    l2_sh = t_font.render(words[1], True, (6, 8, 12))
+                    cached_title = (True, l1, l2, l1_sh, l2_sh, l1.get_height() + l2.get_height(), l1.get_width() // 2, l2.get_width() // 2, l1.get_height())
+                else:
+                    title_surf = t_font.render(node["title"], True, t_col)
+                    sh_surf = t_font.render(node["title"], True, (6, 8, 12))
+                    cached_title = (False, title_surf, sh_surf, title_surf.get_height(), title_surf.get_width() // 2)
+                _tree_title_cache[(node_id, eff_scale > 1.2)] = cached_title
+
+            if cached_title[0]:
+                _, l1, l2, l1_sh, l2_sh, th, l1_half_w, l2_half_w, l1_h = cached_title
                 ty = nsy - (base_rad + th + 6)
-                surface.blit(l1_sh, (nsx - l1.get_width() // 2 + 1, ty + 1))
-                surface.blit(l1, (nsx - l1.get_width() // 2, ty))
-                surface.blit(l2_sh, (nsx - l2.get_width() // 2 + 1, ty + l1.get_height() + 1))
-                surface.blit(l2, (nsx - l2.get_width() // 2, ty + l1.get_height()))
+                surface.blit(l1_sh, (nsx - l1_half_w + 1, ty + 1))
+                surface.blit(l1, (nsx - l1_half_w, ty))
+                surface.blit(l2_sh, (nsx - l2_half_w + 1, ty + l1_h + 1))
+                surface.blit(l2, (nsx - l2_half_w, ty + l1_h))
             else:
-                title_surf = t_font.render(node["title"], True, t_col)
-                sh_surf = t_font.render(node["title"], True, (6, 8, 12))
-                ty = nsy - (base_rad + title_surf.get_height() + 5)
-                surface.blit(sh_surf, (nsx - title_surf.get_width() // 2 + 1, ty + 1))
-                surface.blit(title_surf, (nsx - title_surf.get_width() // 2, ty))
+                _, title_surf, sh_surf, t_h, t_half_w = cached_title
+                ty = nsy - (base_rad + t_h + 5)
+                surface.blit(sh_surf, (nsx - t_half_w + 1, ty + 1))
+                surface.blit(title_surf, (nsx - t_half_w, ty))
 
         cost, dark_cost, _ = get_upgrade_node_cost(node_id, cur_lvl)
         is_node_toggleable = node.get("toggleable", False)
         is_node_toggled_off = is_node_toggleable and (cur_lvl > 0) and not savedata.get("Toggles", {}).get(node_id, True)
 
         icon_sz = max(8, int((14 if scale > 1.2 else 12) * min(1.2, max(0.7, zoom))))
-        s_ic = pygame.transform.smoothscale(stellar_cactus_img_xs, (icon_sz, icon_sz))
-        d_ic = pygame.transform.smoothscale(dark_cactus_img_xs, (icon_sz, icon_sz))
+        s_ic = _tree_cactus_icon_cache.get((False, icon_sz))
+        if s_ic is None:
+            s_ic = pygame.transform.smoothscale(stellar_cactus_img_xs, (icon_sz, icon_sz))
+            _tree_cactus_icon_cache[(False, icon_sz)] = s_ic
+        d_ic = _tree_cactus_icon_cache.get((True, icon_sz))
+        if d_ic is None:
+            d_ic = pygame.transform.smoothscale(dark_cactus_img_xs, (icon_sz, icon_sz))
+            _tree_cactus_icon_cache[(True, icon_sz)] = d_ic
 
         pill_h = max(14, int((22 if scale > 1.2 else 18) * min(1.2, max(0.75, zoom))))
 
@@ -2190,10 +2498,12 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
     hud_x = viewport_w - hud_w - 14
     hud_y = 64 + viewport_h - hud_h - 12
 
-    hud_bg = pygame.Surface((hud_w, hud_h), pygame.SRCALPHA)
-    pygame.draw.rect(hud_bg, (14, 20, 30, 220), (0, 0, hud_w, hud_h), border_radius=8)
-    pygame.draw.rect(hud_bg, (45, 65, 90, 240), (0, 0, hud_w, hud_h), width=1, border_radius=8)
-    surface.blit(hud_bg, (hud_x, hud_y))
+    global _tree_hud_bg
+    if _tree_hud_bg is None or _tree_hud_bg.get_size() != (hud_w, hud_h):
+        _tree_hud_bg = pygame.Surface((hud_w, hud_h), pygame.SRCALPHA)
+        pygame.draw.rect(_tree_hud_bg, (14, 20, 30, 220), (0, 0, hud_w, hud_h), border_radius=8)
+        pygame.draw.rect(_tree_hud_bg, (45, 65, 90, 240), (0, 0, hud_w, hud_h), width=1, border_radius=8)
+    surface.blit(_tree_hud_bg, (hud_x, hud_y))
 
     # Кнопка Уменьшить [-]
     zoom_out_rect = pygame.Rect(hud_x + 4, hud_y + 4, 30, 28)
@@ -2517,11 +2827,30 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
             b_txt = font.render("В ОРАНЖЕРЕЮ [G]", True, WHITE)
             surface.blit(b_txt, (buy_btn_rect.left + 42, buy_btn_rect.centery - b_txt.get_height() // 2))
         elif selected_node_id == "astral_beacon":
-            pygame.draw.rect(surface, (55, 22, 75) if b_hov else (38, 16, 52), buy_btn_rect, border_radius=8)
-            pygame.draw.rect(surface, (215, 120, 255) if b_hov else (160, 80, 210), buy_btn_rect, width=2, border_radius=8)
-            surface.blit(dark_cactus_img_s, (buy_btn_rect.left + 14, buy_btn_rect.centery - 12))
-            b_txt = font.render("ТЁМНЫЙ КОСМОС ОТКРЫТ!", True, (240, 210, 255))
-            surface.blit(b_txt, (buy_btn_rect.left + 42, buy_btn_rect.centery - b_txt.get_height() // 2))
+            st_have = savedata.get("StellarCactuses", 0)
+            can_transmute = (st_have >= 150)
+            bg_col = (85, 30, 125) if (b_hov and can_transmute) else ((60, 22, 90) if can_transmute else (45, 25, 45))
+            border_col = (230, 140, 255) if can_transmute else (120, 75, 125)
+            pygame.draw.rect(surface, bg_col, buy_btn_rect, border_radius=8)
+            pygame.draw.rect(surface, border_col, buy_btn_rect, width=2 if (b_hov and can_transmute) else 1, border_radius=8)
+            lbl_trans = font.render("ОБМЕН: 150", True, (255, 235, 140) if can_transmute else (160, 140, 160))
+            lbl_one = font.render("1", True, (240, 210, 255) if can_transmute else (140, 120, 150))
+            arrow_w = 14
+            tot_w = lbl_trans.get_width() + 6 + 20 + 8 + arrow_w + 8 + lbl_one.get_width() + 6 + 20
+            bx = buy_btn_rect.centerx - tot_w // 2
+            surface.blit(lbl_trans, (bx, buy_btn_rect.centery - lbl_trans.get_height() // 2))
+            bx += lbl_trans.get_width() + 6
+            surface.blit(stellar_cactus_img_s, (bx, buy_btn_rect.centery - 10))
+            bx += 20 + 8
+            # Чёткая пиксельная стрелочка без проблем с отсутствующими глифами шрифта
+            arr_col = (255, 225, 120) if can_transmute else (140, 120, 150)
+            cy = buy_btn_rect.centery
+            pygame.draw.line(surface, arr_col, (bx, cy), (bx + 10, cy), 2)
+            pygame.draw.polygon(surface, arr_col, [(bx + 8, cy - 4), (bx + 14, cy), (bx + 8, cy + 4)])
+            bx += arrow_w + 8
+            surface.blit(lbl_one, (bx, buy_btn_rect.centery - lbl_one.get_height() // 2))
+            bx += lbl_one.get_width() + 6
+            surface.blit(dark_cactus_img_s, (bx, buy_btn_rect.centery - 10))
         else:
             pygame.draw.rect(surface, (40, 48, 56), buy_btn_rect, border_radius=8)
             b_txt = small_font.render("МАКСИМАЛЬНЫЙ УРОВЕНЬ", True, (150, 160, 170))
@@ -2973,7 +3302,7 @@ def draw_achievements_screen(surface, savedata, mouse_pos, scroll_y=0, filter_st
     return back_rect, claim_buttons, claim_all_btn, tab_actions, max_scroll
 
 
-def draw_global_achievements_screen(surface, mouse_pos, scroll_y=0, bg_time=None):
+def draw_global_achievements_screen(surface, mouse_pos, scroll_y=0, bg_time=None, savedata=None):
     """
     Отрисовывает экран ГЛОБАЛЬНЫХ достижений (доступен из Главного Меню).
     Отображает СТРОГО 10 глобальных ачивок, не привязанных к конкретному сейву!
@@ -2982,6 +3311,8 @@ def draw_global_achievements_screen(surface, mouse_pos, scroll_y=0, bg_time=None
         bg_time = pygame.time.get_ticks()
     generate_background(surface, bg_time, custom_cols=((16, 22, 32), (24, 32, 46)))
 
+    if savedata is not None:
+        update_global_achievements(savedata)
     global_meta = load_global_achievements()
     total_cnt = len(GLOBAL_ACHIEVEMENTS_DATA)
     unlocked_cnt = sum(1 for a in GLOBAL_ACHIEVEMENTS_DATA if global_meta.get(a["id"], {}).get("unlocked", False))
@@ -3014,12 +3345,21 @@ def draw_global_achievements_screen(surface, mouse_pos, scroll_y=0, bg_time=None
 
         aid = ach["id"]
         info = global_meta.get(aid, {})
-        is_unlocked = info.get("unlocked", False)
         cur_p = info.get("progress", 0)
-        max_p = info.get("max", ach.get("max_val", 1))
-        if max_p <= 1 and ach.get("max_val", 1) > 1:
-            max_p = ach.get("max_val", 1)
-        if cur_p >= max_p:
+        max_p = ach["max_val"]() if callable(ach.get("max_val")) else (info.get("max") or ach.get("max_val", 1))
+        if savedata and "progress" in ach:
+            try:
+                calc_cur, calc_max = ach["progress"](savedata)
+                cur_p = max(cur_p, calc_cur)
+                max_p = calc_max
+            except Exception:
+                pass
+
+        is_unlocked = info.get("unlocked", False)
+        # Строгая проверка: достижение не может быть выполнено, если текущий прогресс меньше требуемого максимума!
+        if cur_p < max_p:
+            is_unlocked = False
+        elif cur_p >= max_p and max_p > 0:
             is_unlocked = True
 
         card_rect = pygame.Rect(cx, cy, card_w, card_h)
@@ -3173,7 +3513,9 @@ def perform_bulk_upgrade(tower, cacti, effects=None, savedata=None):
 
 
 def _get_tower_inspect_static_surf(tower, upgrade_mode):
-    key = (tower.type, tower.level, upgrade_mode, tower.target_priority)
+    fb_val = round(getattr(tower, 'farm_boost', 0.0), 2)
+    b_cnt_val = getattr(tower, 'buffed_towers_count', 0)
+    key = (tower.type, tower.level, upgrade_mode, tower.target_priority, fb_val, b_cnt_val)
     cached = getattr(tower, '_cached_inspect_static', None)
     if cached is not None and cached[0] == key:
         return cached[1], cached[2]
@@ -3259,22 +3601,30 @@ def _get_tower_inspect_static_surf(tower, upgrade_mode):
 
     if not upgrade_mode:
         if tower.type == "farm":
-            r1_a = small_font.render("Доход волны:", True, WHITE)
-            r1_b = small_font.render(f"+{cur['income']} какт.", True, GOLD)
+            r1_a = small_font.render("Доход волны: ", True, WHITE)
+            r1_b = small_font.render(f"+{cur['income']}", True, GOLD)
             static_surf.blit(r1_a, (12, y_off))
-            static_surf.blit(r1_b, (card_w - r1_b.get_width() - 12, y_off))
+            static_surf.blit(r1_b, (12 + r1_a.get_width(), y_off))
             y_off += row_step
 
             irrig_lvl = savedata.get("Upgrades", {}).get("farm_irrigation", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
             if irrig_lvl > 0:
-                r2_lbl = small_font.render(f"Аура (R={cur['range']}): +{cur.get('speed_boost', 0)}% темпа башен", True, (130, 245, 160))
+                b_cnt = getattr(tower, 'buffed_towers_count', 0)
+                sp_b = cur.get('speed_boost', [0, 10, 18, 25][min(3, irrig_lvl)])
+                r2_lbl = small_font.render(f"Аура (R={cur['range']}): +{sp_b}% к темпу башен", True, (130, 245, 160))
+                static_surf.blit(r2_lbl, (12, y_off))
+                y_off += row_step
+
+                cnt_str = f"Орошает башен: {b_cnt} шт. в радиусе"
+                cnt_col = (100, 240, 255) if b_cnt > 0 else (160, 175, 185)
+                cnt_lbl = small_font.render(cnt_str, True, cnt_col)
+                static_surf.blit(cnt_lbl, (12, y_off))
+                y_off += row_step
             else:
                 r2_lbl = small_font.render("Аура: требуется Система Орошения в Древе", True, (180, 190, 200))
-            static_surf.blit(r2_lbl, (12, y_off))
-            y_off += row_step
-
-            # tot_gold динамический, пропускаем строку
-            y_off += row_step
+                static_surf.blit(r2_lbl, (12, y_off))
+                y_off += row_step
+                y_off += row_step
 
             r4_title = small_font.render("Свойство: ", True, (130, 215, 255))
             r4_val = small_font.render("Орошение и полив", True, WHITE)
@@ -3286,7 +3636,8 @@ def _get_tower_inspect_static_surf(tower, upgrade_mode):
             static_surf.blit(r5_lbl, (12, y_off + 1))
             y_off += row_step
         elif tower.type == "tent":
-            r1_a = small_font.render(f"Урон: {cur['damage']}", True, WHITE)
+            fb = getattr(tower, 'farm_boost', 0.0)
+            r1_a = small_font.render(f"Урон воина: {cur['damage']}", True, WHITE)
             static_surf.blit(r1_a, (12, y_off))
             y_off += row_step
 
@@ -3294,7 +3645,8 @@ def _get_tower_inspect_static_surf(tower, upgrade_mode):
             static_surf.blit(r2_a, (12, y_off))
             y_off += row_step
 
-            r3_lbl = small_font.render(f"Призыв бойца: каждые {cur['cooldown']:.2f} сек", True, (220, 230, 240))
+            eff_cd = round(cur['cooldown'] / (1.0 + fb), 2) if fb > 0 else cur['cooldown']
+            r3_lbl = small_font.render(f"Призыв бойца: каждые {eff_cd:.2f} сек", True, (100, 240, 255) if fb > 0 else (220, 230, 240))
             static_surf.blit(r3_lbl, (12, y_off))
             y_off += row_step
 
@@ -3304,10 +3656,12 @@ def _get_tower_inspect_static_surf(tower, upgrade_mode):
             static_surf.blit(r4_val, (12 + r4_title.get_width(), y_off))
             y_off += row_step
 
-            r5_lbl = tiny_font.render(cur.get('passive_desc', 'Тактика: воины сдерживают мобов на тропе'), True, (160, 220, 245))
+            p_desc = cur.get('passive_desc', 'Тактика: воины сдерживают мобов на тропе')
+            r5_lbl = tiny_font.render(p_desc, True, (160, 220, 245))
             static_surf.blit(r5_lbl, (12, y_off + 1))
             y_off += row_step
         else:
+            fb = getattr(tower, 'farm_boost', 0.0)
             r1_a = small_font.render(f"Урон: {cur['damage']}", True, WHITE)
             static_surf.blit(r1_a, (12, y_off))
             y_off += row_step
@@ -3317,9 +3671,11 @@ def _get_tower_inspect_static_surf(tower, upgrade_mode):
             y_off += row_step
 
             if tower.type == "sun":
-                r3_lbl = small_font.render(f"Скорость зарядки: {cur.get('ramp_time', 1.0):.2f}с / +1.0x", True, (255, 215, 90))
+                eff_ramp = round(cur.get('ramp_time', 1.0) / (1.0 + fb), 2) if fb > 0 else cur.get('ramp_time', 1.0)
+                r3_lbl = small_font.render(f"Скорость зарядки: {eff_ramp:.2f}с / +1.0x", True, (100, 240, 255) if fb > 0 else (255, 215, 90))
             else:
-                r3_lbl = small_font.render(f"Кулдаун атаки: {cur['cooldown']:.2f} сек", True, (220, 230, 240))
+                eff_cd = round(cur['cooldown'] / (1.0 + fb), 2) if fb > 0 else cur['cooldown']
+                r3_lbl = small_font.render(f"Кулдаун атаки: {eff_cd:.2f} сек", True, (100, 240, 255) if fb > 0 else (220, 230, 240))
             static_surf.blit(r3_lbl, (12, y_off))
             y_off += row_step
 
@@ -3387,17 +3743,33 @@ def _get_tower_inspect_static_surf(tower, upgrade_mode):
                 static_surf.blit(n_rng, (12 + c_rng.get_width(), y_off))
                 y_off += row_step
 
-                d_cd = round(nxt['cooldown'] - cur['cooldown'], 2)
-                d_cd_str = f"({d_cd:+.2f}с)" if abs(d_cd) > 0.001 else ""
-                c_cd = small_font.render(f"Призыв: {cur['cooldown']:.2f}с -> ", True, (220, 230, 240))
-                n_cd = small_font.render(f"{nxt['cooldown']:.2f}с {d_cd_str}", True, GREEN if d_cd < 0 else WHITE)
+                fb = getattr(tower, 'farm_boost', 0.0)
+                if fb > 0:
+                    c_eff = round(cur['cooldown'] / (1.0 + fb), 2)
+                    n_eff = round(nxt['cooldown'] / (1.0 + fb), 2)
+                    d_cd = round(n_eff - c_eff, 2)
+                    d_cd_str = f"({d_cd:+.2f}с)" if abs(d_cd) > 0.001 else ""
+                    c_cd = small_font.render(f"Призыв: {c_eff:.2f}с -> ", True, (100, 240, 255))
+                    n_cd = small_font.render(f"{n_eff:.2f}с {d_cd_str}", True, GREEN if d_cd < 0 else WHITE)
+                else:
+                    d_cd = round(nxt['cooldown'] - cur['cooldown'], 2)
+                    d_cd_str = f"({d_cd:+.2f}с)" if abs(d_cd) > 0.001 else ""
+                    c_cd = small_font.render(f"Призыв: {cur['cooldown']:.2f}с -> ", True, (220, 230, 240))
+                    n_cd = small_font.render(f"{nxt['cooldown']:.2f}с {d_cd_str}", True, GREEN if d_cd < 0 else WHITE)
                 static_surf.blit(c_cd, (12, y_off))
                 static_surf.blit(n_cd, (12 + c_cd.get_width(), y_off))
                 y_off += row_step
 
-                d_dps = round(nxt['dps'] - cur['dps'], 1)
-                c_dps = small_font.render(f"DPS отряда: {cur['dps']:.1f} -> ", True, (255, 215, 90))
-                n_dps = small_font.render(f"{nxt['dps']:.1f} (+{d_dps:.1f})", True, GREEN)
+                if fb > 0:
+                    c_dps_eff = round(cur['dps'] * (1.0 + fb), 1)
+                    n_dps_eff = round(nxt['dps'] * (1.0 + fb), 1)
+                    d_dps = round(n_dps_eff - c_dps_eff, 1)
+                    c_dps = small_font.render(f"DPS отряда: {c_dps_eff:.1f} -> ", True, (100, 240, 255))
+                    n_dps = small_font.render(f"{n_dps_eff:.1f} (+{d_dps:.1f})", True, GREEN)
+                else:
+                    d_dps = round(nxt['dps'] - cur['dps'], 1)
+                    c_dps = small_font.render(f"DPS отряда: {cur['dps']:.1f} -> ", True, (255, 215, 90))
+                    n_dps = small_font.render(f"{nxt['dps']:.1f} (+{d_dps:.1f})", True, GREEN)
                 static_surf.blit(c_dps, (12, y_off))
                 static_surf.blit(n_dps, (12 + c_dps.get_width(), y_off))
                 y_off += row_step
@@ -3433,22 +3805,48 @@ def _get_tower_inspect_static_surf(tower, upgrade_mode):
             y_off += row_step
 
             if tower.type == "sun":
-                d_ramp = round(nxt.get('ramp_time', 1.0) - cur.get('ramp_time', 1.0), 2)
-                d_ramp_str = f"({d_ramp:+.2f}с)" if abs(d_ramp) > 0.001 else ""
-                c_cd = small_font.render(f"Зарядка: {cur.get('ramp_time', 1.0):.2f}с -> ", True, (255, 215, 90))
-                n_cd = small_font.render(f"{nxt.get('ramp_time', 1.0):.2f}с {d_ramp_str}", True, GREEN if d_ramp < 0 else WHITE)
+                fb = getattr(tower, 'farm_boost', 0.0)
+                if fb > 0:
+                    c_ramp = round(cur.get('ramp_time', 1.0) / (1.0 + fb), 2)
+                    n_ramp = round(nxt.get('ramp_time', 1.0) / (1.0 + fb), 2)
+                    d_ramp = round(n_ramp - c_ramp, 2)
+                    d_ramp_str = f"({d_ramp:+.2f}с)" if abs(d_ramp) > 0.001 else ""
+                    c_cd = small_font.render(f"Зарядка: {c_ramp:.2f}с -> ", True, (100, 240, 255))
+                    n_cd = small_font.render(f"{n_ramp:.2f}с {d_ramp_str}", True, GREEN if d_ramp < 0 else WHITE)
+                else:
+                    d_ramp = round(nxt.get('ramp_time', 1.0) - cur.get('ramp_time', 1.0), 2)
+                    d_ramp_str = f"({d_ramp:+.2f}с)" if abs(d_ramp) > 0.001 else ""
+                    c_cd = small_font.render(f"Зарядка: {cur.get('ramp_time', 1.0):.2f}с -> ", True, (255, 215, 90))
+                    n_cd = small_font.render(f"{nxt.get('ramp_time', 1.0):.2f}с {d_ramp_str}", True, GREEN if d_ramp < 0 else WHITE)
             else:
-                d_cd = round(nxt['cooldown'] - cur['cooldown'], 2)
-                d_cd_str = f"({d_cd:+.2f}с)" if abs(d_cd) > 0.001 else ""
-                c_cd = small_font.render(f"Кулдаун: {cur['cooldown']:.2f}с -> ", True, (220, 230, 240))
-                n_cd = small_font.render(f"{nxt['cooldown']:.2f}с {d_cd_str}", True, GREEN if d_cd < 0 else WHITE)
+                fb = getattr(tower, 'farm_boost', 0.0)
+                if fb > 0:
+                    c_eff = round(cur['cooldown'] / (1.0 + fb), 2)
+                    n_eff = round(nxt['cooldown'] / (1.0 + fb), 2)
+                    d_cd = round(n_eff - c_eff, 2)
+                    d_cd_str = f"({d_cd:+.2f}с)" if abs(d_cd) > 0.001 else ""
+                    c_cd = small_font.render(f"Кулдаун: {c_eff:.2f}с -> ", True, (100, 240, 255))
+                    n_cd = small_font.render(f"{n_eff:.2f}с {d_cd_str}", True, GREEN if d_cd < 0 else WHITE)
+                else:
+                    d_cd = round(nxt['cooldown'] - cur['cooldown'], 2)
+                    d_cd_str = f"({d_cd:+.2f}с)" if abs(d_cd) > 0.001 else ""
+                    c_cd = small_font.render(f"Кулдаун: {cur['cooldown']:.2f}с -> ", True, (220, 230, 240))
+                    n_cd = small_font.render(f"{nxt['cooldown']:.2f}с {d_cd_str}", True, GREEN if d_cd < 0 else WHITE)
             static_surf.blit(c_cd, (12, y_off))
             static_surf.blit(n_cd, (12 + c_cd.get_width(), y_off))
             y_off += row_step
 
-            d_dps = round(nxt['dps'] - cur['dps'], 1)
-            c_dps = small_font.render(f"DPS: {cur['dps']:.1f} -> ", True, (255, 215, 90))
-            n_dps = small_font.render(f"{nxt['dps']:.1f} (+{d_dps:.1f})", True, GREEN)
+            fb = getattr(tower, 'farm_boost', 0.0)
+            if fb > 0:
+                c_dps_eff = round(cur['dps'] * (1.0 + fb), 1)
+                n_dps_eff = round(nxt['dps'] * (1.0 + fb), 1)
+                d_dps = round(n_dps_eff - c_dps_eff, 1)
+                c_dps = small_font.render(f"DPS: {c_dps_eff:.1f} -> ", True, (100, 240, 255))
+                n_dps = small_font.render(f"{n_dps_eff:.1f} (+{d_dps:.1f})", True, GREEN)
+            else:
+                d_dps = round(nxt['dps'] - cur['dps'], 1)
+                c_dps = small_font.render(f"DPS: {cur['dps']:.1f} -> ", True, (255, 215, 90))
+                n_dps = small_font.render(f"{nxt['dps']:.1f} (+{d_dps:.1f})", True, GREEN)
             static_surf.blit(c_dps, (12, y_off))
             static_surf.blit(n_dps, (12 + c_dps.get_width(), y_off))
             y_off += row_step
@@ -3569,23 +3967,28 @@ def draw_tower_inspect_card(surface, tower, upgrade_mode, cacti, mouse_pos, save
 
     # Динамические статы (ограничение до 0.35с для предотвращения сброса шрифтового кэша)
     now = time.time()
-    if now - getattr(tower, '_inspect_dyn_time', 0.0) >= 0.35 or not hasattr(tower, '_cached_dyn_dps_surf'):
+    fb = getattr(tower, 'farm_boost', 0.0)
+    last_fb_key = getattr(tower, '_cached_dyn_fb_key', None)
+    if (now - getattr(tower, '_inspect_dyn_time', 0.0) >= 0.35) or (last_fb_key != fb) or not hasattr(tower, '_cached_dyn_dps_surf'):
         tower._inspect_dyn_time = now
+        tower._cached_dyn_fb_key = fb
         cur_dps = getattr(tower, 'dps', 0.0)
         dyn_dps = tower.get_dynamic_dps() if hasattr(tower, 'get_dynamic_dps') else 0.0
         tot_dmg = getattr(tower, 'total_damage_dealt', 0.0)
         tot_gold = getattr(tower, 'total_gold_earned', 0)
 
-        tower._cached_dyn_dps_surf = small_font.render(f"DPS: {cur_dps:.1f} (Факт: {dyn_dps:.1f})", True, (255, 215, 90))
+        eff_dps = cur_dps * (1.0 + fb) if fb > 0 else cur_dps
+        tower._cached_dyn_dps_surf = small_font.render(f"DPS: {eff_dps:.1f} (Факт: {dyn_dps:.1f})", True, (255, 215, 90))
         tower._cached_tot_dmg_surf = tiny_font.render(f"Урон: {int(tot_dmg):,}", True, (200, 240, 255))
-        tower._cached_tot_gold_surf = small_font.render(f"Всего заработано: +{tot_gold} какт.", True, (255, 220, 100))
+        tower._cached_tot_gold_surf = small_font.render(f"Всего: +{tot_gold:,} к.", True, (255, 220, 100))
 
     if not upgrade_mode:
         header_h = 44
         y_off = card_y + header_h + 15
         row_step = 20
         if tower.type == "farm":
-            surface.blit(tower._cached_tot_gold_surf, (card_x + 12, y_off + row_step * 2))
+            tot_s = tower._cached_tot_gold_surf
+            surface.blit(tot_s, (card_x + card_w - tot_s.get_width() - 12, y_off))
         else:
             dps_s = tower._cached_dyn_dps_surf
             surface.blit(dps_s, (card_x + card_w - dps_s.get_width() - 12, y_off))
@@ -3660,7 +4063,9 @@ def draw_tower_inspect_card(surface, tower, upgrade_mode, cacti, mouse_pos, save
         sell_screen_rect = pygame.Rect(card_x + 10 + upg_w + 8, btn_y, sell_w, btn_h)
         sell_hovered = sell_screen_rect.collidepoint(mouse_pos)
 
-    sell_value = max(20, int(tower.total_invested * 0.70))
+    refund_lvl = savedata.get("Upgrades", {}).get("sell_refund", 0) if isinstance(savedata, dict) else 0
+    sell_ratio = min(1.0, 0.50 + refund_lvl * 0.10)
+    sell_value = max(20, int(tower.total_invested * sell_ratio))
 
     # Отрисовка кнопки апгрейда
     if can_upgrade:
@@ -4810,13 +5215,15 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
         bg_time = pygame.time.get_ticks()
     generate_background(surface, bg_time, custom_cols=((12, 16, 24), (18, 24, 36)))
 
-    # Фоновые декоративные полосы
-    grid_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-    for x in range(0, SCREEN_WIDTH, 48):
-        pygame.draw.line(grid_surf, (30, 42, 58, 40), (x, 70), (x, SCREEN_HEIGHT), 1)
-    for y in range(70, SCREEN_HEIGHT, 48):
-        pygame.draw.line(grid_surf, (30, 42, 58, 40), (0, y), (SCREEN_WIDTH, y), 1)
-    surface.blit(grid_surf, (0, 0))
+    # Фоновые декоративные полосы (кэшируются и не пересоздаются)
+    global _settings_grid_surf
+    if _settings_grid_surf is None:
+        _settings_grid_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        for x in range(0, SCREEN_WIDTH, 48):
+            pygame.draw.line(_settings_grid_surf, (30, 42, 58, 40), (x, 70), (x, SCREEN_HEIGHT), 1)
+        for y in range(70, SCREEN_HEIGHT, 48):
+            pygame.draw.line(_settings_grid_surf, (30, 42, 58, 40), (0, y), (SCREEN_WIDTH, y), 1)
+    surface.blit(_settings_grid_surf, (0, 0))
 
     # 1. Верхняя панель навигации
     top_rect = pygame.Rect(0, 0, SCREEN_WIDTH, 70)
@@ -4827,13 +5234,13 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
     b_hov = back_btn.collidepoint(mouse_pos)
     pygame.draw.rect(surface, (180, 45, 45) if b_hov else (145, 35, 35), back_btn, border_radius=8)
     pygame.draw.rect(surface, WHITE, back_btn, width=2, border_radius=8)
-    b_txt = font.render("< НАЗАД [ESC]", True, WHITE)
+    b_txt = get_rendered_text(font, "< НАЗАД [ESC]", WHITE)
     surface.blit(b_txt, (back_btn.centerx - b_txt.get_width() // 2, back_btn.centery - b_txt.get_height() // 2))
 
     # Центр: заголовок
-    hdr_txt = large_font.render("НАСТРОЙКИ И ОПЦИИ", True, (240, 250, 255))
+    hdr_txt = get_rendered_text(large_font, "НАСТРОЙКИ И ОПЦИИ", (240, 250, 255))
     surface.blit(hdr_txt, (SCREEN_WIDTH // 2 - hdr_txt.get_width() // 2, 9))
-    sub_txt = tiny_font.render("* ПЕРСОНАЛИЗАЦИЯ ИГРОВОГО ПРОЦЕССА, ЗВУКА И УПРАВЛЕНИЕ СОХРАНЕНИЯМИ *", True, (140, 195, 240))
+    sub_txt = get_rendered_text(tiny_font, "* ПЕРСОНАЛИЗАЦИЯ ИГРОВОГО ПРОЦЕССА, ЗВУКА И УПРАВЛЕНИЕ СОХРАНЕНИЯМИ *", (140, 195, 240))
     surface.blit(sub_txt, (SCREEN_WIDTH // 2 - sub_txt.get_width() // 2, 44))
 
     # Правая панель с кактусами
@@ -4841,14 +5248,14 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
     pygame.draw.rect(surface, (22, 30, 44), st_panel, border_radius=8)
     pygame.draw.rect(surface, GOLD, st_panel, width=1, border_radius=8)
     surface.blit(stellar_cactus_img_m, (st_panel.left + 8, st_panel.centery - 18))
-    st_num = font.render(f"{savedata.get('StellarCactuses', 0)}", True, WHITE)
+    st_num = get_rendered_text(font, f"{savedata.get('StellarCactuses', 0)}", WHITE)
     surface.blit(st_num, (st_panel.left + 48, st_panel.centery - st_num.get_height() // 2))
 
     dark_panel = pygame.Rect(SCREEN_WIDTH - 150, 12, 136, 46)
     pygame.draw.rect(surface, (32, 18, 45), dark_panel, border_radius=8)
     pygame.draw.rect(surface, (190, 70, 255), dark_panel, width=1, border_radius=8)
     surface.blit(dark_cactus_img_m, (dark_panel.left + 8, dark_panel.centery - 18))
-    dark_num = font.render(f"{savedata.get('DarkCactuses', 0)}", True, WHITE)
+    dark_num = get_rendered_text(font, f"{savedata.get('DarkCactuses', 0)}", WHITE)
     surface.blit(dark_num, (dark_panel.left + 48, dark_panel.centery - dark_num.get_height() // 2))
 
     # 2. Переключатели вкладок (Tabs)
@@ -4862,21 +5269,27 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
 
     # Отрисовка вкладки 1: Параметры игры
     is_gen = (current_tab == "general")
+    is_sav = (current_tab == "saves")
+    if is_sav:
+        all_profiles = list_save_profiles()
+        profiles_count = len(all_profiles)
+    else:
+        all_profiles = []
+        profiles_count = get_save_profiles_count()
+
     t1_bg = (35, 60, 95) if is_gen else ((28, 42, 60) if tg_hov else (20, 26, 38))
     t1_bd = (90, 195, 255) if is_gen else ((70, 110, 150) if tg_hov else (45, 60, 85))
     pygame.draw.rect(surface, t1_bg, tab_gen_rect, border_radius=6)
     pygame.draw.rect(surface, t1_bd, tab_gen_rect, width=2 if is_gen else 1, border_radius=6)
-    t1_txt = font.render("ПАРАМЕТРЫ ИГРЫ", True, WHITE if is_gen else (180, 200, 220))
+    t1_txt = get_rendered_text(font, "ПАРАМЕТРЫ ИГРЫ", WHITE if is_gen else (180, 200, 220))
     surface.blit(t1_txt, (tab_gen_rect.centerx - t1_txt.get_width() // 2, tab_gen_rect.centery - t1_txt.get_height() // 2))
 
     # Отрисовка вкладки 2: Файлы сохранений
-    all_profiles = list_save_profiles()
-    is_sav = (current_tab == "saves")
     t2_bg = (35, 60, 95) if is_sav else ((28, 42, 60) if ts_hov else (20, 26, 38))
     t2_bd = (90, 195, 255) if is_sav else ((70, 110, 150) if ts_hov else (45, 60, 85))
     pygame.draw.rect(surface, t2_bg, tab_saves_rect, border_radius=6)
     pygame.draw.rect(surface, t2_bd, tab_saves_rect, width=2 if is_sav else 1, border_radius=6)
-    t2_txt = font.render(f"СЛОТЫ СОХРАНЕНИЙ ({len(all_profiles)})", True, WHITE if is_sav else (180, 200, 220))
+    t2_txt = get_rendered_text(font, f"СЛОТЫ СОХРАНЕНИЙ ({profiles_count})", WHITE if is_sav else (180, 200, 220))
     surface.blit(t2_txt, (tab_saves_rect.centerx - t2_txt.get_width() // 2, tab_saves_rect.centery - t2_txt.get_height() // 2))
 
     # Считываем параметры текущего сохранения
@@ -4887,6 +5300,7 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
     shake_val = settings_data.get("screen_shake", False)
     dmg_val = settings_data.get("damage_numbers", True)
     auto_wave_val = settings_data.get("auto_wave", False)
+    show_fps_val = settings_data.get("show_fps", True)
     gfx_preset = settings_data.get("graphics_preset", "normal")
 
     col1_x = 42
@@ -4906,6 +5320,10 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
     shake_toggle_rect = None
     dmg_toggle_rect = None
     auto_wave_toggle_rect = None
+    fps_toggle_rect = None
+    fps_prev_rect = None
+    fps_val_rect = None
+    fps_next_rect = None
     reset_btn_rect = None
     credits_btn_rect = None
     go_to_saves_btn = None
@@ -5058,7 +5476,7 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
         gts_hov = go_to_saves_btn.collidepoint(mouse_pos)
         pygame.draw.rect(surface, (32, 75, 115) if gts_hov else (22, 52, 85), go_to_saves_btn, border_radius=8)
         pygame.draw.rect(surface, (100, 205, 255) if gts_hov else (55, 115, 175), go_to_saves_btn, width=2, border_radius=8)
-        gts_txt = font.render(f"СЛОТЫ СОХРАНЕНИЙ ({len(all_profiles)}) >", True, WHITE)
+        gts_txt = get_rendered_text(font, f"СЛОТЫ СОХРАНЕНИЙ ({profiles_count}) >", WHITE)
         surface.blit(gts_txt, (go_to_saves_btn.centerx - gts_txt.get_width() // 2, go_to_saves_btn.centery - gts_txt.get_height() // 2))
 
         reset_btn_rect = pygame.Rect(col1_x + 390, btn_y2, 172, 44)
@@ -5071,22 +5489,22 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
         # -------------------------------------------------------------
         # КАРТОЧКА 3 (Право-Верх): ГЕЙМПЛЕЙ И ГРАФИКА
         # -------------------------------------------------------------
-        c3_rect = pygame.Rect(col2_x, 126, card_w, 252)
+        c3_rect = pygame.Rect(col2_x, 126, card_w, 272)
         pygame.draw.rect(surface, (18, 25, 36), c3_rect, border_radius=12)
         pygame.draw.rect(surface, (50, 85, 125), c3_rect, width=2, border_radius=12)
 
         pygame.draw.rect(surface, (25, 36, 52), (col2_x, 126, card_w, 40), border_top_left_radius=12, border_top_right_radius=12)
         pygame.draw.line(surface, (50, 85, 125), (col2_x, 166), (col2_x + card_w, 166), 1)
-        c3_hdr = font.render("ИГРОВЫЕ ПАРАМЕТРЫ И ГРАФИКА", True, (130, 205, 255))
+        c3_hdr = get_rendered_text(font, "ИГРОВЫЕ ПАРАМЕТРЫ И ГРАФИКА", (130, 205, 255))
         surface.blit(c3_hdr, (col2_x + 18, 134))
 
         # 3.0 Пресет графики (Graphics Preset)
-        row0_y = 172
-        lbl_gfx = small_font.render("Пресет графики (Visuals):", True, WHITE)
+        row0_y = 170
+        lbl_gfx = get_rendered_text(small_font, "Пресет графики (Visuals):", WHITE)
         surface.blit(lbl_gfx, (col2_x + 18, row0_y + 4))
 
-        preset_normal_rect = pygame.Rect(col2_x + 276, row0_y, 134, 26)
-        preset_opt_rect = pygame.Rect(col2_x + 418, row0_y, 144, 26)
+        preset_normal_rect = pygame.Rect(col2_x + 276, row0_y, 134, 24)
+        preset_opt_rect = pygame.Rect(col2_x + 418, row0_y, 144, 24)
         pn_hov = preset_normal_rect.collidepoint(mouse_pos)
         po_hov = preset_opt_rect.collidepoint(mouse_pos)
 
@@ -5098,7 +5516,7 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
         p_norm_bd = (110, 215, 255) if is_norm else ((70, 105, 140) if pn_hov else (45, 60, 80))
         pygame.draw.rect(surface, p_norm_bg, preset_normal_rect, border_radius=6)
         pygame.draw.rect(surface, p_norm_bd, preset_normal_rect, width=2 if is_norm else 1, border_radius=6)
-        t_norm = nav_font.render("НОРМАЛЬНЫЙ", True, WHITE if is_norm else (160, 185, 210))
+        t_norm = get_rendered_text(nav_font, "НОРМАЛЬНЫЙ", WHITE if is_norm else (160, 185, 210))
         surface.blit(t_norm, (preset_normal_rect.centerx - t_norm.get_width() // 2, preset_normal_rect.centery - t_norm.get_height() // 2))
 
         # Кнопка: Оптимизированный
@@ -5106,20 +5524,20 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
         p_opt_bd = (95, 235, 140) if is_opt else ((70, 105, 140) if po_hov else (45, 60, 80))
         pygame.draw.rect(surface, p_opt_bg, preset_opt_rect, border_radius=6)
         pygame.draw.rect(surface, p_opt_bd, preset_opt_rect, width=2 if is_opt else 1, border_radius=6)
-        t_opt = nav_font.render("ОПТИМИЗАЦИЯ", True, WHITE if is_opt else (160, 185, 210))
+        t_opt = get_rendered_text(nav_font, "ОПТИМИЗАЦИЯ", WHITE if is_opt else (160, 185, 210))
         surface.blit(t_opt, (preset_opt_rect.centerx - t_opt.get_width() // 2, preset_opt_rect.centery - t_opt.get_height() // 2))
 
         # 3.1 Масштабирование экрана (Чёткость / Сглаживание)
-        row1_y = 204
-        lbl_scale = small_font.render("Чёткость экрана (Масштаб):", True, WHITE)
+        row1_y = 199
+        lbl_scale = get_rendered_text(small_font, "Чёткость экрана (Масштаб):", WHITE)
         surface.blit(lbl_scale, (col2_x + 18, row1_y + 4))
 
         scale_mode = savedata.get("Settings", {}).get("scale_quality", "sharp")
         is_sharp = (scale_mode != "smooth")
         is_smooth = (scale_mode == "smooth")
 
-        scale_sharp_rect = pygame.Rect(col2_x + 276, row1_y, 134, 26)
-        scale_smooth_rect = pygame.Rect(col2_x + 418, row1_y, 144, 26)
+        scale_sharp_rect = pygame.Rect(col2_x + 276, row1_y, 134, 24)
+        scale_smooth_rect = pygame.Rect(col2_x + 418, row1_y, 144, 24)
         ssh_hov = scale_sharp_rect.collidepoint(mouse_pos)
         ssm_hov = scale_smooth_rect.collidepoint(mouse_pos)
 
@@ -5127,74 +5545,119 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
         p_sharp_bd = (110, 215, 255) if is_sharp else ((70, 105, 140) if ssh_hov else (45, 60, 80))
         pygame.draw.rect(surface, p_sharp_bg, scale_sharp_rect, border_radius=6)
         pygame.draw.rect(surface, p_sharp_bd, scale_sharp_rect, width=2 if is_sharp else 1, border_radius=6)
-        t_sharp = nav_font.render("ПИКСЕЛЬНЫЙ", True, WHITE if is_sharp else (160, 185, 210))
+        t_sharp = get_rendered_text(nav_font, "ПИКСЕЛЬНЫЙ", WHITE if is_sharp else (160, 185, 210))
         surface.blit(t_sharp, (scale_sharp_rect.centerx - t_sharp.get_width() // 2, scale_sharp_rect.centery - t_sharp.get_height() // 2))
 
         p_smooth_bg = (35, 125, 65) if is_smooth else ((28, 40, 56) if ssm_hov else (20, 26, 36))
         p_smooth_bd = (95, 235, 140) if is_smooth else ((70, 105, 140) if ssm_hov else (45, 60, 80))
         pygame.draw.rect(surface, p_smooth_bg, scale_smooth_rect, border_radius=6)
         pygame.draw.rect(surface, p_smooth_bd, scale_smooth_rect, width=2 if is_smooth else 1, border_radius=6)
-        t_smooth = nav_font.render("СГЛАЖИВАНИЕ", True, WHITE if is_smooth else (160, 185, 210))
+        t_smooth = get_rendered_text(nav_font, "СГЛАЖИВАНИЕ", WHITE if is_smooth else (160, 185, 210))
         surface.blit(t_smooth, (scale_smooth_rect.centerx - t_smooth.get_width() // 2, scale_smooth_rect.centery - t_smooth.get_height() // 2))
 
         # 3.2 Тряска экрана (Screen Shake)
-        row2_y = 234
-        shake_toggle_rect = pygame.Rect(col2_x + 440, row2_y, 115, 26)
+        row2_y = 228
+        shake_toggle_rect = pygame.Rect(col2_x + 440, row2_y, 115, 24)
         st_hov = shake_toggle_rect.collidepoint(mouse_pos)
         t_shake_col = (40, 140, 75) if shake_val else (48, 55, 68)
         sh_border = GOLD if st_hov else (((120, 220, 150) if shake_val else (80, 90, 105)))
         pygame.draw.rect(surface, (55, 175, 95) if (st_hov and shake_val) else t_shake_col, shake_toggle_rect, border_radius=6)
         pygame.draw.rect(surface, sh_border, shake_toggle_rect, width=1, border_radius=6)
-        s_btn_lbl = font.render("ВКЛ" if shake_val else "ВЫКЛ", True, WHITE)
+        s_btn_lbl = get_rendered_text(small_font, "ВКЛ" if shake_val else "ВЫКЛ", WHITE)
         surface.blit(s_btn_lbl, (shake_toggle_rect.centerx - s_btn_lbl.get_width() // 2, shake_toggle_rect.centery - s_btn_lbl.get_height() // 2))
 
-        lbl_sh = small_font.render("Тряска экрана (Screen Shake):", True, WHITE)
+        lbl_sh = get_rendered_text(small_font, "Тряска экрана (Screen Shake):", WHITE)
         surface.blit(lbl_sh, (col2_x + 18, row2_y + 3))
 
         # 3.3 Цифры урона
-        row3_y = 264
-        dmg_toggle_rect = pygame.Rect(col2_x + 440, row3_y, 115, 26)
+        row3_y = 257
+        dmg_toggle_rect = pygame.Rect(col2_x + 440, row3_y, 115, 24)
         dt_hov = dmg_toggle_rect.collidepoint(mouse_pos)
         t_dmg_col = (40, 140, 75) if dmg_val else (48, 55, 68)
         dg_border = GOLD if dt_hov else (((120, 220, 150) if dmg_val else (80, 90, 105)))
         pygame.draw.rect(surface, (55, 175, 95) if (dt_hov and dmg_val) else t_dmg_col, dmg_toggle_rect, border_radius=6)
         pygame.draw.rect(surface, dg_border, dmg_toggle_rect, width=1, border_radius=6)
-        d_btn_lbl = font.render("ВКЛ" if dmg_val else "ВЫКЛ", True, WHITE)
+        d_btn_lbl = get_rendered_text(small_font, "ВКЛ" if dmg_val else "ВЫКЛ", WHITE)
         surface.blit(d_btn_lbl, (dmg_toggle_rect.centerx - d_btn_lbl.get_width() // 2, dmg_toggle_rect.centery - d_btn_lbl.get_height() // 2))
 
-        lbl_dmg = small_font.render("Всплывающий урон и текст:", True, WHITE)
+        lbl_dmg = get_rendered_text(small_font, "Всплывающий урон и текст:", WHITE)
         surface.blit(lbl_dmg, (col2_x + 18, row3_y + 3))
 
         # 3.4 Авто-старт волны
-        row4_y = 294
-        auto_wave_toggle_rect = pygame.Rect(col2_x + 440, row4_y, 115, 26)
+        row4_y = 286
+        auto_wave_toggle_rect = pygame.Rect(col2_x + 440, row4_y, 115, 24)
         at_hov = auto_wave_toggle_rect.collidepoint(mouse_pos)
         t_auto_col = (40, 140, 75) if auto_wave_val else (48, 55, 68)
         aw_border = GOLD if at_hov else (((120, 220, 150) if auto_wave_val else (80, 90, 105)))
         pygame.draw.rect(surface, (55, 175, 95) if (at_hov and auto_wave_val) else t_auto_col, auto_wave_toggle_rect, border_radius=6)
         pygame.draw.rect(surface, aw_border, auto_wave_toggle_rect, width=1, border_radius=6)
-        a_btn_lbl = font.render("ВКЛ" if auto_wave_val else "ВЫКЛ", True, WHITE)
+        a_btn_lbl = get_rendered_text(small_font, "ВКЛ" if auto_wave_val else "ВЫКЛ", WHITE)
         surface.blit(a_btn_lbl, (auto_wave_toggle_rect.centerx - a_btn_lbl.get_width() // 2, auto_wave_toggle_rect.centery - a_btn_lbl.get_height() // 2))
 
-        lbl_aw = small_font.render("Авто-запуск следующей волны:", True, WHITE)
+        lbl_aw = get_rendered_text(small_font, "Авто-запуск следующей волны:", WHITE)
         surface.blit(lbl_aw, (col2_x + 18, row4_y + 3))
 
-        sub_gp = tiny_font.render("Нормальный: живой фон и декор. Оптимизация: скрыт декор биомов, макс. FPS.", True, (140, 185, 230))
-        surface.blit(sub_gp, (col2_x + 18, 326))
-        sub_gp2 = tiny_font.render("Режим оптимизации снижает нагрузку на CPU/GPU и бережёт батарею смартфона.", True, (120, 150, 180))
-        surface.blit(sub_gp2, (col2_x + 18, 344))
+        # 3.5 Счётчик FPS на экране (ВКЛ / ВЫКЛ)
+        row5_y = 315
+        fps_toggle_rect = pygame.Rect(col2_x + 440, row5_y, 115, 24)
+        ft_hov = fps_toggle_rect.collidepoint(mouse_pos)
+        t_fps_col = (40, 140, 75) if show_fps_val else (48, 55, 68)
+        fps_border = GOLD if ft_hov else (((120, 220, 150) if show_fps_val else (80, 90, 105)))
+        pygame.draw.rect(surface, (55, 175, 95) if (ft_hov and show_fps_val) else t_fps_col, fps_toggle_rect, border_radius=6)
+        pygame.draw.rect(surface, fps_border, fps_toggle_rect, width=1, border_radius=6)
+        fps_t_lbl = get_rendered_text(small_font, "ВКЛ" if show_fps_val else "ВЫКЛ", WHITE)
+        surface.blit(fps_t_lbl, (fps_toggle_rect.centerx - fps_t_lbl.get_width() // 2, fps_toggle_rect.centery - fps_t_lbl.get_height() // 2))
+
+        lbl_fps_tog = get_rendered_text(small_font, "Счётчик FPS на экране:", WHITE)
+        surface.blit(lbl_fps_tog, (col2_x + 18, row5_y + 3))
+
+        # 3.6 Лимит FPS (FPS Limit: 30, 60, 120, 144, 156, 240, 300, Безлимит)
+        row6_y = 344
+        lbl_fps = get_rendered_text(small_font, "Лимит частоты кадров (FPS):", WHITE)
+        surface.blit(lbl_fps, (col2_x + 18, row6_y + 3))
+
+        fps_limit_val = settings_data.get("fps_limit", 60)
+        fps_lbl = f"{fps_limit_val} FPS" if fps_limit_val > 0 else "БЕЗЛИМИТ"
+
+        fps_prev_rect = pygame.Rect(col2_x + 360, row6_y, 34, 24)
+        fps_val_rect = pygame.Rect(col2_x + 398, row6_y, 122, 24)
+        fps_next_rect = pygame.Rect(col2_x + 524, row6_y, 34, 24)
+
+        fp_hov = fps_prev_rect.collidepoint(mouse_pos)
+        fv_hov = fps_val_rect.collidepoint(mouse_pos)
+        fn_hov = fps_next_rect.collidepoint(mouse_pos)
+
+        pygame.draw.rect(surface, (45, 75, 110) if fp_hov else (28, 48, 72), fps_prev_rect, border_radius=6)
+        pygame.draw.rect(surface, (110, 175, 245) if fp_hov else (52, 92, 138), fps_prev_rect, width=1, border_radius=6)
+        t_fp = get_rendered_text(font, "<", WHITE)
+        surface.blit(t_fp, (fps_prev_rect.centerx - t_fp.get_width() // 2, fps_prev_rect.centery - t_fp.get_height() // 2 - 2))
+
+        f_val_bg = (30, 80, 130) if fv_hov else (20, 32, 48)
+        f_val_bd = (90, 200, 255) if fv_hov else (60, 100, 145)
+        pygame.draw.rect(surface, f_val_bg, fps_val_rect, border_radius=6)
+        pygame.draw.rect(surface, f_val_bd, fps_val_rect, width=1, border_radius=6)
+        t_fv = get_rendered_text(nav_font, fps_lbl, (255, 225, 120) if fps_limit_val == 0 else WHITE)
+        surface.blit(t_fv, (fps_val_rect.centerx - t_fv.get_width() // 2, fps_val_rect.centery - t_fv.get_height() // 2))
+
+        pygame.draw.rect(surface, (45, 75, 110) if fn_hov else (28, 48, 72), fps_next_rect, border_radius=6)
+        pygame.draw.rect(surface, (110, 175, 245) if fn_hov else (52, 92, 138), fps_next_rect, width=1, border_radius=6)
+        t_fn = get_rendered_text(font, ">", WHITE)
+        surface.blit(t_fn, (fps_next_rect.centerx - t_fn.get_width() // 2, fps_next_rect.centery - t_fn.get_height() // 2 - 2))
+
+        sub_gp = get_rendered_text(tiny_font, "Лимиты: 30, 60, 120, 144, 156, 240, 300 FPS или Безлимит (по умолчанию 60).", (140, 185, 230))
+        surface.blit(sub_gp, (col2_x + 18, 373))
 
         # -------------------------------------------------------------
         # КАРТОЧКА 4 (Право-Низ): ФИНАЛ И ТИТРЫ ИГРЫ
         # -------------------------------------------------------------
-        c4_rect = pygame.Rect(col2_x, 388, card_w, 268)
+        c4_rect = pygame.Rect(col2_x, 404, card_w, 252)
         pygame.draw.rect(surface, (20, 16, 32), c4_rect, border_radius=12)
         pygame.draw.rect(surface, (110, 65, 170) if game_done else (70, 50, 90), c4_rect, width=2, border_radius=12)
 
-        pygame.draw.rect(surface, (34, 22, 52) if game_done else (28, 22, 38), (col2_x, 388, card_w, 40), border_top_left_radius=12, border_top_right_radius=12)
-        pygame.draw.line(surface, (110, 65, 170) if game_done else (70, 50, 90), (col2_x, 428), (col2_x + card_w, 428), 1)
-        c4_hdr = font.render("ФИНАЛ И ТИТРЫ (ЭПИЛОГ)", True, (225, 175, 255) if game_done else (170, 150, 190))
-        surface.blit(c4_hdr, (col2_x + 18, 396))
+        pygame.draw.rect(surface, (34, 22, 52) if game_done else (28, 22, 38), (col2_x, 404, card_w, 38), border_top_left_radius=12, border_top_right_radius=12)
+        pygame.draw.line(surface, (110, 65, 170) if game_done else (70, 50, 90), (col2_x, 442), (col2_x + card_w, 442), 1)
+        c4_hdr = get_rendered_text(font, "ФИНАЛ И ТИТРЫ (ЭПИЛОГ)", (225, 175, 255) if game_done else (170, 150, 190))
+        surface.blit(c4_hdr, (col2_x + 18, 411))
 
         # Бейдж статуса прохождения игры
         if game_done:
@@ -5208,32 +5671,32 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
             st_txt_s = "ТРЕБУЕТСЯ ВОЛНА 100"
             st_txt_col = (255, 175, 175)
 
-        status_badge_rect = pygame.Rect(col2_x + card_w - 235, 394, 218, 28)
+        status_badge_rect = pygame.Rect(col2_x + card_w - 235, 409, 218, 28)
         pygame.draw.rect(surface, st_bg, status_badge_rect, border_radius=6)
         pygame.draw.rect(surface, st_bd, status_badge_rect, width=1, border_radius=6)
-        sb_surf = tiny_font.render(st_txt_s, True, st_txt_col)
+        sb_surf = get_rendered_text(tiny_font, st_txt_s, st_txt_col)
         surface.blit(sb_surf, (status_badge_rect.centerx - sb_surf.get_width() // 2, status_badge_rect.centery - sb_surf.get_height() // 2))
 
         if game_done:
-            cr_d1 = small_font.render("Эпилог обороны Оазиса и разгром Короля Слаймов.", True, (220, 215, 235))
-            cr_d4 = tiny_font.render("Вы можете просмотреть титры повторно в любой момент без сброса волн.", True, (215, 195, 255))
+            cr_d1 = get_rendered_text(small_font, "Эпилог обороны Оазиса и разгром Короля Слаймов.", (220, 215, 235))
+            cr_d4 = get_rendered_text(tiny_font, "Вы можете просмотреть титры повторно в любой момент без сброса волн.", (215, 195, 255))
         else:
-            cr_d1 = small_font.render("Финальные титры и эпилог заблокированы до победы.", True, (255, 160, 170))
-            cr_d4 = tiny_font.render("Пройдите 100-ю волну на локации Финал, чтобы разблокировать просмотр.", True, (255, 130, 140))
+            cr_d1 = get_rendered_text(small_font, "Финальные титры и эпилог заблокированы до победы.", (255, 160, 170))
+            cr_d4 = get_rendered_text(tiny_font, "Пройдите 100-ю волну на локации Финал, чтобы разблокировать просмотр.", (255, 130, 140))
 
-        surface.blit(cr_d1, (col2_x + 18, 440))
-        cr_d2 = tiny_font.render("Включает статистику кампании, оригинальные слаймы Stardew Valley,", True, (170, 160, 195))
-        surface.blit(cr_d2, (col2_x + 18, 468))
-        cr_d3 = tiny_font.render("описание тёмной экономики, саундтрек Звёздного Царства и титры авторов.", True, (170, 160, 195))
-        surface.blit(cr_d3, (col2_x + 18, 492))
-        surface.blit(cr_d4, (col2_x + 18, 514))
+        surface.blit(cr_d1, (col2_x + 18, 448))
+        cr_d2 = get_rendered_text(tiny_font, "Включает статистику кампании, оригинальные слаймы Stardew Valley,", (170, 160, 195))
+        surface.blit(cr_d2, (col2_x + 18, 474))
+        cr_d3 = get_rendered_text(tiny_font, "описание тёмной экономики, саундтрек Звёздного Царства и титры авторов.", (170, 160, 195))
+        surface.blit(cr_d3, (col2_x + 18, 496))
+        surface.blit(cr_d4, (col2_x + 18, 518))
 
-        credits_btn_rect = pygame.Rect(col2_x + 18, 592, 410, 44)
+        credits_btn_rect = pygame.Rect(col2_x + 18, 596, 410, 44)
         if game_done:
             cr_hov = credits_btn_rect.collidepoint(mouse_pos)
             pygame.draw.rect(surface, (95, 45, 155) if cr_hov else (72, 32, 120), credits_btn_rect, border_radius=8)
             pygame.draw.rect(surface, GOLD if cr_hov else (195, 130, 255), credits_btn_rect, width=2, border_radius=8)
-            cr_btn_txt = font.render("ПРОСМОТР ТИТРОВ И ЭПИЛОГА", True, WHITE)
+            cr_btn_txt = get_rendered_text(font, "ПРОСМОТР ТИТРОВ И ЭПИЛОГА", WHITE)
             surface.blit(cr_btn_txt, (credits_btn_rect.centerx - cr_btn_txt.get_width() // 2, credits_btn_rect.centery - cr_btn_txt.get_height() // 2))
         else:
             # Заблокировано
@@ -5835,6 +6298,10 @@ def draw_settings_screen(surface, savedata, mouse_pos, in_game=False, confirming
         "shake_toggle": shake_toggle_rect,
         "dmg_toggle": dmg_toggle_rect,
         "auto_wave_toggle": auto_wave_toggle_rect,
+        "fps_toggle": fps_toggle_rect,
+        "fps_prev": fps_prev_rect,
+        "fps_val": fps_val_rect,
+        "fps_next": fps_next_rect,
         "credits": (credits_btn_rect if (is_gen and game_done) else None),
         "credits_locked": (credits_btn_rect if (is_gen and not game_done) else None),
         "reset": reset_btn_rect,
@@ -6010,8 +6477,9 @@ def draw_dig_window(surface, dig_session, mouse_pos):
     title_txt = font.render("РАСКОПКИ РЕЛИКВИИ", True, (255, 230, 140))
     surface.blit(title_txt, (header_rect.left + 42, header_rect.top + 10))
 
-    relic_name_col = (255, 215, 60) if not dig_session.is_won else (120, 255, 140)
-    name_txt = font.render(dig_session.relic_info["name"], True, relic_name_col)
+    relic_display_name = dig_session.relic_info["name"] if dig_session.is_won else "Неизвестный артефакт..."
+    relic_name_col = (120, 255, 140) if dig_session.is_won else (200, 185, 150)
+    name_txt = font.render(relic_display_name, True, relic_name_col)
     surface.blit(name_txt, (header_rect.left + 42, header_rect.top + 32))
 
     # Счётчик оставшихся ходов (вскопок) справа
@@ -6093,6 +6561,13 @@ def draw_dig_window(surface, dig_session, mouse_pos):
                     pygame.draw.rect(glow_s, (255, 220, 80, 50), (0, 0, 48, 48), border_radius=6)
                     surface.blit(glow_s, (cx, cy))
                     pygame.draw.rect(surface, (255, 235, 140), cell_rect, width=2, border_radius=6)
+            elif getattr(dig_session, "gold_vein_cell", None) == (gx, gy) and getattr(dig_session, "gold_vein_found", False):
+                # Раскопанная Золотая Жила 1х1!
+                pygame.draw.rect(surface, (50, 42, 22), cell_rect, border_radius=6)
+                pygame.draw.rect(surface, (255, 215, 60), cell_rect, width=2, border_radius=6)
+                surface.blit(stellar_cactus_img_s, (cx + 10, cy + 10))
+                for spark_pos in [(cx + 6, cy + 6), (cx + 40, cy + 8), (cx + 10, cy + 38), (cx + 38, cy + 38)]:
+                    pygame.draw.circle(surface, (255, 235, 120), spark_pos, 2)
             else:
                 # Пустая выкопанная яма
                 pygame.draw.rect(surface, (45, 35, 28), cell_rect, border_radius=6)

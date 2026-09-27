@@ -11,6 +11,97 @@ from config import *
 from tree_data_v02 import get_mob_bestiary_tier, get_bestiary_tier_thresholds
 from game_data import *
 
+# Глобальное хранилище данных сохранения для башен и сущностей (наследуется из game_data)
+if 'savedata' not in globals() or not isinstance(savedata, dict):
+    savedata = {}
+
+def set_global_savedata(sd):
+    global savedata
+    if isinstance(sd, dict):
+        savedata = sd
+
+# Кэши поверхностей эффектов для исключения постоянных аллокаций памяти и мусора GC
+_spark_surf_cache = {}
+_bullet_trail_cache = {}
+_ring_surf_cache = {}
+_frozen_aura_cache = {}
+_alpha_sprite_cache = {}
+_phantom_shadow_surf = None
+_burrow_sand_surf = None
+_protector_aura_surf = None
+
+def get_cached_spark_surf(color, r, alpha):
+    r = max(1, min(14, int(r)))
+    q_alpha = max(16, min(240, (int(alpha) // 16) * 16))
+    key = (color, r, q_alpha)
+    s = _spark_surf_cache.get(key)
+    if s is None:
+        if len(_spark_surf_cache) > 220:
+            _spark_surf_cache.clear()
+        dim = r * 2 + 2
+        s = pygame.Surface((dim, dim), pygame.SRCALPHA)
+        pygame.draw.circle(s, (*color, q_alpha), (r + 1, r + 1), r)
+        if r >= 2:
+            pygame.draw.circle(s, (255, 255, 255, int(q_alpha * 0.7)), (r, r - 1), max(1, r // 2))
+        _spark_surf_cache[key] = s
+    return s
+
+def get_cached_trail_surf(color, rad, alpha):
+    rad = max(1, min(10, int(rad)))
+    q_alpha = max(16, min(240, (int(alpha) // 20) * 20))
+    key = (color, rad, q_alpha)
+    s = _bullet_trail_cache.get(key)
+    if s is None:
+        if len(_bullet_trail_cache) > 120:
+            _bullet_trail_cache.clear()
+        s = pygame.Surface((rad * 2, rad * 2), pygame.SRCALPHA)
+        pygame.draw.circle(s, (*color, q_alpha), (rad, rad), rad)
+        _bullet_trail_cache[key] = s
+    return s
+
+def get_cached_ring_surf(color, radius, alpha, width=3):
+    r_step = max(2, (int(radius) // 3) * 3)
+    a_step = max(16, min(240, (int(alpha) // 20) * 20))
+    key = (color, r_step, a_step, width)
+    s = _ring_surf_cache.get(key)
+    if s is None:
+        if len(_ring_surf_cache) > 160:
+            _ring_surf_cache.clear()
+        sz = r_step * 2 + 6
+        s = pygame.Surface((sz, sz), pygame.SRCALPHA)
+        pygame.draw.circle(s, (*color, a_step), (r_step + 3, r_step + 3), r_step, width=width)
+        _ring_surf_cache[key] = s
+    return s, r_step
+
+def get_cached_frozen_aura_surf(aura_rad):
+    s = _frozen_aura_cache.get(aura_rad)
+    if s is None:
+        s = pygame.Surface((aura_rad * 2, aura_rad * 2), pygame.SRCALPHA)
+        pygame.draw.circle(s, (80, 200, 255, 90), (aura_rad, aura_rad), aura_rad)
+        pygame.draw.circle(s, (160, 240, 255, 160), (aura_rad, aura_rad), aura_rad, width=2)
+        _frozen_aura_cache[aura_rad] = s
+    return s
+
+def get_cached_alpha_sprite(orig_surf, alpha):
+    key = (id(orig_surf), alpha)
+    s = _alpha_sprite_cache.get(key)
+    if s is None:
+        if len(_alpha_sprite_cache) > 60:
+            _alpha_sprite_cache.clear()
+        s = orig_surf.copy()
+        s.set_alpha(alpha)
+        _alpha_sprite_cache[key] = s
+    return s
+
+_ice_block_surf = None
+def get_cached_ice_block_surf():
+    global _ice_block_surf
+    if _ice_block_surf is None:
+        _ice_block_surf = pygame.Surface((56, 56), pygame.SRCALPHA)
+        _ice_block_surf.fill((90, 215, 255, 110))
+        pygame.draw.rect(_ice_block_surf, (220, 250, 255, 220), (0, 0, 56, 56), width=2, border_radius=6)
+    return _ice_block_surf
+
 # АНИМАЦИИ ВЫПАДЕНИЯ РЕСУРСОВ (Звёздный, Тёмный кактус, Росток)
 # -------------------------------------------------------------------------
 class ResourceDrop:
@@ -140,9 +231,9 @@ class DropSpark:
         ratio = max(0.0, min(1.0, self.life / self.max_life))
         alpha = int(255 * ratio)
         radius = max(1, int(3.5 * ratio))
-        s = pygame.Surface((radius * 2, radius * 2), pygame.SRCALPHA)
-        pygame.draw.circle(s, (*self.color, alpha), (radius, radius), radius)
-        surface.blit(s, (int(self.x - radius), int(self.y - radius)))
+        s = get_cached_spark_surf(self.color, radius, alpha)
+        if s:
+            surface.blit(s, (int(self.x - radius), int(self.y - radius)))
 
 
 # -------------------------------------------------------------------------
@@ -218,9 +309,9 @@ class AmbientParticle:
         alpha = int(255 * min(1.0, (self.life / self.max_life) * 2.2, (self.max_life - self.life) * 4.5))
         if alpha <= 0: return
         rad = max(1, int(self.size))
-        ps = pygame.Surface((rad * 2 + 2, rad * 2 + 2), pygame.SRCALPHA)
-        pygame.draw.circle(ps, (*self.color, min(220, alpha)), (rad + 1, rad + 1), rad)
-        surface.blit(ps, (int(self.x - rad), int(self.y - rad)))
+        ps = get_cached_spark_surf(self.color, rad, min(220, alpha))
+        if ps:
+            surface.blit(ps, (int(self.x - rad), int(self.y - rad)))
 
 
 class AmbientParticleSystem:
@@ -335,7 +426,8 @@ class Soldier:
             self.stun_timer -= dt
             return
 
-        self.attack_timer += dt
+        fb = getattr(self.tent, 'farm_boost', 0.0) if self.tent else 0.0
+        self.attack_timer += dt * (1.0 + fb)
 
         # Плавное перемещение к назначенной точке сбора
         dx = self.target_x - self.x
@@ -364,11 +456,41 @@ class Soldier:
 
         if closest_enemy and self.attack_timer >= self.attack_cooldown:
             self.attack_timer = 0.0
-            closest_enemy.take_damage(self.damage, damage_type="soldier")
+            actual_soldier_dmg = self.damage
+            closest_enemy.take_damage(actual_soldier_dmg, damage_type="soldier")
             if self.tent:
-                self.tent.record_damage(self.damage)
+                self.tent.record_damage(actual_soldier_dmg)
             if effects is not None:
-                effects.append(FloatingText(closest_enemy.x, closest_enemy.y - 12, f"-{self.damage:g}", (180, 245, 160)))
+                txt_col = (110, 255, 220) if fb > 0 else (180, 245, 160)
+                effects.append(FloatingText(closest_enemy.x, closest_enemy.y - 12, f"-{actual_soldier_dmg:g}", txt_col))
+                if fb > 0 and random.random() < 0.35:
+                    effects.append(DropSpark(closest_enemy.x, closest_enemy.y - 8, burst=False, color=(80, 220, 255)))
+
+            # Талант «Прокалывающий Выпад» (tent_pierce: 10 - 30 px за спину первой цели)
+            s_data = globals().get('savedata', None)
+            pierce_lvl = s_data.get("Upgrades", {}).get("tent_pierce", 0) if isinstance(s_data, dict) else 0
+            if pierce_lvl > 0:
+                p_dist = 5 + pierce_lvl * 5.0  # 10, 15, 20, 25, 30 px
+                p_dx = closest_enemy.x - self.x
+                p_dy = closest_enemy.y - self.y
+                p_len = math.hypot(p_dx, p_dy)
+                if p_len > 0.01:
+                    dir_x = p_dx / p_len
+                    dir_y = p_dy / p_len
+                    pierce_dmg = round(actual_soldier_dmg * 0.50, 1)
+                    for other in enemies:
+                        if other.active and other != closest_enemy and not getattr(other, "is_flying", False) and not getattr(other, "is_burrowed", False):
+                            rel_x = other.x - closest_enemy.x
+                            rel_y = other.y - closest_enemy.y
+                            proj = rel_x * dir_x + rel_y * dir_y
+                            if 0 < proj <= p_dist:
+                                perp = abs(rel_x * (-dir_y) + rel_y * dir_x)
+                                if perp <= 18.0:
+                                    other.take_damage(pierce_dmg, damage_type="soldier")
+                                    if self.tent:
+                                        self.tent.record_damage(pierce_dmg)
+                                    if effects is not None:
+                                        effects.append(FloatingText(other.x, other.y - 10, f"-{pierce_dmg:g} ВЫПАД!", (255, 215, 100)))
 
     def take_mob_damage(self, enemy_type, effects=None, attacker=None):
         if enemy_type == 1: dmg = 3        # Зелёный слайм (легкий тычок)
@@ -418,7 +540,7 @@ class Soldier:
                 if self.tent:
                     self.tent.record_damage(thorns_dmg)
                 if effects is not None:
-                    effects.append(FloatingText(attacker.x, attacker.y - 16, f"-{thorns_dmg:g} 🌵 ШИПЫ!", (160, 255, 120)))
+                    effects.append(FloatingText(attacker.x, attacker.y - 16, f"-{thorns_dmg:g} ШИПЫ!", (160, 255, 120)))
                     effects.append(DropSpark(attacker.x, attacker.y, burst=False))
 
         if self.hp <= 0:
@@ -566,6 +688,10 @@ class Tower:
         self.total_gold_earned = 0
         self.farm_drop_timer = 0.0
         self.speed_boost = 0
+        self.farm_boost = 0.0
+        self.farms_buffing_count = 0
+        self.buffed_towers_count = 0
+        self.dps = base_s.get("dps", 0.0)
         self.drop_interval = 18.0
         self.total_invested = self.cost
 
@@ -682,8 +808,9 @@ class Tower:
             cost = max(5, int((75 * (1.18 ** lvl) + 25 * lvl) * cost_mult))
             map6_crit = 8 if g_map == 6 else 0  # Лабиринт: крит-шанс +8%
             crit_bonus = int(relic_buffs.get("crit_chance_bonus", 0.0) * 100)
+            gh_crit_bonus = int(gh_buffs.get("crit_chance_bonus", 0.0) * 100)
             arcane_precision_lvl = savedata.get("Upgrades", {}).get("arcane_precision", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
-            crit_chance = min(100, 5 + 1 * lvl + magic_focus_lvl * 4 + crit_mast_lvl * 1.5 + map6_crit + crit_bonus + arcane_precision_lvl * 2)
+            crit_chance = min(100, 5 + 1 * lvl + magic_focus_lvl * 4 + crit_mast_lvl * 1.5 + map6_crit + crit_bonus + gh_crit_bonus + arcane_precision_lvl * 2)
             crit_mult = round(2.0 + magic_focus_lvl * 0.25 + relic_buffs.get("crit_dmg_bonus", 0.0), 2)
             return {
                 "damage": dmg,
@@ -703,7 +830,7 @@ class Tower:
             rng = int((135 + rng_lvl + sniper_lvl * 8) * rng_relic_mult)
             dmg = round((1.5 + 0.62 * lvl) * mult * (1.0 + inferno_lvl * 0.10 + gh_buffs.get("fire_dmg_mult", 0.0)) * (1.0 + relic_buffs.get("rock_damage_mult", 0.0)), 1)
             splash_lvl = min(lvl, 5) * 2.2 + min(max(0, lvl - 5), 7) * 1.4 + max(0, lvl - 12) * 0.7
-            splash = int((44 + splash_lvl + inferno_lvl * 4) * (1.0 + relic_buffs.get("rock_splash_mult", 0.0)))
+            splash = int((44 + splash_lvl + inferno_lvl * 4) * (1.0 + relic_buffs.get("rock_splash_mult", 0.0) + gh_buffs.get("fire_splash_mult", 0.0)))
             if g_map == 2:  # Перекрёстки: +15% сплэш
                 splash = int(splash * 1.15)
             elif g_map == 7:  # Петля: +20% сплэш
@@ -728,7 +855,7 @@ class Tower:
         elif self.type == "freeze":
             frost_lvl = savedata.get("Upgrades", {}).get("frost_nova", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
             rng_lvl = min(lvl, 5) * 5.0 + min(max(0, lvl - 5), 7) * 2.8 + max(0, lvl - 12) * 1.4
-            rng = int((135 + rng_lvl + sniper_lvl * 8 + blizzard_lvl * 18) * rng_relic_mult)
+            rng = int((135 + rng_lvl + sniper_lvl * 8 + blizzard_lvl * 18) * rng_relic_mult * (1.0 + gh_buffs.get("frost_range_mult", 0.0)))
             if g_map == 6:  # Лабиринт: радиус заморозки +20%
                 rng = int(rng * 1.20)
             dmg = round((0.35 + 0.16 * lvl) * mult * (1.0 + frost_lvl * 0.20), 1)
@@ -763,8 +890,9 @@ class Tower:
             rally_range_lvl = savedata.get("Upgrades", {}).get("rally_range", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
             rng_lvl = min(lvl, 5) * 5.0 + min(max(0, lvl - 5), 7) * 2.8 + max(0, lvl - 12) * 1.4
             rng = int((105 + rng_lvl + rally_range_lvl * 25) * rng_relic_mult)
-            raw_cd = max(6.0, 9.5 - lvl * 0.16)
-            cd = max(4.5, round(raw_cd / (1.0 + atk_spd_lvl * 0.03 + relic_atk_spd * 0.5), 2))
+            respawn_bonus = gh_buffs.get("respawn_mult", 0.0)
+            raw_cd = max(3.5, (9.5 - lvl * 0.16) / (1.0 + respawn_bonus))
+            cd = max(2.5, round(raw_cd / (1.0 + atk_spd_lvl * 0.03 + relic_atk_spd * 0.5), 2))
             soldiers = 2 + (lvl // 10)
             soldier_hp = int((28 + lvl * 16 + knight_lvl * 10 + shield_lvl * 30) * (1.0 + gh_buffs.get("soldier_hp_mult", 0.0) + relic_buffs.get("soldier_hp_mult", 0.0)))
             soldier_dmg = round((2.0 + lvl * 0.8) * mult * (1.0 + knight_lvl * 0.15 + gh_buffs.get("soldier_dmg_mult", 0.0)), 1)
@@ -821,10 +949,10 @@ class Tower:
             income = int((35 + 25 * lvl + 8 * (lvl ** 1.35)) * (1.0 + soil_lvl * 0.10 + gh_buffs.get("farm_mult", 0.0) + relic_farm))
             cost = max(5, int((80 * (1.20 ** lvl) + 25 * lvl) * cost_mult))
             if irrig_lvl > 0:
-                aura_range = 90 + (irrig_lvl - 1) * 40 + lvl * 3
-                speed_boost = [0, 8, 14, 20][irrig_lvl]
-                drop_interval = [0, 24.0, 18.0, 14.0][irrig_lvl]
-                bonus_harvest = [0, 12, 24, 40][irrig_lvl]
+                aura_range = 75 + (irrig_lvl - 1) * 15 + lvl * 2
+                speed_boost = [0, 10, 18, 25][irrig_lvl]
+                drop_interval = [0, 20.0, 15.0, 10.0][irrig_lvl]
+                bonus_harvest = [0, 15, 30, 50][irrig_lvl]
             else:
                 aura_range = 0
                 speed_boost = 0
@@ -842,8 +970,8 @@ class Tower:
                 "bonus_harvest": bonus_harvest,
                 "upgrade_cost": cost,
                 "special_name": "Аура Орошения" if irrig_lvl > 0 else "Урожай волны",
-                "special_val": f"+{speed_boost}% скор. башен" if irrig_lvl > 0 else f"+{income} какт.",
-                "passive_desc": f"Орошение (R={aura_range}): +{speed_boost}% темпа, полив раз в {int(drop_interval)}с" if irrig_lvl > 0 else "Требуется талант Система Орошения в Древе"
+                "special_val": f"+{speed_boost}% к темпу" if irrig_lvl > 0 else f"+{income} какт.",
+                "passive_desc": f"Аура (R={aura_range}px): +{speed_boost}% к темпу башен, полив раз в {int(drop_interval)}с" if irrig_lvl > 0 else "Требуется талант Система Орошения в Древе"
             }
         elif self.type == "sun":
             solar_power_lvl = savedata.get("Upgrades", {}).get("solar_power", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
@@ -880,6 +1008,7 @@ class Tower:
         self.range = stats["range"]
         self.damage = stats["damage"]
         self.cooldown = stats["cooldown"]
+        self.dps = stats.get("dps", 0.0)
         self.upgrade_cost = stats["upgrade_cost"]
         if self.type == "magic":
             self.crit_chance = stats.get("crit_chance", 5)
@@ -926,6 +1055,7 @@ class Tower:
         return False, 0
 
     def update(self, dt, enemies, projectiles, path, effects=None, active_meteorite=None, farm_boost=0.0):
+        self.farm_boost = farm_boost
         if self.type == "farm":
             irrig_lvl = savedata.get("Upgrades", {}).get("farm_irrigation", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
             if irrig_lvl > 0:
@@ -938,7 +1068,7 @@ class Tower:
                     bonus_c = int(base_bonus * (1.0 + soil_lvl * 0.15))
                     self.total_gold_earned += bonus_c
                     if effects is not None:
-                        effects.append(FloatingText(self.x, self.y - 24, f"+{bonus_c} 🌵 ПОЛИВ!", (140, 255, 120)))
+                        effects.append(FloatingText(self.x, self.y - 24, f"+{bonus_c} ПОЛИВ!", (140, 255, 120)))
                         effects.append(RingEffect(self.x, self.y, 40, (120, 240, 100)))
                         for _ in range(6):
                             effects.append(DropSpark(self.x, self.y - 10, burst=True))
@@ -956,6 +1086,8 @@ class Tower:
         # Ускорение перезарядки от ауры соседних ферм
         eff_dt = dt * (1.0 + farm_boost)
         self.timer += eff_dt
+        if farm_boost > 0 and effects is not None and random.random() < 0.04:
+            effects.append(DropSpark(self.x + random.uniform(-10, 10), self.y - 10 + random.uniform(-8, 8), burst=False, color=(90, 210, 255)))
 
         if self.type == "sun":
             stats = self.get_stats_at_level(self.level)
@@ -1054,6 +1186,19 @@ class Tower:
                 b["tick_timer"] += eff_dt
                 b["float_timer"] += eff_dt
 
+                # Талант «Прожиг Брони» (sun_armor_melt: 3 сек удержания луча плавят броню обычных/элитных мобов)
+                if tgt and getattr(tgt, "is_armored", False) and not getattr(tgt, "is_boss", False):
+                    b["hold_melt_timer"] = b.get("hold_melt_timer", 0.0) + eff_dt
+                    melt_lvl = savedata.get("Upgrades", {}).get("sun_armor_melt", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
+                    if melt_lvl > 0 and b["hold_melt_timer"] >= 3.0:
+                        tgt.is_armored = False
+                        b["hold_melt_timer"] = 0.0
+                        if effects is not None:
+                            effects.append(FloatingText(tgt.x, tgt.y - 22, "БРОНЯ РАСПЛАВЛЕНА!", (255, 120, 40)))
+                            effects.append(RingEffect(tgt.x, tgt.y, 42, (255, 140, 50)))
+                            for _ in range(8):
+                                effects.append(DropSpark(tgt.x, tgt.y, burst=True, color=(255, 140, 40)))
+
                 if b["tick_timer"] >= 0.10:
                     b["tick_timer"] -= 0.10
                     tick_dmg = round(self.damage * b["multiplier"], 2)
@@ -1099,26 +1244,33 @@ class Tower:
         # Метеорит: атака метеорита башнями
         # 1) Если игрок выбрал метеорит целью — атакуем в приоритете (радиус x1.25)
         # 2) Если нет врагов в радиусе атаки башни — башня автоматически атакует метеорит!
-        has_enemies_in_range = False
-        if enemies:
-            for enemy in enemies:
-                if enemy.active and math.hypot(self.x - enemy.x, self.y - enemy.y) <= self.range:
-                    has_enemies_in_range = True
-                    break
-
         meteor_in_reach = active_meteorite and getattr(active_meteorite, "active", False) and (getattr(active_meteorite, "hp", 0) > 0)
         should_shoot_meteor = False
         if meteor_in_reach and self.type != "tent":
-            d_met = math.hypot(self.x - active_meteorite.x, self.y - active_meteorite.y)
-            if active_meteorite.targeted and d_met <= self.range * 1.25:
-                should_shoot_meteor = True
-            elif not has_enemies_in_range and d_met <= self.range * 1.25:
-                should_shoot_meteor = True
+            dx_m = self.x - active_meteorite.x
+            dy_m = self.y - active_meteorite.y
+            d_met_sq = dx_m * dx_m + dy_m * dy_m
+            max_d_met = self.range * 1.25
+            if d_met_sq <= max_d_met * max_d_met:
+                if active_meteorite.targeted:
+                    should_shoot_meteor = True
+                else:
+                    rng_sq = self.range * self.range
+                    has_enemies_in_range = False
+                    for enemy in enemies:
+                        if enemy.active:
+                            ex = self.x - enemy.x
+                            ey = self.y - enemy.y
+                            if ex * ex + ey * ey <= rng_sq:
+                                has_enemies_in_range = True
+                                break
+                    if not has_enemies_in_range:
+                        should_shoot_meteor = True
 
         if should_shoot_meteor:
             if self.timer >= self.cooldown:
                 self.timer = 0.0
-                actual_damage = round(self.damage, 1)
+                actual_damage = self.damage
                 if self.type == "magic":
                     projectiles.append(MagicBullet(self.x, self.y - 18, active_meteorite, actual_damage, self))
                 elif self.type == "rock":
@@ -1172,14 +1324,29 @@ class Tower:
             return
 
         in_range_enemies = []
+        rng_sq = self.range * self.range
         for enemy in enemies:
             if not enemy.active: continue
-            d = math.hypot(self.x - enemy.x, self.y - enemy.y)
-            if d <= self.range:
-                in_range_enemies.append((enemy, d))
+            ex = self.x - enemy.x
+            ey = self.y - enemy.y
+            d_sq = ex * ex + ey * ey
+            if d_sq <= rng_sq:
+                in_range_enemies.append((enemy, math.sqrt(d_sq)))
 
         if not in_range_enemies:
             return
+
+        # Талант «Селективный Прицел»: башни не бьют врагов с иммунитетом/поглощением
+        sel_lvl = savedata.get("Upgrades", {}).get("selective_targeting", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
+        if sel_lvl > 0:
+            if self.type in ("magic", "tesla"):
+                non_devourers = [p for p in in_range_enemies if not getattr(p[0], "is_mana_devourer", False)]
+                if non_devourers:
+                    in_range_enemies = non_devourers
+            elif self.type == "freeze":
+                non_immune = [p for p in in_range_enemies if not getattr(p[0], "is_frost_immune", False)]
+                if non_immune:
+                    in_range_enemies = non_immune
 
         # Талант «Элементный Фокус»: тактическая синергия льда и огня
         ef_lvl = savedata.get("Upgrades", {}).get("elemental_focus", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
@@ -1233,8 +1400,11 @@ class Tower:
                 cur_target = target
                 max_chain_d = 110 if getattr(self, "game_map", 0) == 4 else 95
                 supercond_lvl = savedata.get("Upgrades", {}).get("superconductor", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
+                cond_lvl = savedata.get("Upgrades", {}).get("tesla_conductor", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
                 retention = [0.65, 0.75, 0.82, 0.90][min(3, supercond_lvl)]
                 jump_count = 0
+                used_conductor = False
+                hit_towers = []
                 for _ in range(self.max_chains - 1):
                     next_target = None
                     min_chain_d = float('inf')
@@ -1244,6 +1414,38 @@ class Tower:
                             if d_other <= max_chain_d and d_other < min_chain_d:
                                 min_chain_d = d_other
                                 next_target = other
+
+                    # Талант «Цепной Проводник»: если врагов рядом нет, скачок через союзную башню
+                    if not next_target and cond_lvl > 0 and not used_conductor and (jump_count < self.max_chains - 2):
+                        penalty = [0.50, 0.40, 0.30, 0.20][min(3, cond_lvl - 1)]
+                        best_relay = None
+                        min_relay_d = float('inf')
+                        all_towers = globals().get("towers", [])
+                        for tw in all_towers:
+                            if tw != self and tw not in hit_towers:
+                                td = math.hypot(cur_target.x - tw.x, cur_target.y - tw.y)
+                                if td <= max_chain_d * 1.4 and td < min_relay_d:
+                                    min_relay_d = td
+                                    best_relay = tw
+                        if best_relay:
+                            used_conductor = True
+                            hit_towers.append(best_relay)
+                            chain_pts.append((best_relay.x, best_relay.y - 18))
+                            cur_target = best_relay
+                            actual_damage = round(actual_damage * (1.0 - penalty), 1)
+                            jump_count += 1
+                            if effects is not None:
+                                effects.append(RingEffect(best_relay.x, best_relay.y, 35, (90, 225, 255)))
+                                effects.append(FloatingText(best_relay.x, best_relay.y - 20, "ПРОВОДНИК!", (120, 240, 255)))
+                            # Ищем врага дальше от башни-проводника
+                            min_chain_d = float('inf')
+                            for other in enemies:
+                                if other.active and other not in hit_enemies:
+                                    d_other = math.hypot(cur_target.x - other.x, cur_target.y - other.y)
+                                    if d_other <= max_chain_d and d_other < min_chain_d:
+                                        min_chain_d = d_other
+                                        next_target = other
+
                     if next_target:
                         jump_count += 1
                         chain_dmg = round(actual_damage * (retention ** jump_count), 1)
@@ -1256,6 +1458,36 @@ class Tower:
                         cur_target = next_target
                     else:
                         break
+
+                # Талант «Энергетический Сброс» (tesla_emp: 6 -> 5 -> 4 -> 3 удара)
+                emp_lvl = savedata.get("Upgrades", {}).get("tesla_emp", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
+                if emp_lvl > 0:
+                    self.emp_counter = getattr(self, "emp_counter", 0) + 1
+                    req_hits = 7 - emp_lvl
+                    if self.emp_counter >= req_hits:
+                        self.emp_counter = 0
+                        for mob in hit_enemies:
+                            if getattr(mob, "is_protector", False):
+                                mob.shield_protected_timer = 0.0
+                            if getattr(mob, "is_tiger", False):
+                                mob.tiger_dash_timer = 0.0
+                                mob.speed_multiplier = 1.0
+                            if getattr(mob, "is_shadow", False):
+                                mob.is_cloaked = False
+                                mob.shadow_timer = 0.0
+                            if getattr(mob, "fire_speed_buff_timer", 0.0) > 0.0:
+                                mob.fire_speed_buff_timer = 0.0
+                                mob.speed_multiplier = 1.0
+                        if effects is not None:
+                            effects.append(FloatingText(target.x, target.y - 24, "EMP СБРОС БАФФОВ!", (140, 240, 255)))
+                            effects.append(RingEffect(target.x, target.y, 60, (140, 240, 255)))
+
+                # Талант «Остаточная Поляризация» (tesla_polarization: 3.5с ионизации)
+                pol_lvl = savedata.get("Upgrades", {}).get("tesla_polarization", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
+                if pol_lvl > 0:
+                    for mob in hit_enemies:
+                        mob.polarized_timer = 3.5
+                        mob.polarized_dmg = max(1.0, round(actual_damage * 0.25, 1))
 
                 if effects is not None:
                     effects.append(LightningEffect(chain_pts, (90, 225, 255)))
@@ -1363,9 +1595,7 @@ class Tower:
 
         # Визуальный эффект ледяной глыбы при заморозке башни
         if getattr(self, "freeze_disabled_timer", 0.0) > 0.0:
-            ice_s = pygame.Surface((56, 56), pygame.SRCALPHA)
-            ice_s.fill((90, 215, 255, 110))
-            pygame.draw.rect(ice_s, (220, 250, 255, 220), (0, 0, 56, 56), width=2, border_radius=6)
+            ice_s = get_cached_ice_block_surf()
             surface.blit(ice_s, (int(self.x - 28), int(self.y - 28)))
             ice_txt = tiny_font.render(f"ЛЁД {self.freeze_disabled_timer:.1f}с", True, CYAN)
             surface.blit(ice_txt, (int(self.x - ice_txt.get_width() // 2), int(self.y - 42)))
@@ -1384,7 +1614,7 @@ class Tower:
                         pygame.draw.line(surface, (70, 210, 120), (self.x, self.y), (rx, ry), 2)
                     draw_rally_flag(surface, rx, ry, active=is_active)
 
-        if hovered and self.range > 0:
+        if (hovered or getattr(self, "_is_inspected", False)) and self.range > 0:
             rx, ry, rr = int(self.x), int(self.y), int(self.range)
             col = (60, 240, 100, 45) if not upgrade_mode else (255, 140, 40, 55)
             bcol = (40, 180, 70, 170) if not upgrade_mode else (255, 140, 30, 190)
@@ -1471,12 +1701,13 @@ class MagicBullet:
             self.rect.center = (int(self.x), int(self.y))
 
     def draw(self, surface):
+        t_len = max(1, len(self.trail))
         for i, pos in enumerate(self.trail):
-            alpha = int(220 * (i / max(1, len(self.trail))))
-            rad = max(1, int(4 * (i / max(1, len(self.trail)))))
+            alpha = int(220 * (i / t_len))
+            rad = max(1, int(4 * (i / t_len)))
             s = pygame.Surface((rad * 2, rad * 2), pygame.SRCALPHA)
             pygame.draw.circle(s, (180, 80, 240, alpha), (rad, rad), rad)
-            surface.blit(s, (int(pos[0] - rad), int(pos[1] - rad)))
+            surface.blit(s, (pos[0] - rad, pos[1] - rad))
         surface.blit(self.image, self.rect)
 
 
@@ -1519,6 +1750,7 @@ class RockBullet:
                         self.source_tower.record_damage(actual_dmg)
                     effects.append(FloatingText(active_meteorite.x, active_meteorite.y - 12, f"-{actual_dmg:g}", (255, 175, 75)))
 
+            shatter_freeze_enemies = []
             for enemy in enemies:
                 if enemy.active:
                     edist = math.hypot(self.x - enemy.x, self.y - enemy.y)
@@ -1536,10 +1768,24 @@ class RockBullet:
                             had_crit = True
                             savedata.setdefault("Stats", {})["total_crits"] = savedata.get("Stats", {}).get("total_crits", 0) + 1
                             effects.append(FloatingText(enemy.x, enemy.y - 14, f"-{actual_dmg:g} CRIT!", GOLD, is_crit=True))
+                            if enemy.health <= 0:
+                                shatter_lvl = savedata.get("Upgrades", {}).get("rock_frost_shatter", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
+                                if shatter_lvl > 0:
+                                    shatter_freeze_enemies.append((enemy, float(shatter_lvl)))
                         else:
                             effects.append(FloatingText(enemy.x, enemy.y - 10, f"-{actual_dmg:g}", (255, 175, 75)))
             if had_crit:
                 sfx_combo.play()
+            if shatter_freeze_enemies:
+                for killed_m, f_dur in shatter_freeze_enemies:
+                    f_ratio = getattr(killed_m, "freeze_ratio", 0.5)
+                    for o in enemies:
+                        if o.active and o != killed_m:
+                            if math.hypot(self.x - o.x, self.y - o.y) <= self.splash_radius:
+                                o.freeze_timer = max(o.freeze_timer, f_dur)
+                                o.speed_multiplier = min(o.speed_multiplier, max(0.1, 1.0 - f_ratio))
+                    effects.append(SplashEffect(self.x, self.y, self.splash_radius, (100, 220, 255)))
+                    effects.append(FloatingText(self.x, self.y - 20, f"ЛЕДЯНОЙ РАСКОЛ {int(f_dur)}с!", (120, 230, 255)))
             self.active = False
             effects.append(SplashEffect(self.x, self.y, self.splash_radius, (255, 120, 20)))
         else:
@@ -1548,12 +1794,13 @@ class RockBullet:
             self.rect.center = (int(self.x), int(self.y))
 
     def draw(self, surface):
+        t_len = max(1, len(self.trail))
         for i, pos in enumerate(self.trail):
-            alpha = int(200 * (i / max(1, len(self.trail))))
-            rad = max(1, int(4 * (i / max(1, len(self.trail)))))
+            alpha = int(200 * (i / t_len))
+            rad = max(1, int(4 * (i / t_len)))
             s = pygame.Surface((rad * 2, rad * 2), pygame.SRCALPHA)
             pygame.draw.circle(s, (255, 140, 20, alpha), (rad, rad), rad)
-            surface.blit(s, (int(pos[0] - rad), int(pos[1] - rad)))
+            surface.blit(s, (pos[0] - rad, pos[1] - rad))
         surface.blit(self.image, self.rect)
 
 
@@ -1616,12 +1863,13 @@ class FrostBullet:
             self.rect.center = (int(self.x), int(self.y))
 
     def draw(self, surface):
+        t_len = max(1, len(self.trail))
         for i, pos in enumerate(self.trail):
-            alpha = int(220 * (i / max(1, len(self.trail))))
-            rad = max(1, int(4 * (i / max(1, len(self.trail)))))
+            alpha = int(220 * (i / t_len))
+            rad = max(1, int(4 * (i / t_len)))
             s = pygame.Surface((rad * 2, rad * 2), pygame.SRCALPHA)
             pygame.draw.circle(s, (140, 230, 255, alpha), (rad, rad), rad)
-            surface.blit(s, (int(pos[0] - rad), int(pos[1] - rad)))
+            surface.blit(s, (pos[0] - rad, pos[1] - rad))
         surface.blit(self.image, self.rect)
 
 
@@ -1652,6 +1900,244 @@ class SplashEffect:
 RingEffect = SplashEffect
 
 
+class EventHorizonVortexEffect:
+    """Гравитационная сингулярность «Горизонт Событий»: затягивает мобов и замедляет на 60%."""
+    def __init__(self, x, y, radius=240, duration=2.5, level=1, enemies_ref=None):
+        self.x = float(x)
+        self.y = float(y)
+        self.radius = float(radius)
+        self.duration = float(duration)
+        self.max_duration = float(duration)
+        self.level = level
+        self.enemies_ref = enemies_ref if enemies_ref is not None else []
+        self.angle = 0.0
+        self.swirl_particles = []
+        for _ in range(32):
+            ang = random.uniform(0, math.pi * 2)
+            dist = random.uniform(25, self.radius)
+            spd = random.uniform(40, 95)
+            self.swirl_particles.append([ang, dist, spd])
+
+    def update(self, dt=0.016):
+        if dt is None: dt = 0.016
+        self.duration -= dt
+        if self.duration <= 0:
+            return True
+        self.angle += dt * 5.0
+
+        for p in self.swirl_particles:
+            p[0] += dt * (3.5 + 45.0 / max(15.0, p[1]))
+            p[1] -= dt * p[2]
+            if p[1] < 12:
+                p[1] = random.uniform(self.radius * 0.7, self.radius)
+                p[0] = random.uniform(0, math.pi * 2)
+
+        pull_spd = 120.0 + 40.0 * self.level
+        for e in self.enemies_ref:
+            if getattr(e, "active", False) and getattr(e, "type", 0) < 1000 and not getattr(e, "is_burrowed", False):
+                dx = self.x - e.x
+                dy = self.y - e.y
+                dist = math.hypot(dx, dy)
+                if 12.0 < dist <= self.radius:
+                    step = min(dist, pull_spd * dt * (1.0 - (dist / self.radius) * 0.35))
+                    e.x += (dx / dist) * step
+                    e.y += (dy / dist) * step
+                    e.freeze_timer = max(e.freeze_timer, 0.4)
+                    e.speed_multiplier = min(e.speed_multiplier, 0.40)
+        return False
+
+    def draw(self, surface):
+        if self.duration <= 0: return
+        t_prog = max(0.0, min(1.0, self.duration / self.max_duration))
+        alpha = int(240 * min(1.0, (1.0 - t_prog) * 4.0 if t_prog > 0.8 else t_prog * 3.0))
+        if alpha <= 0: return
+
+        cx, cy = int(self.x), int(self.y)
+        r_int = int(self.radius)
+        surf_sz = r_int * 2 + 20
+        v_surf = pygame.Surface((surf_sz, surf_sz), pygame.SRCALPHA)
+        sc = surf_sz // 2
+
+        pulse = math.sin(self.angle * 2.0) * 12
+        pygame.draw.circle(v_surf, (80, 20, 140, int(alpha * 0.25)), (sc, sc), int(self.radius * 0.9 + pulse))
+        pygame.draw.circle(v_surf, (150, 45, 230, int(alpha * 0.45)), (sc, sc), int(self.radius * 0.65 - pulse), width=2)
+        pygame.draw.circle(v_surf, (200, 100, 255, int(alpha * 0.60)), (sc, sc), int(self.radius * 0.4), width=2)
+
+        num_arms = 4
+        for arm in range(num_arms):
+            base_a = self.angle + arm * (math.pi * 2 / num_arms)
+            pts = []
+            for step_i in range(12):
+                st_r = 18 + step_i * (self.radius * 0.75 / 12)
+                st_a = base_a + step_i * 0.25
+                pts.append((int(sc + math.cos(st_a) * st_r), int(sc + math.sin(st_a) * st_r)))
+            if len(pts) >= 2:
+                pygame.draw.lines(v_surf, (180, 60, 255, int(alpha * 0.55)), False, pts, width=2)
+
+        for p in self.swirl_particles:
+            px = int(sc + math.cos(p[0]) * p[1])
+            py = int(sc + math.sin(p[0]) * p[1])
+            p_sz = 3 if p[1] > 40 else 2
+            pygame.draw.circle(v_surf, (220, 160, 255, alpha), (px, py), p_sz)
+
+        core_r = int(22 + 4 * math.sin(self.angle * 3.0))
+        pygame.draw.circle(v_surf, (140, 20, 220, alpha), (sc, sc), core_r + 4)
+        pygame.draw.circle(v_surf, (255, 200, 255, alpha), (sc, sc), core_r + 2, width=2)
+        pygame.draw.circle(v_surf, (10, 5, 18, 255), (sc, sc), core_r)
+
+        surface.blit(v_surf, (cx - sc, cy - sc))
+
+
+class ShatterNovaEffect:
+    """Грандиозный взрыв «Сверхновой Раскола» при гибели боссов или метеоритов."""
+    def __init__(self, x, y, damage=1000, max_radius=240, freeze_dur=4.5):
+        self.x = float(x)
+        self.y = float(y)
+        self.damage = damage
+        self.max_radius = float(max_radius)
+        self.freeze_dur = freeze_dur
+        self.life = 0.95
+        self.max_life = 0.95
+        self.rays = []
+        for _ in range(18):
+            ang = random.uniform(0, math.pi * 2)
+            ln = random.uniform(self.max_radius * 0.8, self.max_radius * 1.35)
+            self.rays.append((ang, ln))
+
+    def update(self, dt=0.016):
+        if dt is None: dt = 0.016
+        self.life -= dt
+        return self.life <= 0
+
+    def draw(self, surface):
+        if self.life <= 0: return
+        prog = 1.0 - (self.life / self.max_life)
+        alpha = int(245 * (1.0 - prog))
+        cur_r = int(self.max_radius * (prog ** 0.6))
+        cx, cy = int(self.x), int(self.y)
+
+        sz = int(self.max_radius * 2.8)
+        s_surf = pygame.Surface((sz, sz), pygame.SRCALPHA)
+        sc = sz // 2
+
+        for ang, ln in self.rays:
+            r_cur = int(ln * prog)
+            x2 = int(sc + math.cos(ang) * r_cur)
+            y2 = int(sc + math.sin(ang) * r_cur)
+            pygame.draw.line(s_surf, (180, 220, 255, int(alpha * 0.7)), (sc, sc), (x2, y2), 3)
+            pygame.draw.line(s_surf, (255, 255, 255, alpha), (sc, sc), (x2, y2), 1)
+
+        if cur_r > 4:
+            pygame.draw.circle(s_surf, (120, 230, 255, int(alpha * 0.4)), (sc, sc), cur_r, width=6)
+            pygame.draw.circle(s_surf, (220, 80, 255, int(alpha * 0.6)), (sc, sc), max(2, cur_r - 8), width=4)
+            pygame.draw.circle(s_surf, (255, 255, 255, alpha), (sc, sc), max(2, cur_r - 4), width=2)
+            pygame.draw.circle(s_surf, (160, 240, 255, int(alpha * 0.25)), (sc, sc), max(1, cur_r // 2))
+
+        core_r = max(1, int(35 * (1.0 - prog)))
+        pygame.draw.circle(s_surf, (255, 255, 255, alpha), (sc, sc), core_r)
+        pygame.draw.circle(s_surf, (180, 240, 255, alpha), (sc, sc), core_r + 6, width=2)
+
+        surface.blit(s_surf, (cx - sc, cy - sc))
+
+
+class AchievementToast:
+    """Всплывающий анимированный баннер получения достижения (консольный/Steam стиль)."""
+    def __init__(self, title, desc, icon=None):
+        self.title = str(title)
+        self.desc = str(desc)
+        self.icon = icon
+        self.life = 4.2
+        self.max_life = 4.2
+        self.particles = []
+        for _ in range(24):
+            ang = random.uniform(0, math.pi * 2)
+            spd = random.uniform(20, 80)
+            self.particles.append([0.0, 0.0, math.cos(ang) * spd, math.sin(ang) * spd, random.uniform(0.6, 1.4)])
+
+    def update(self, dt=0.016):
+        if dt is None: dt = 0.016
+        self.life -= dt
+        for p in self.particles:
+            p[0] += p[2] * dt
+            p[1] += p[3] * dt
+            p[4] -= dt
+        return self.life <= 0
+
+    def draw(self, surface):
+        if self.life <= 0: return
+        t_elapsed = self.max_life - self.life
+        w, h = 420, 68
+        target_y = 80
+
+        if t_elapsed < 0.35:
+            prog = t_elapsed / 0.35
+            cur_y = int(-h + (target_y + h) * (math.sin(prog * math.pi * 0.5) ** 1.2))
+        elif self.life < 0.35:
+            prog = self.life / 0.35
+            cur_y = int(-h + (target_y + h) * (prog ** 1.5))
+        else:
+            cur_y = target_y
+
+        cx = (SCREEN_WIDTH - w) // 2
+
+        # Тень под баннером для полного отделения от любого интерфейса и текста
+        shadow_surf = pygame.Surface((w + 12, h + 12), pygame.SRCALPHA)
+        pygame.draw.rect(shadow_surf, (0, 0, 0, 180), (0, 0, w + 12, h + 12), border_radius=16)
+        surface.blit(shadow_surf, (cx - 6, cur_y + 4))
+
+        # 100% непрозрачный сплошной глубокий фон баннера
+        banner_surf = pygame.Surface((w, h), pygame.SRCALPHA)
+        pygame.draw.rect(banner_surf, (14, 20, 32, 255), (0, 0, w, h), border_radius=12)
+        pygame.draw.rect(banner_surf, (22, 30, 46, 255), (2, 2, w - 4, h - 4), border_radius=10)
+
+        pulse = (math.sin(pygame.time.get_ticks() * 0.008) + 1.0) * 0.5
+        border_col = (int(225 + 30 * pulse), int(180 + 35 * pulse), 55)
+        pygame.draw.rect(banner_surf, border_col, (0, 0, w, h), width=2, border_radius=12)
+
+        ix = 14
+        iy = (h - 40) // 2
+        pygame.draw.circle(banner_surf, (40, 50, 70), (ix + 20, iy + 20), 22)
+        pygame.draw.circle(banner_surf, GOLD, (ix + 20, iy + 20), 22, width=2)
+        if self.icon:
+            scaled_icon = pygame.transform.smoothscale(self.icon, (32, 32))
+            banner_surf.blit(scaled_icon, (ix + 4, iy + 4))
+
+        # Заголовок без спецсимволов звездочек для избежания квадратов □
+        t_header = tiny_font.render("[ НОВОЕ ДОСТИЖЕНИЕ ]", True, GOLD)
+        hx = ix + 48
+        hy = 16
+        pygame.draw.polygon(banner_surf, GOLD, [(hx - 10, hy), (hx - 6, hy - 4), (hx - 2, hy), (hx - 6, hy + 4)])
+        banner_surf.blit(t_header, (hx + 4, 10))
+        rx = hx + 8 + t_header.get_width()
+        pygame.draw.polygon(banner_surf, GOLD, [(rx, hy), (rx + 4, hy - 4), (rx + 8, hy), (rx + 4, hy + 4)])
+
+        t_title = font.render(self.title, True, WHITE)
+        if t_title.get_width() > w - ix - 58:
+            t_title = small_font.render(self.title, True, WHITE)
+        if t_title.get_width() > w - ix - 58:
+            t_title = tiny_font.render(self.title, True, WHITE)
+        banner_surf.blit(t_title, (ix + 48, 28))
+
+        if self.desc:
+            max_desc_w = w - ix - 58
+            desc_str = self.desc
+            t_desc = tiny_font.render(desc_str, True, (200, 215, 230))
+            if t_desc.get_width() > max_desc_w:
+                while len(desc_str) > 5 and tiny_font.render(desc_str + "...", True, (200, 215, 230)).get_width() > max_desc_w:
+                    desc_str = desc_str[:-1]
+                t_desc = tiny_font.render(desc_str + "...", True, (200, 215, 230))
+            banner_surf.blit(t_desc, (ix + 48, 48))
+
+        surface.blit(banner_surf, (cx, cur_y))
+
+        for p in self.particles:
+            if p[4] > 0:
+                p_alpha = int(255 * (p[4] / 1.4))
+                p_surf = get_cached_spark_surf(2, (255, 220, 80), p_alpha)
+                if p_surf:
+                    surface.blit(p_surf, (cx + ix + 20 + int(p[0]) - 2, cur_y + iy + 20 + int(p[1]) - 2))
+
+
 class JellyDroplet:
     """Летящая желейная капля при лопании слайма."""
     def __init__(self, x, y, color, speed=None, angle=None):
@@ -1680,15 +2166,13 @@ class JellyDroplet:
         progress = max(0.0, min(1.0, self.life / self.max_life))
         r = max(1, int(self.radius * progress))
         alpha = int(220 * progress)
-        s = pygame.Surface((r * 2 + 2, r * 2 + 2), pygame.SRCALPHA)
-        pygame.draw.circle(s, (*self.color, alpha), (r + 1, r + 1), r)
-        if r >= 2:
-            pygame.draw.circle(s, (255, 255, 255, int(alpha * 0.7)), (r, r - 1), max(1, r // 2))
-        surface.blit(s, (int(self.x - r), int(self.y - r)))
+        if alpha <= 0: return
+        s = get_cached_spark_surf(self.color, r, alpha)
+        surface.blit(s, (int(self.x - r - 1), int(self.y - r - 1)))
 
 
 class SlimeSplat:
-    """Желейное пятно-клякса на земле от лопнувшего слайма."""
+    """Желейное пятно-клякса на земле от лопнувшего слайма (кэшированная отрисовка)."""
     def __init__(self, x, y, color, size=16):
         self.x = int(x)
         self.y = int(y)
@@ -1696,13 +2180,24 @@ class SlimeSplat:
         self.size = size
         self.life = 3.2
         self.max_life = 3.2
-        self.satellites = []
+        surf_sz = max(10, int(self.size * 2.6))
+        self.scx = surf_sz // 2
+        self.scy = surf_sz // 2
+        self.base_surf = pygame.Surface((surf_sz, surf_sz), pygame.SRCALPHA)
+        main_w = int(self.size * 0.9)
+        main_h = max(2, int(self.size * 0.55 * 0.9))
+        pygame.draw.ellipse(self.base_surf, (*self.color, 140), (self.scx - main_w, self.scy - main_h, main_w * 2, main_h * 2))
+        hi_w = max(1, main_w // 2)
+        hi_h = max(1, main_h // 2)
+        pygame.draw.ellipse(self.base_surf, (255, 255, 255, 60), (self.scx - hi_w, self.scy - hi_h - 1, hi_w * 2, hi_h * 2))
         num_sat = random.randint(2, 4)
         for _ in range(num_sat):
             ang = random.uniform(0, math.pi * 2)
             dist = random.uniform(size * 0.45, size * 0.95)
             sr = random.randint(max(2, size // 6), max(3, size // 3))
-            self.satellites.append((math.cos(ang) * dist, math.sin(ang) * dist, sr))
+            ox = math.cos(ang) * dist
+            oy = math.sin(ang) * dist
+            pygame.draw.circle(self.base_surf, (*self.color, 120), (int(self.scx + ox), int(self.scy + oy)), sr)
 
     def update(self, dt=0.016):
         if dt is None: dt = 0.016
@@ -1712,26 +2207,10 @@ class SlimeSplat:
     def draw(self, surface):
         if self.life <= 0: return
         ratio = max(0.0, min(1.0, self.life / self.max_life))
-        alpha = int(140 * min(1.0, ratio * 1.5))
+        alpha = int(255 * min(1.0, ratio * 1.5))
         if alpha <= 0: return
-
-        surf_sz = int(self.size * 2.6)
-        splat_surf = pygame.Surface((surf_sz, surf_sz), pygame.SRCALPHA)
-        scx, scy = surf_sz // 2, surf_sz // 2
-
-        main_w = int(self.size * (0.8 + 0.2 * ratio))
-        main_h = int(self.size * 0.55 * (0.8 + 0.2 * ratio))
-        pygame.draw.ellipse(splat_surf, (*self.color, alpha), (scx - main_w, scy - main_h, main_w * 2, main_h * 2))
-
-        hi_w = max(1, main_w // 2)
-        hi_h = max(1, main_h // 2)
-        pygame.draw.ellipse(splat_surf, (255, 255, 255, int(alpha * 0.45)), (scx - hi_w, scy - hi_h - 1, hi_w * 2, hi_h * 2))
-
-        for ox, oy, sr in self.satellites:
-            c_r = max(1, int(sr * ratio))
-            pygame.draw.circle(splat_surf, (*self.color, int(alpha * 0.85)), (int(scx + ox), int(scy + oy)), c_r)
-
-        surface.blit(splat_surf, (self.x - scx, self.y - scy))
+        self.base_surf.set_alpha(alpha)
+        surface.blit(self.base_surf, (self.x - self.scx, self.y - self.scy))
 
 
 class LightningEffect:
@@ -1777,6 +2256,11 @@ class FloatingText:
         self.max_life = life
         self.vy = -40.0 if is_crit else -28.0
         self.is_crit = is_crit
+        used_font = font if is_crit else small_font
+        self.txt_surf = used_font.render(self.text, True, color)
+        self.sh_surf = used_font.render(self.text, True, (0, 0, 0))
+        self.half_w = self.txt_surf.get_width() // 2
+        self.half_h = self.txt_surf.get_height() // 2
 
     def update(self, dt=0.016):
         if dt is None: dt = 0.016
@@ -1788,17 +2272,13 @@ class FloatingText:
         if self.life <= 0: return
         ratio = max(0.0, min(1.0, self.life / self.max_life))
         alpha = int(255 * ratio)
-        used_font = font if self.is_crit else small_font
-        txt_surf = used_font.render(self.text, True, self.color)
         if alpha < 250:
-            txt_surf.set_alpha(alpha)
-        # Тень для контраста на любом фоне
-        sh_surf = used_font.render(self.text, True, (0, 0, 0))
-        sh_surf.set_alpha(int(alpha * 0.7))
-        cx = int(self.x - txt_surf.get_width() // 2)
-        cy = int(self.y - txt_surf.get_height() // 2)
-        surface.blit(sh_surf, (cx + 1, cy + 1))
-        surface.blit(txt_surf, (cx, cy))
+            self.txt_surf.set_alpha(alpha)
+            self.sh_surf.set_alpha(int(alpha * 0.7))
+        cx = int(self.x - self.half_w)
+        cy = int(self.y - self.half_h)
+        surface.blit(self.sh_surf, (cx + 1, cy + 1))
+        surface.blit(self.txt_surf, (cx, cy))
 
 
 # -------------------------------------------------------------------------
@@ -1879,10 +2359,12 @@ class AstralMeteorite:
 
         glow_alpha = int(120 + 50 * math.sin(self.pulse))
         glow_r = int(self.radius + 12 + 4 * math.sin(self.pulse * 1.5))
-        glow_surf = pygame.Surface((glow_r * 2, glow_r * 2), pygame.SRCALPHA)
+        if not hasattr(self, "_glow_surf") or self._glow_surf is None:
+            self._glow_surf = pygame.Surface((110, 110), pygame.SRCALPHA)
+        self._glow_surf.fill((0, 0, 0, 0))
         col = (190, 60, 255, min(255, max(0, glow_alpha // 3))) if not self.targeted else (255, 60, 70, min(255, max(0, glow_alpha // 2)))
-        pygame.draw.circle(glow_surf, col, (glow_r, glow_r), glow_r)
-        surface.blit(glow_surf, (center[0] - glow_r, center[1] - glow_r))
+        pygame.draw.circle(self._glow_surf, col, (55, 55), glow_r)
+        surface.blit(self._glow_surf, (center[0] - 55, center[1] - 55))
 
         surface.blit(meteorite_img, (center[0] - 26, center[1] - 26))
 
@@ -1921,16 +2403,21 @@ class CactusDrone:
         self.x = self.center_x
         self.y = self.center_y
 
-    def update(self, dt, enemies, projectiles, effects, active_meteorite=None):
+    def update(self, dt, enemies, projectiles, effects, active_meteorite=None, savedata=None):
         self.angle += dt * 0.75
         self.x = self.center_x + math.cos(self.angle) * self.radius_x
         self.y = self.center_y + math.sin(self.angle) * self.radius_y
 
+        s_data = savedata if isinstance(savedata, dict) else globals().get('savedata', None)
+        gh_buffs = get_greenhouse_buffs(s_data) if (s_data and isinstance(s_data, dict)) else {}
+        d_dmg_mult = 1.0 + gh_buffs.get("drone_dmg_mult", 0.0)
+        d_spd_mult = 1.0 + gh_buffs.get("drone_spd_mult", 0.0)
+
         self.shoot_timer += dt
-        cd = max(0.6, 1.4 - self.level * 0.25)
+        cd = max(0.35, (1.4 - self.level * 0.25) / d_spd_mult)
         if self.shoot_timer >= cd:
             self.shoot_timer = 0.0
-            dmg = round(12.0 * (1.5 ** (self.level - 1)), 1)
+            dmg = round(12.0 * (1.5 ** (self.level - 1)) * d_dmg_mult, 1)
             # Приоритет: метеорит, если он в таргете
             if active_meteorite and active_meteorite.active and active_meteorite.targeted:
                 if math.hypot(self.x - active_meteorite.x, self.y - active_meteorite.y) <= 380:
@@ -1940,10 +2427,16 @@ class CactusDrone:
 
             alive_enemies = [e for e in enemies if e.active]
             if alive_enemies:
-                nearest = min(alive_enemies, key=lambda e: math.hypot(self.x - e.x, self.y - e.y))
+                sorted_enemies = sorted(alive_enemies, key=lambda e: math.hypot(self.x - e.x, self.y - e.y))
+                nearest = sorted_enemies[0]
                 if math.hypot(self.x - nearest.x, self.y - nearest.y) <= 320:
                     projectiles.append(DroneSpike(self.x, self.y, nearest, dmg))
                     laser.play()
+                    # Если разблокирован двойной залп (уровень 5 Звёздного Цереуса)
+                    if gh_buffs.get("dual_drone", False) and len(sorted_enemies) > 1:
+                        second = sorted_enemies[1]
+                        if math.hypot(self.x - second.x, self.y - second.y) <= 320:
+                            projectiles.append(DroneSpike(self.x, self.y, second, dmg))
 
     def draw(self, surface):
         cx, cy = int(self.x), int(self.y)
@@ -1995,6 +2488,10 @@ class OrbitalBeamEffect:
         self.radius = float(radius)
         self.timer = 0.0
         self.duration = 0.65
+        bw_max = max(8, int(self.radius * 0.8))
+        self._beam_surf = pygame.Surface((bw_max + 8, max(1, int(self.y))), pygame.SRCALPHA)
+        gr_max = int(self.radius * 2.2)
+        self._g_surf = pygame.Surface((gr_max + 8, gr_max + 8), pygame.SRCALPHA)
 
     def update(self, dt):
         self.timer += dt
@@ -2004,16 +2501,17 @@ class OrbitalBeamEffect:
         progress = self.timer / self.duration
         alpha = int(255 * (1.0 - progress))
         beam_w = max(4, int(self.radius * 0.4 * (1.0 - progress * 0.7)))
-        beam_surf = pygame.Surface((beam_w * 2, int(self.y)), pygame.SRCALPHA)
-        pygame.draw.rect(beam_surf, (220, 120, 255, min(255, alpha)), (0, 0, beam_w * 2, int(self.y)))
-        pygame.draw.rect(beam_surf, (255, 255, 255, min(255, alpha)), (beam_w // 2, 0, beam_w, int(self.y)))
-        surface.blit(beam_surf, (int(self.x - beam_w), 0))
+        self._beam_surf.fill((0, 0, 0, 0))
+        y_int = max(1, int(self.y))
+        pygame.draw.rect(self._beam_surf, (220, 120, 255, min(255, alpha)), (0, 0, beam_w * 2, y_int))
+        pygame.draw.rect(self._beam_surf, (255, 255, 255, min(255, alpha)), (beam_w // 2, 0, beam_w, y_int))
+        surface.blit(self._beam_surf, (int(self.x - beam_w), 0), (0, 0, beam_w * 2, y_int))
 
         gr = int(self.radius * (0.3 + progress * 0.7))
-        g_surf = pygame.Surface((gr * 2, gr * 2), pygame.SRCALPHA)
-        pygame.draw.circle(g_surf, (210, 80, 255, min(255, alpha // 2)), (gr, gr), gr)
-        pygame.draw.circle(g_surf, (255, 255, 255, min(255, alpha)), (gr, gr), gr, width=3)
-        surface.blit(g_surf, (int(self.x - gr), int(self.y - gr)))
+        self._g_surf.fill((0, 0, 0, 0))
+        pygame.draw.circle(self._g_surf, (210, 80, 255, min(255, alpha // 2)), (gr, gr), gr)
+        pygame.draw.circle(self._g_surf, (255, 255, 255, min(255, alpha)), (gr, gr), gr, width=3)
+        surface.blit(self._g_surf, (int(self.x - gr), int(self.y - gr)), (0, 0, gr * 2 + 1, gr * 2 + 1))
 
 
 # -------------------------------------------------------------------------
@@ -2234,16 +2732,16 @@ class Enemy:
             self.lava_trail_timer = 1.2
             self.is_enraged = False
         elif enemy_type >= 2000:
-            # Слизнебарон (Волна 50) — Ледяной щит и заморозка ближайшей башни
-            self.base_speed = 25.0
-            self.health = float(int(12500 * (1.5 ** max(0, current_wave // 25 - 2))))
+            # Слизнебарон (Волна 50) — Ледяной босс с заморозкой башни
+            self.base_speed = 21.0
+            self.health = float(int(8800 * (1.4 ** max(0, current_wave // 25 - 2))))
             self.reward = 3500
             self.base_damage = 999999
             self.image = colossus_boss_img
             self.is_armored = True
-            self.magic_resist = 0.30
+            self.magic_resist = 0.20
             self.freeze_tower_timer = 5.0
-            self.ice_shield_timer = 9.0
+            self.ice_shield_timer = 20.0
             self.ice_shield_hp = 0.0
         elif enemy_type >= 1000:
             # Царь-Слизень (Волна 25) — Землетрясение (стан воинов) и призыв свиты на 75%/50%/25% HP
@@ -2350,7 +2848,7 @@ class Enemy:
         elif self.type >= 3000:
             return -0.10
         elif self.type >= 2000:
-            return 0.50
+            return 0.35
         elif self.type >= 1000:
             return 0.0
         return getattr(self, "freeze_resist", 0.0)
@@ -2380,15 +2878,20 @@ class Enemy:
         if getattr(self, "is_burrowed", False):
             return 0.0  # Песчаный крот под землей полностью неуязвим для атак!
 
+        s_data = savedata if isinstance(savedata, dict) else globals().get('savedata', None)
+        vi_lvl = s_data.get("Upgrades", {}).get("void_infusion", 0) if (s_data and isinstance(s_data, dict)) else 0
+        armor_pierce = (1.0 if vi_lvl >= 3 else (vi_lvl * 0.35)) if (is_crit and vi_lvl > 0) else 0.0  # Эссенция Бездны: сквозной урон ТОЛЬКО при критах
+
         # Адаптивный барьер Короля Всех Слаймов (волна 100)
         if self.type >= 4000:
-            elem = getattr(self, "adaptive_element", 0)
-            if elem == 0 and damage_type in ["rock", "soldier", "physical"]:
-                return 0.0
-            elif elem == 1 and damage_type in ["magic", "lightning", "sun"]:
-                return 0.0
-            elif elem == 2 and damage_type in ["freeze", "orbital", "laser"]:
-                return 0.0
+            if armor_pierce < 1.0:  # На 3-м ур. Эссенция Бездны пробивает даже божественный барьер критами!
+                elem = getattr(self, "adaptive_element", 0)
+                if elem == 0 and damage_type in ["rock", "soldier", "physical"]:
+                    return 0.0
+                elif elem == 1 and damage_type in ["magic", "lightning", "sun"]:
+                    return 0.0
+                elif elem == 2 and damage_type in ["freeze", "orbital", "laser"]:
+                    return 0.0
 
         # Ледяной щит Слизнебарона
         if getattr(self, "ice_shield_hp", 0.0) > 0.0:
@@ -2442,9 +2945,11 @@ class Enemy:
 
         if getattr(self, 'is_armored', False) and damage_type in ["rock", "soldier", "physical"]:
             armor_factor = 0.25 if getattr(self, 'game_map', 0) == 7 else (0.75 if self.type >= 1000 else 0.50)
-            amount *= armor_factor
+            eff_armor = 1.0 - (1.0 - armor_factor) * (1.0 - armor_pierce)
+            amount *= eff_armor
         if getattr(self, 'magic_resist', 0.0) > 0 and damage_type in ["magic", "lightning"]:
-            amount *= (1.0 - self.magic_resist)
+            eff_resist = self.magic_resist * (1.0 - armor_pierce)
+            amount *= (1.0 - eff_resist)
         if getattr(self, 'is_frost_jelly', False):
             if damage_type == "rock":  # Огненный урон наносит +60%
                 amount *= 1.60
@@ -2452,8 +2957,7 @@ class Enemy:
                 amount *= 0.30
         if getattr(self, 'is_cloaked', False):
             amount *= 0.50  # Теневой покров снижает любой входящий урон на 50%
-        # Определение savedata
-        s_data = savedata if isinstance(savedata, dict) else globals().get('savedata', None)
+
         # Талант «Охотник на Боссов»: +10% урона по боссам и элитам за ур.
         if self.type >= 50 and s_data and isinstance(s_data, dict):
             giant_lvl = s_data.get("Upgrades", {}).get("giant_hunter", 0)
@@ -2468,11 +2972,12 @@ class Enemy:
                 if mob_tier > 0:
                     amount *= (1.0 + (b_dmg_lvl * 0.01) * mob_tier)
 
-        # Талант «Эссенция Бездны»: чистый урон Бездны (+10% за ранг)
+        # Талант «Усилитель Бездны»: +12% к общему урону оазиса за ранг
+        va_lvl = s_data.get("Upgrades", {}).get("void_amplifier", 0) if (s_data and isinstance(s_data, dict)) else 0
+        if va_lvl > 0 and damage_type in ["rock", "magic", "freeze", "tesla", "soldier", "drone", "normal", "physical"]:
+            amount *= (1.0 + va_lvl * 0.12)
+
         if s_data and isinstance(s_data, dict):
-            vi_lvl = s_data.get("Upgrades", {}).get("void_infusion", 0)
-            if vi_lvl > 0:
-                amount *= (1.0 + vi_lvl * 0.10)
             r_buffs = get_all_relic_buffs(s_data)
             if self.type in (4, 10) and r_buffs.get("fast_shadow_dmg_mult", 0.0) > 0:
                 amount *= (1.0 + r_buffs["fast_shadow_dmg_mult"])
@@ -2480,6 +2985,26 @@ class Enemy:
                 amount *= (1.0 + r_buffs["slowed_target_dmg_mult"])
         old_hp = self.health
         self.health -= amount
+
+        # Талант «Остаточная Поляризация» (tesla_polarization: искры при ударе от других башен)
+        if getattr(self, "polarized_timer", 0.0) > 0.0 and damage_type not in ["lightning", "polarize"]:
+            self.polarized_timer = 0.0
+            p_dmg = getattr(self, "polarized_dmg", 2.0)
+            cur_enemies = globals().get("enemies", [])
+            spark_candidates = []
+            for other in cur_enemies:
+                if other != self and other.active and other.health > 0:
+                    d_c = math.hypot(self.x - other.x, self.y - other.y)
+                    if d_c <= 95:
+                        spark_candidates.append((d_c, other))
+            spark_candidates.sort(key=lambda pair: pair[0])
+            cur_effects = globals().get("effects", None)
+            for _, cand in spark_candidates[:2]:
+                cand.take_damage(p_dmg, damage_type="polarize")
+                if cur_effects is not None:
+                    cur_effects.append(FloatingText(cand.x, cand.y - 12, f"-{p_dmg:g} ИСКРА!", (120, 230, 255)))
+                    cur_effects.append(LightningEffect([(self.x, self.y), (cand.x, cand.y)], color=(140, 240, 255)))
+
         if self.health <= 0:
             self.active = False
         return old_hp - self.health
@@ -2491,6 +3016,9 @@ class Enemy:
             self.freeze_timer -= dt
             if self.freeze_timer <= 0:
                 self.speed_multiplier = 1.0
+
+        if getattr(self, "polarized_timer", 0.0) > 0.0:
+            self.polarized_timer -= dt
 
         # Способность Целителя восстанавливать HP союзникам
         if getattr(self, 'is_healer', False) and enemies:
@@ -2614,8 +3142,8 @@ class Enemy:
             if hasattr(self, "ice_shield_timer"):
                 self.ice_shield_timer -= dt
                 if self.ice_shield_timer <= 0:
-                    self.ice_shield_timer = 11.0
-                    self.ice_shield_hp = self.max_health * 0.12
+                    self.ice_shield_timer = 26.0
+                    self.ice_shield_hp = self.max_health * 0.08
                     if effects is not None:
                         effects.append(RingEffect(self.x, self.y, 80, (160, 240, 255)))
                         effects.append(FloatingText(self.x, self.y - 30, "ЛЕДЯНОЙ ЩИТ!", (180, 245, 255)))
@@ -2774,25 +3302,28 @@ class Enemy:
         if getattr(self, "is_flying", False):
             bob = int(math.sin(pygame.time.get_ticks() * 0.007) * 3) - 6
             draw_y += bob
-            # Тень на земле
-            shadow_s = pygame.Surface((28, 12), pygame.SRCALPHA)
-            pygame.draw.ellipse(shadow_s, (20, 20, 30, 80), (0, 0, 28, 12))
-            surface.blit(shadow_s, (int(self.x - 14), int(self.y + 12)))
+            # Тень на земле (кэшированная)
+            global _phantom_shadow_surf
+            if _phantom_shadow_surf is None:
+                _phantom_shadow_surf = pygame.Surface((28, 12), pygame.SRCALPHA)
+                pygame.draw.ellipse(_phantom_shadow_surf, (20, 20, 30, 80), (0, 0, 28, 12))
+            surface.blit(_phantom_shadow_surf, (int(self.x - 14), int(self.y + 12)))
 
         # Аура Слайма-Защитника (16)
         if getattr(self, "is_protector", False):
             pulse = math.sin(pygame.time.get_ticks() * 0.008) * 4
-            p_surf = pygame.Surface((190, 190), pygame.SRCALPHA)
-            pygame.draw.circle(p_surf, (255, 200, 50, 35), (95, 95), int(90 + pulse))
-            pygame.draw.circle(p_surf, (255, 220, 80, 140), (95, 95), int(90 + pulse), width=2)
-            surface.blit(p_surf, (int(self.x - 95), int(self.y - 95)))
+            global _protector_aura_surf
+            if _protector_aura_surf is None:
+                _protector_aura_surf = pygame.Surface((190, 190), pygame.SRCALPHA)
+            _protector_aura_surf.fill((0, 0, 0, 0))
+            pygame.draw.circle(_protector_aura_surf, (255, 200, 50, 35), (95, 95), int(90 + pulse))
+            pygame.draw.circle(_protector_aura_surf, (255, 220, 80, 140), (95, 95), int(90 + pulse), width=2)
+            surface.blit(_protector_aura_surf, (int(self.x - 95), int(self.y - 95)))
 
         # Если заморожен — рисуем морозную ауру позади слайма
         if self.is_frozen():
             aura_rad = max(18, self.rect.width // 2 + 5)
-            aura_s = pygame.Surface((aura_rad * 2, aura_rad * 2), pygame.SRCALPHA)
-            pygame.draw.circle(aura_s, (80, 200, 255, 90), (aura_rad, aura_rad), aura_rad)
-            pygame.draw.circle(aura_s, (160, 240, 255, 160), (aura_rad, aura_rad), aura_rad, width=2)
+            aura_s = get_cached_frozen_aura_surf(aura_rad)
             surface.blit(aura_s, (int(self.x - aura_rad), int(self.y - aura_rad)))
 
         # Уникальные визуальные ауры боссов (соответствуют цветам 4 Больших Слаймов)
@@ -2801,14 +3332,22 @@ class Enemy:
             elem = getattr(self, "adaptive_element", 0)
             elem_cols = {0: (255, 140, 60), 1: (200, 100, 255), 2: (100, 230, 255)}
             e_col = elem_cols.get(elem, (200, 100, 255))
-            b_aura = pygame.Surface((116, 116), pygame.SRCALPHA)
+            b_aura = getattr(self, "_boss_aura_surf", None)
+            if b_aura is None:
+                b_aura = pygame.Surface((116, 116), pygame.SRCALPHA)
+                self._boss_aura_surf = b_aura
+            b_aura.fill((0, 0, 0, 0))
             pygame.draw.circle(b_aura, (140, 20, 220, 115), (58, 58), 48)
             pygame.draw.circle(b_aura, (*e_col, 220), (58, 58), 54, width=3)
             pygame.draw.circle(b_aura, (255, 255, 255, 140), (58, 58), 32, width=1)
             surface.blit(b_aura, (int(self.x - 58), int(self.y - 58)))
         elif self.type >= 3000:
             # Багровый Титан (Волна 75)
-            b_aura = pygame.Surface((92, 92), pygame.SRCALPHA)
+            b_aura = getattr(self, "_boss_aura_surf", None)
+            if b_aura is None:
+                b_aura = pygame.Surface((92, 92), pygame.SRCALPHA)
+                self._boss_aura_surf = b_aura
+            b_aura.fill((0, 0, 0, 0))
             bg_col = (255, 20, 20, 150) if getattr(self, "is_enraged", False) else (225, 40, 40, 95)
             pygame.draw.circle(b_aura, bg_col, (46, 46), 40)
             pygame.draw.circle(b_aura, (255, 120, 50, 180), (46, 46), 42, width=2)
@@ -2816,7 +3355,11 @@ class Enemy:
             surface.blit(b_aura, (int(self.x - 46), int(self.y - 46)))
         elif self.type >= 2000:
             # Лазурный Барон (Волна 50)
-            b_aura = pygame.Surface((90, 90), pygame.SRCALPHA)
+            b_aura = getattr(self, "_boss_aura_surf", None)
+            if b_aura is None:
+                b_aura = pygame.Surface((90, 90), pygame.SRCALPHA)
+                self._boss_aura_surf = b_aura
+            b_aura.fill((0, 0, 0, 0))
             pygame.draw.circle(b_aura, (40, 160, 240, 95), (45, 45), 38)
             pygame.draw.circle(b_aura, (120, 235, 255, 190), (45, 45), 40, width=2)
             if getattr(self, "ice_shield_hp", 0.0) > 0.0:
@@ -2824,7 +3367,11 @@ class Enemy:
             surface.blit(b_aura, (int(self.x - 45), int(self.y - 45)))
         elif self.type >= 1000:
             # Изумрудный Царь (Волна 25)
-            b_aura = pygame.Surface((84, 84), pygame.SRCALPHA)
+            b_aura = getattr(self, "_boss_aura_surf", None)
+            if b_aura is None:
+                b_aura = pygame.Surface((84, 84), pygame.SRCALPHA)
+                self._boss_aura_surf = b_aura
+            b_aura.fill((0, 0, 0, 0))
             pygame.draw.circle(b_aura, (35, 200, 75, 90), (42, 42), 36)
             pygame.draw.circle(b_aura, (100, 255, 140, 170), (42, 42), 38, width=2)
             surface.blit(b_aura, (int(self.x - 42), int(self.y - 42)))
@@ -2832,16 +3379,16 @@ class Enemy:
         # Отрисовка спрайта слайма (чистый пиксель-арт без искажений)
         if getattr(self, "is_burrowed", False):
             # Под землёй: полупрозрачный силуэт и песчаная насыпь
-            c_surf = img_to_draw.copy()
-            c_surf.set_alpha(80)
+            c_surf = get_cached_alpha_sprite(img_to_draw, 80)
             surface.blit(c_surf, (self.rect.x, self.rect.y + 12))
-            sand_s = pygame.Surface((38, 16), pygame.SRCALPHA)
-            pygame.draw.ellipse(sand_s, (190, 150, 95, 180), (0, 0, 38, 16))
-            pygame.draw.ellipse(sand_s, (230, 190, 120, 230), (4, 2, 30, 10))
-            surface.blit(sand_s, (int(self.x - 19), int(self.y + 6)))
+            global _burrow_sand_surf
+            if _burrow_sand_surf is None:
+                _burrow_sand_surf = pygame.Surface((38, 16), pygame.SRCALPHA)
+                pygame.draw.ellipse(_burrow_sand_surf, (190, 150, 95, 180), (0, 0, 38, 16))
+                pygame.draw.ellipse(_burrow_sand_surf, (230, 190, 120, 230), (4, 2, 30, 10))
+            surface.blit(_burrow_sand_surf, (int(self.x - 19), int(self.y + 6)))
         elif getattr(self, "is_cloaked", False):
-            c_surf = img_to_draw.copy()
-            c_surf.set_alpha(115)
+            c_surf = get_cached_alpha_sprite(img_to_draw, 115)
             surface.blit(c_surf, (self.rect.x, draw_y))
         else:
             surface.blit(img_to_draw, (self.rect.x, draw_y))
@@ -2983,9 +3530,10 @@ class DigSite:
 # -------------------------------------------------------------------------
 class DigMinigameSession:
     """Управляет состоянием сетки 5х5 мини-игры раскопок."""
-    def __init__(self, map_id, savedata):
+    def __init__(self, map_id, savedata, cur_wave=1):
         self.map_id = map_id
         self.savedata = savedata
+        self.cur_wave = cur_wave
         self.grid_size = 5
         self.dug = [[False for _ in range(5)] for _ in range(5)]
         
@@ -3018,6 +3566,17 @@ class DigMinigameSession:
         self.origin_y = origin_y
         self.relic_cells = set((origin_x + dx, origin_y + dy) for dx, dy in shape)
 
+        # Талант «Золотая Жила» (archaeology_gold_vein: 20-100% шанс блока 1х1)
+        vein_lvl = savedata.get("Upgrades", {}).get("archaeology_gold_vein", 0) if isinstance(savedata, dict) else 0
+        self.gold_vein_cell = None
+        self.gold_vein_found = False
+        self.last_gold_vein_cacti = 0
+        self.last_gold_vein_stars = 0
+        if vein_lvl > 0 and random.random() < (vein_lvl * 0.20):
+            empty_cells = [(x, y) for x in range(5) for y in range(5) if (x, y) not in self.relic_cells]
+            if empty_cells:
+                self.gold_vein_cell = random.choice(empty_cells)
+
         self.uncovered_cells = set()
         self.is_won = False
         self.is_lost = False
@@ -3036,6 +3595,20 @@ class DigMinigameSession:
 
         self.dug[gy][gx] = True
         self.moves_left -= 1
+
+        # Проверка попадания в золотую жилу (тайник 1х1)
+        if self.gold_vein_cell == (gx, gy) and not self.gold_vein_found:
+            self.gold_vein_found = True
+            st_count = max(1, self.cur_wave // 3)
+            c_count = 60 + self.cur_wave * 8
+            self.last_gold_vein_stars = st_count
+            self.last_gold_vein_cacti = c_count
+            if isinstance(self.savedata, dict):
+                self.savedata["StellarCactuses"] = self.savedata.get("StellarCactuses", 0) + st_count
+            sfx_relic_found.play()
+            self.status_text = f"ЗОЛОТАЯ ЖИЛА! +{c_count} к., +{st_count} зв. кактусов!"
+            self.status_color = (255, 215, 60)
+            return "gold_vein"
 
         hit = (gx, gy) in self.relic_cells
         if hit:
@@ -3369,6 +3942,5 @@ class MapDecorManager:
         if get_graphics_preset() == "optimized":
             return
         for item in self.items:
-            x, y = item["x"], item["y"]
             surf = item["surf"]
-            surface.blit(surf, (x - surf.get_width() // 2, y - surf.get_height() // 2))
+            surface.blit(surf, (item["x"] - surf.get_width() // 2, item["y"] - surf.get_height() // 2))
