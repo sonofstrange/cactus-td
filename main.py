@@ -43,31 +43,7 @@ def get_cached_hud_icon(img, size):
         _cached_hud_icons[key] = icon
     return icon
 
-cached_road_surfs = {}
 
-def get_cached_road_surf(map_id, path_coords, r_border, r_col):
-    key = (map_id, tuple(tuple(p) for p in path_coords))
-    surf = cached_road_surfs.get(key)
-    if surf is None:
-        surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-        for i in range(len(path_coords) - 1):
-            pygame.draw.line(surf, r_border, path_coords[i], path_coords[i + 1], 40)
-            pygame.draw.circle(surf, r_border, path_coords[i + 1], 20)
-        for i in range(len(path_coords) - 1):
-            pygame.draw.line(surf, r_col, path_coords[i], path_coords[i + 1], 32)
-            pygame.draw.circle(surf, r_col, path_coords[i + 1], 16)
-        cached_road_surfs[key] = surf
-    return surf
-
-cached_biome_bg = {}
-
-def get_cached_biome_bg(map_id):
-    surf = cached_biome_bg.get(map_id)
-    if surf is None:
-        surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
-        generate_background(surf, 0, map_id=map_id)
-        cached_biome_bg[map_id] = surf
-    return surf
 
 _farm_base_aura_cache = {}
 
@@ -4374,18 +4350,21 @@ def run_game():
 
                 draw_surf = screen if (ox == 0 and oy == 0) else field_surf
 
-                # Быстрый рендеринг фона биома в бою (кэшированный бэкдроп)
-                draw_surf.blit(get_cached_biome_bg(game_map), (0, 0))
+                generate_background(draw_surf, bg_time, map_id=game_map)
 
                 # Атмосферный фоновый декор биома (кристаллы, камни, кактусы, лавовые трещины)
                 map_decor.draw(draw_surf, bg_time)
 
-                # Дорога биома (двойная окантовка и цвет грунта - кэшированная)
+                # Дорога биома (двойная окантовка и цвет грунта)
                 biome = MAP_BIOMES_DATA.get(game_map, MAP_BIOMES_DATA[0])
                 r_border = biome["road_border"]
                 r_col = biome["road_col"]
-                road_surf = get_cached_road_surf(game_map, path, r_border, r_col)
-                draw_surf.blit(road_surf, (0, 0))
+                for i in range(len(path) - 1):
+                    pygame.draw.line(draw_surf, r_border, path[i], path[i + 1], 40)
+                    pygame.draw.circle(draw_surf, r_border, path[i + 1], 20)
+                for i in range(len(path) - 1):
+                    pygame.draw.line(draw_surf, r_col, path[i], path[i + 1], 32)
+                    pygame.draw.circle(draw_surf, r_col, path[i + 1], 16)
 
                 # Желейные пятна слаймов на земле и дороге (только на нормальной графике)
                 if get_graphics_preset() != "optimized":

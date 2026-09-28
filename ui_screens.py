@@ -112,7 +112,7 @@ def generate_background(surf, bg_time, map_id=None, custom_cols=None):
         min(255, int(col_b[2] * 1.35 + 24))
     )
 
-    if get_graphics_preset() == "optimized" or IS_ANDROID:
+    if get_graphics_preset() == "optimized":
         ox = int((bg_time * 0.035) % cell_size)
         oy = int((bg_time * 0.035) % cell_size)
         for x in range(ox - cell_size, sw + cell_size, cell_size):
@@ -129,15 +129,15 @@ def generate_background(surf, bg_time, map_id=None, custom_cols=None):
     for x in range(-cell_size * 2, sw + cell_size * 3, cell_size):
         wave_top = math.sin(x * 0.008 + t * 1.6) * 25.0 + math.cos(x * 0.018 - t * 1.1) * 12.0
         wave_bot = math.sin(x * 0.007 - t * 1.3 + 1.2) * 26.0 + math.sin(x * 0.015 + t * 1.9) * 12.0
-        pygame.draw.line(surf, line_col, (x + sway_x + wave_top, 0), (x + sway_x * 0.7 + wave_bot, sh), 2)
+        pygame.draw.line(surf, line_col, (x + sway_x + wave_top, 0), (x + sway_x * 0.7 + wave_bot, sh), 1)
 
     for y in range(-cell_size * 2, sh + cell_size * 3, cell_size):
         wave_left = math.cos(y * 0.009 + t * 1.5) * 24.0 + math.sin(y * 0.016 - t * 1.2) * 11.0
         wave_right = math.cos(y * 0.008 - t * 1.2 + 1.5) * 25.0 + math.cos(y * 0.014 + t * 1.8) * 11.0
-        pygame.draw.line(surf, line_col, (0, y + sway_y + wave_left), (sw, y + sway_y * 0.7 + wave_right), 2)
+        pygame.draw.line(surf, line_col, (0, y + sway_y + wave_left), (sw, y + sway_y * 0.7 + wave_right), 1)
 
     # Атмосферные парящие светящиеся пылинки/звёздочки на фоне (прямой блит микро-спрайтов без полноэкранного альфа-буфера)
-    num_particles = 32
+    num_particles = 18 if IS_ANDROID else 32
     for i in range(num_particles):
         speed_x = 0.016 + (i % 5) * 0.008
         speed_y = 0.011 + ((i * 3) % 6) * 0.006
@@ -7057,18 +7057,6 @@ class MenuDemoSimulation:
             except Exception:
                 pass
 
-        # Пререндеринг статичной поверхности дороги (устраняет покадровую отрисовку 40 толстых линий)
-        self.road_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-        r_border = self.biome.get("road_border", (85, 70, 50))
-        r_col = self.biome.get("road_col", (125, 110, 85))
-        if self.path:
-            for p_i in range(len(self.path) - 1):
-                pygame.draw.line(self.road_surf, r_border, self.path[p_i], self.path[p_i + 1], 40)
-                pygame.draw.circle(self.road_surf, r_border, self.path[p_i + 1], 20)
-            for p_i in range(len(self.path) - 1):
-                pygame.draw.line(self.road_surf, r_col, self.path[p_i], self.path[p_i + 1], 32)
-                pygame.draw.circle(self.road_surf, r_col, self.path[p_i + 1], 16)
-
     def update(self, dt):
         dt = min(dt, 0.1)
 
@@ -7157,9 +7145,16 @@ class MenuDemoSimulation:
             except Exception:
                 pass
 
-        # Дорожка биома (быстрый блит кэшированной поверхности вместо тяжелой покадровой растеризации)
-        if getattr(self, "road_surf", None):
-            surf.blit(self.road_surf, (0, 0))
+        # Дорожка биома (прямая быстрая отрисовка)
+        r_border = self.biome.get("road_border", (85, 70, 50))
+        r_col = self.biome.get("road_col", (125, 110, 85))
+        if self.path:
+            for p_i in range(len(self.path) - 1):
+                pygame.draw.line(surf, r_border, self.path[p_i], self.path[p_i + 1], 40)
+                pygame.draw.circle(surf, r_border, self.path[p_i + 1], 20)
+            for p_i in range(len(self.path) - 1):
+                pygame.draw.line(surf, r_col, self.path[p_i], self.path[p_i + 1], 32)
+                pygame.draw.circle(surf, r_col, self.path[p_i + 1], 16)
 
         # Желейные пятна слаймов на земле и дороге
         for splat in getattr(self, "slime_splats", []):

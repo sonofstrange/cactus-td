@@ -63,8 +63,10 @@ for root, dirs, files in os.walk(assets_dir):
     for f in files:
         full_p = os.path.join(root, f)
         rel_p = os.path.relpath(full_p, PROJECT_DIR).replace("\\", "/")
+        if rel_p.startswith("assets/branding"):
+            continue
         proj_assets[rel_p] = full_p
-print(f"Found {len(proj_assets)} assets in project directory.")
+print(f"Found {len(proj_assets)} assets in project directory (excluding branding).")
 
 # Process members from old private.tar
 seen_names = set()
@@ -95,6 +97,17 @@ for member in tin.getmembers():
 new_assets_count = 0
 for rel_name, full_path in sorted(proj_assets.items()):
     if rel_name not in seen_names:
+        # Ensure parent directories exist in tar archive
+        parts = rel_name.split("/")
+        for i in range(1, len(parts)):
+            parent_dir = "/".join(parts[:i])
+            if parent_dir not in seen_names:
+                d_ti = tarfile.TarInfo(name=parent_dir)
+                d_ti.type = tarfile.DIRTYPE
+                d_ti.mode = 0o755
+                tout.addfile(d_ti)
+                seen_names.add(parent_dir)
+
         with open(full_path, "rb") as af:
             asset_data = af.read()
         ti = tarfile.TarInfo(name=rel_name)
