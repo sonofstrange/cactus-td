@@ -465,7 +465,7 @@ class Soldier:
                 self.tent.record_damage(actual_soldier_dmg)
             if effects is not None:
                 txt_col = (110, 255, 220) if fb > 0 else (180, 245, 160)
-                effects.append(FloatingText(closest_enemy.x, closest_enemy.y - 12, f"-{actual_soldier_dmg:g}", txt_col))
+                effects.append(FloatingText(closest_enemy.x, closest_enemy.y - 12, f"-{int(round(actual_soldier_dmg))}", txt_col))
                 if fb > 0 and random.random() < 0.35:
                     effects.append(DropSpark(closest_enemy.x, closest_enemy.y - 8, burst=False, color=(80, 220, 255)))
 
@@ -493,7 +493,7 @@ class Soldier:
                                     if self.tent:
                                         self.tent.record_damage(pierce_dmg)
                                     if effects is not None:
-                                        effects.append(FloatingText(other.x, other.y - 10, f"-{pierce_dmg:g} ВЫПАД!", (255, 215, 100)))
+                                        effects.append(FloatingText(other.x, other.y - 10, f"-{int(round(pierce_dmg))} ВЫПАД!", (255, 215, 100)))
 
     def take_mob_damage(self, enemy_type, effects=None, attacker=None):
         if enemy_type == 1: dmg = 3        # Зелёный слайм (легкий тычок)
@@ -543,7 +543,7 @@ class Soldier:
                 if self.tent:
                     self.tent.record_damage(thorns_dmg)
                 if effects is not None:
-                    effects.append(FloatingText(attacker.x, attacker.y - 16, f"-{thorns_dmg:g} ШИПЫ!", (160, 255, 120)))
+                    effects.append(FloatingText(attacker.x, attacker.y - 16, f"-{int(round(thorns_dmg))} ШИПЫ!", (160, 255, 120)))
                     effects.append(DropSpark(attacker.x, attacker.y, burst=False))
 
         if self.hp <= 0:
@@ -610,13 +610,14 @@ def get_cached_range_surf(radius, col, bcol, width=2):
 
 
 class Tower:
-    def __init__(self, x, y, tower_type, starting_level=0, max_level_bonus=0, dmg_mult=1.0, game_map=0):
+    def __init__(self, x, y, tower_type, starting_level=0, max_level_bonus=0, dmg_mult=1.0, game_map=0, savedata=None):
         self.x = x
         self.y = y
         self.type = tower_type
         self.level = 0
         self.dmg_mult = dmg_mult
         self.game_map = game_map
+        self.savedata = savedata if isinstance(savedata, dict) else globals().get("savedata", {})
         tower_built.play()
 
         if tower_type == "magic":
@@ -769,20 +770,28 @@ class Tower:
             s.target_x = rx + ox
             s.target_y = ry + oy
 
-    def get_stats_at_level(self, lvl):
+    def get_stats_at_level(self, lvl, savedata=None):
         """Возвращает словарь всех характеристик башни для заданного уровня."""
+        if not isinstance(savedata, dict):
+            savedata = getattr(self, "savedata", None)
+            if not isinstance(savedata, dict):
+                savedata = globals().get("savedata", {})
+        if not isinstance(savedata, dict):
+            savedata = {}
+
         mult = getattr(self, "dmg_mult", 1.0)
         g_map = getattr(self, "game_map", 0)
         if g_map == 3:  # Волны: башни наносят +10% урона
             mult *= 1.10
 
-        sniper_lvl = savedata.get("Upgrades", {}).get("sniper_optics", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
-        atk_spd_lvl = savedata.get("Upgrades", {}).get("attack_speed_overdrive", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
-        crit_mast_lvl = savedata.get("Upgrades", {}).get("critical_mastery", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
-        blizzard_lvl = savedata.get("Upgrades", {}).get("blizzard", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
-        shield_lvl = savedata.get("Upgrades", {}).get("shield_wall", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
-        gh_buffs = get_greenhouse_buffs(savedata) if 'savedata' in globals() and isinstance(savedata, dict) else {}
-        relic_buffs = get_all_relic_buffs(savedata) if 'savedata' in globals() and isinstance(savedata, dict) else {}
+        upg = savedata.get("Upgrades", {}) if isinstance(savedata, dict) else {}
+        sniper_lvl = upg.get("sniper_optics", 0)
+        atk_spd_lvl = upg.get("attack_speed_overdrive", 0)
+        crit_mast_lvl = upg.get("critical_mastery", 0)
+        blizzard_lvl = upg.get("blizzard", 0)
+        shield_lvl = upg.get("shield_wall", 0)
+        gh_buffs = get_greenhouse_buffs(savedata) if isinstance(savedata, dict) else {}
+        relic_buffs = get_all_relic_buffs(savedata) if isinstance(savedata, dict) else {}
         if gh_buffs.get("compost_dmg_mult", 0.0) > 0:
             mult *= (1.0 + gh_buffs["compost_dmg_mult"])
         if relic_buffs.get("global_dmg_mult", 0.0) > 0:
@@ -795,13 +804,13 @@ class Tower:
         relic_atk_spd = relic_buffs.get("atk_spd_mult", 0.0)
 
         upg_discount = min(0.50, relic_buffs.get("upgrade_cost_discount", 0.0))
-        diff = savedata.get("difficulty", "normal") if 'savedata' in globals() and isinstance(savedata, dict) else "normal"
+        diff = savedata.get("difficulty", "normal") if isinstance(savedata, dict) else "normal"
         diff_upg_mult = 0.8 if diff == "casual" else 1.0
         cost_mult = (1.0 - upg_discount) * diff_upg_mult
 
         if self.type == "magic":
-            magic_focus_lvl = savedata.get("Upgrades", {}).get("magic_focus", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
-            magic_power_lvl = savedata.get("Upgrades", {}).get("magic_power", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
+            magic_focus_lvl = upg.get("magic_focus", 0)
+            magic_power_lvl = upg.get("magic_power", 0)
             rng_lvl = min(lvl, 5) * 6.0 + min(max(0, lvl - 5), 7) * 3.0 + max(0, lvl - 12) * 1.5
             rng = int((145 + rng_lvl + sniper_lvl * 8) * rng_relic_mult)
             dmg_per_lvl = 0.75 + magic_power_lvl * 0.10
@@ -812,7 +821,7 @@ class Tower:
             map6_crit = 8 if g_map == 6 else 0  # Лабиринт: крит-шанс +8%
             crit_bonus = int(relic_buffs.get("crit_chance_bonus", 0.0) * 100)
             gh_crit_bonus = int(gh_buffs.get("crit_chance_bonus", 0.0) * 100)
-            arcane_precision_lvl = savedata.get("Upgrades", {}).get("arcane_precision", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
+            arcane_precision_lvl = upg.get("arcane_precision", 0)
             crit_chance = min(100, 5 + 1 * lvl + magic_focus_lvl * 4 + crit_mast_lvl * 1.5 + map6_crit + crit_bonus + gh_crit_bonus + arcane_precision_lvl * 2)
             crit_mult = round(2.0 + magic_focus_lvl * 0.25 + relic_buffs.get("crit_dmg_bonus", 0.0), 2)
             return {
@@ -828,7 +837,7 @@ class Tower:
                 "passive_desc": "Пассивно: пробивает маг. броню врагов"
             }
         elif self.type == "rock":
-            inferno_lvl = savedata.get("Upgrades", {}).get("inferno_mastery", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
+            inferno_lvl = upg.get("inferno_mastery", 0)
             rng_lvl = min(lvl, 5) * 5.0 + min(max(0, lvl - 5), 7) * 2.8 + max(0, lvl - 12) * 1.4
             rng = int((135 + rng_lvl + sniper_lvl * 8) * rng_relic_mult)
             dmg = round((1.5 + 0.62 * lvl) * mult * (1.0 + inferno_lvl * 0.10 + gh_buffs.get("fire_dmg_mult", 0.0)) * (1.0 + relic_buffs.get("rock_damage_mult", 0.0)), 1)
@@ -856,7 +865,7 @@ class Tower:
                 "passive_desc": f"Синергия: +{combo_pct}% урона по заморозке"
             }
         elif self.type == "freeze":
-            frost_lvl = savedata.get("Upgrades", {}).get("frost_nova", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
+            frost_lvl = upg.get("frost_nova", 0)
             rng_lvl = min(lvl, 5) * 5.0 + min(max(0, lvl - 5), 7) * 2.8 + max(0, lvl - 12) * 1.4
             rng = int((135 + rng_lvl + sniper_lvl * 8 + blizzard_lvl * 18) * rng_relic_mult * (1.0 + gh_buffs.get("frost_range_mult", 0.0)))
             if g_map == 6:  # Лабиринт: радиус заморозки +20%
@@ -868,7 +877,7 @@ class Tower:
             total_slow_pct = min(80.0, base_slow + diminishing_lvl_slow + talent_bonus)
             slow_ratio = max(0.20, round(1.0 - (total_slow_pct / 100.0), 2))
             slow_pct = int(round((1.0 - slow_ratio) * 100))
-            frost_linger_lvl = savedata.get("Upgrades", {}).get("frost_linger", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
+            frost_linger_lvl = upg.get("frost_linger", 0)
             slow_dur = round((2.4 + lvl * 0.12 + frost_linger_lvl * 0.15) * (1.0 + frost_lvl * 0.10) * (1.0 + relic_buffs.get("freeze_duration_mult", 0.0)), 2)
             if g_map == 1:  # Круговорот: Заморозка длится +15% дольше
                 slow_dur = round(slow_dur * 1.15, 1)
@@ -889,21 +898,21 @@ class Tower:
                 "passive_desc": "Аура льда: тушит горение и замедляет толпу"
             }
         elif self.type == "tent":
-            knight_lvl = savedata.get("Upgrades", {}).get("knight_training", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
-            rally_range_lvl = savedata.get("Upgrades", {}).get("rally_range", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
+            knight_lvl = upg.get("knight_training", 0)
+            rally_range_lvl = upg.get("rally_range", 0)
             rng_lvl = min(lvl, 5) * 5.0 + min(max(0, lvl - 5), 7) * 2.8 + max(0, lvl - 12) * 1.4
             rng = int((105 + rng_lvl + rally_range_lvl * 25) * rng_relic_mult)
             respawn_bonus = gh_buffs.get("respawn_mult", 0.0)
             raw_cd = max(3.5, (9.5 - lvl * 0.16) / (1.0 + respawn_bonus))
             cd = max(2.5, round(raw_cd / (1.0 + atk_spd_lvl * 0.03 + relic_atk_spd * 0.5), 2))
-            soldiers = 2 + (lvl // 10)
+            soldiers = 2 + shield_lvl + (lvl // 10)
             soldier_hp = int((28 + lvl * 16 + knight_lvl * 10 + shield_lvl * 30) * (1.0 + gh_buffs.get("soldier_hp_mult", 0.0) + relic_buffs.get("soldier_hp_mult", 0.0)))
             soldier_dmg = round((2.0 + lvl * 0.8) * mult * (1.0 + knight_lvl * 0.15 + gh_buffs.get("soldier_dmg_mult", 0.0)), 1)
             cost = max(5, int((100 * (1.20 ** lvl) + 25 * lvl) * cost_mult))
             armor_red = min(50, knight_lvl * 6 + int(relic_buffs.get("soldier_armor_mult", 0.0) * 100))
             p_desc = f"Орден: -{armor_red}% урона воинам" if armor_red > 0 else "Тактика: удерживают врагов на тропе"
             if shield_lvl > 0:
-                p_desc += f" (Щит +{shield_lvl * 30} HP)"
+                p_desc += f" (Гарнизон +{shield_lvl} воина, Щит +{shield_lvl * 30} HP)"
             w_lbl = f"{soldiers} воина" if soldiers < 5 else f"{soldiers} воинов"
             return {
                 "damage": soldier_dmg,
@@ -920,7 +929,7 @@ class Tower:
                 "passive_desc": p_desc + ", +1 воин каждые 10 ур."
             }
         elif self.type == "tesla":
-            ball_lvl = savedata.get("Upgrades", {}).get("ball_lightning", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
+            ball_lvl = upg.get("ball_lightning", 0)
             rng_lvl = min(lvl, 5) * 5.0 + min(max(0, lvl - 5), 7) * 2.8 + max(0, lvl - 12) * 1.4
             rng = int((145 + rng_lvl + ball_lvl * 18) * rng_relic_mult)
             if g_map == 4:  # Змейка: Дальность Теслы +10%
@@ -928,7 +937,7 @@ class Tower:
             dmg = round((2.0 + 0.68 * lvl) * mult * (1.0 + ball_lvl * 0.12 + gh_buffs.get("tesla_dmg_mult", 0.0)), 1)
             raw_cd = max(0.50, 1.15 - lvl * 0.038)
             cd = max(0.28, round(raw_cd / (1.0 + atk_spd_lvl * 0.04 + relic_atk_spd), 2))
-            overcharge_lvl = savedata.get("Upgrades", {}).get("overcharge", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
+            overcharge_lvl = upg.get("overcharge", 0)
             chains = 3 + (lvl // 5) + overcharge_lvl + gh_buffs.get("extra_jumps", 0) + relic_buffs.get("tesla_extra_targets", 0)
             cost = max(5, int((120 * (1.19 ** lvl) + 25 * lvl) * cost_mult))
             bounces = max(1, chains - 1)
@@ -946,8 +955,8 @@ class Tower:
                 "passive_desc": f"Разряд: {b_lbl} (+1 отскок каждые 5 ур. башни)"
             }
         elif self.type == "farm":
-            soil_lvl = savedata.get("Upgrades", {}).get("fertile_soil", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
-            irrig_lvl = savedata.get("Upgrades", {}).get("farm_irrigation", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
+            soil_lvl = upg.get("fertile_soil", 0)
+            irrig_lvl = upg.get("farm_irrigation", 0)
             relic_farm = relic_buffs.get("farm_income_mult", 0.0)
             income = int((35 + 25 * lvl + 8 * (lvl ** 1.35)) * (1.0 + soil_lvl * 0.10 + gh_buffs.get("farm_mult", 0.0) + relic_farm))
             cost = max(5, int((80 * (1.20 ** lvl) + 25 * lvl) * cost_mult))
@@ -977,14 +986,13 @@ class Tower:
                 "passive_desc": f"Аура (R={aura_range}px): +{speed_boost}% к темпу башен, полив раз в {int(drop_interval)}с" if irrig_lvl > 0 else "Требуется талант Система Орошения в Древе"
             }
         elif self.type == "sun":
-            solar_power_lvl = savedata.get("Upgrades", {}).get("solar_power", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
-            beam_limit_lvl = savedata.get("Upgrades", {}).get("beam_limit", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
-            solar_trail_lvl = savedata.get("Upgrades", {}).get("solar_trail", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
-            prism_beams_lvl = savedata.get("Upgrades", {}).get("prism_beams", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
+            solar_power_lvl = upg.get("solar_power", 0)
+            beam_limit_lvl = upg.get("beam_limit", 0)
+            solar_trail_lvl = upg.get("solar_trail", 0)
+            prism_beams_lvl = upg.get("prism_beams", 0)
 
             rng_lvl = min(lvl, 5) * 4.0 + min(max(0, lvl - 5), 7) * 2.2 + max(0, lvl - 12) * 1.0
             rng = int((140 + rng_lvl + sniper_lvl * 8) * rng_relic_mult)
-            # Базово скромный урон (фигня в начале), разгоняемый прокачкой и талантом Солнечная Мощь (+20% за ранг)
             dmg_per_tick = round((0.20 + 0.06 * lvl) * mult * (1.0 + solar_power_lvl * 0.20), 2)
             max_mult = 2.5 + beam_limit_lvl * 0.5
             max_beams = 1 + prism_beams_lvl
@@ -1006,8 +1014,10 @@ class Tower:
             }
         return {}
 
-    def recalculate_stats(self):
-        stats = self.get_stats_at_level(self.level)
+    def recalculate_stats(self, savedata=None):
+        if isinstance(savedata, dict):
+            self.savedata = savedata
+        stats = self.get_stats_at_level(self.level, savedata=self.savedata)
         self.range = stats["range"]
         self.damage = stats["damage"]
         self.cooldown = stats["cooldown"]
@@ -1023,7 +1033,16 @@ class Tower:
             self.slow_ratio = stats["slow_ratio"]
             self.slow_duration = stats["slow_dur"]
         elif self.type == "tent":
+            old_max = getattr(self, "max_soldiers", 0)
             self.max_soldiers = stats["soldiers"]
+            if getattr(self, "rally_point", None) and self.max_soldiers > old_max:
+                rx, ry = self.rally_point
+                pidx = self.target_path_point[2] if self.target_path_point else 0
+                for _ in range(self.max_soldiers - len([s for s in self.soldiers if s.active])):
+                    spawn_x = self.x
+                    spawn_y = self.y + 6
+                    self.soldiers.append(Soldier(spawn_x, spawn_y, pidx, self, target_x=rx, target_y=ry))
+                self._reposition_soldiers()
         elif self.type == "tesla":
             self.max_chains = stats["chains"]
         elif self.type == "farm":
@@ -1220,7 +1239,7 @@ class Tower:
                             t_col = (255, 185, 35)  # Нагретый луч
                         else:
                             t_col = (255, 235, 100) # Базовый луч
-                        effects.append(FloatingText(tgt.x, tgt.y - 14, f"-{round(b['accum_dmg'], 1):g}", t_col))
+                        effects.append(FloatingText(tgt.x, tgt.y - 14, f"-{max(1, int(round(b['accum_dmg'])))}", t_col))
                     b["accum_dmg"] = 0.0
                     b["float_timer"] = 0.0
 
@@ -1236,7 +1255,7 @@ class Tower:
                                         self.record_damage(explode_dmg)
                             if effects is not None:
                                 effects.append(RingEffect(tgt.x, tgt.y, 50, (255, 200, 50)))
-                                effects.append(FloatingText(tgt.x, tgt.y - 16, f"ВСПЫШКА -{explode_dmg:g}", (255, 230, 100)))
+                                effects.append(FloatingText(tgt.x, tgt.y - 16, f"ВСПЫШКА -{max(1, int(round(explode_dmg)))}", (255, 230, 100)))
                 else:
                     active_beams_after_tick.append(b)
 
@@ -1284,7 +1303,7 @@ class Tower:
                     active_meteorite.take_damage(actual_damage, damage_type="lightning")
                     self.record_damage(actual_damage)
                     if effects is not None:
-                        effects.append(FloatingText(active_meteorite.x, active_meteorite.y - 12, f"-{actual_damage:g}", (90, 225, 255)))
+                        effects.append(FloatingText(active_meteorite.x, active_meteorite.y - 12, f"-{max(1, int(round(actual_damage)))}", (90, 225, 255)))
                         effects.append(LightningEffect([(self.x, self.y - 18), (active_meteorite.x, active_meteorite.y)]))
                     sfx_tesla.play()
             return 0
@@ -1304,6 +1323,22 @@ class Tower:
                     self.rally_point = (float(rx), float(ry))
 
             self.soldiers = [s for s in self.soldiers if s.active]
+
+            # Мгновенный спавн начального гарнизона при размещении палатки
+            if not self.soldiers and self.rally_point and self.max_soldiers > 0:
+                rx, ry = self.rally_point
+                pidx = self.target_path_point[2] if self.target_path_point else 0
+                offsets = self._get_soldier_formation_offsets(self.max_soldiers)
+                for i in range(self.max_soldiers):
+                    assigned_offset = offsets[i] if i < len(offsets) else (0, 0)
+                    target_x = rx + assigned_offset[0]
+                    target_y = ry + assigned_offset[1]
+                    spawn_x = self.x
+                    spawn_y = self.y + 6
+                    self.soldiers.append(Soldier(spawn_x, spawn_y, pidx, self, target_x=target_x, target_y=target_y))
+                self._reposition_soldiers()
+                self.timer = 0.0
+
             if len(self.soldiers) >= self.max_soldiers:
                 self.timer = min(self.timer, self.cooldown)
 
@@ -1311,13 +1346,10 @@ class Tower:
                 self.timer = 0.0
                 rx, ry = self.rally_point
                 pidx = self.target_path_point[2] if self.target_path_point else 0
-                offsets = self._get_soldier_formation_offsets(len(self.soldiers) + 1)
-                assigned_offset = offsets[len(self.soldiers)] if len(self.soldiers) < len(offsets) else (0, 0)
-                target_x = rx + assigned_offset[0]
-                target_y = ry + assigned_offset[1]
                 spawn_x = self.x
                 spawn_y = self.y + 6
-                self.soldiers.append(Soldier(spawn_x, spawn_y, pidx, self, target_x=target_x, target_y=target_y))
+                self.soldiers.append(Soldier(spawn_x, spawn_y, pidx, self, target_x=rx, target_y=ry))
+                self._reposition_soldiers()
 
             for s in self.soldiers:
                 s.update(dt, enemies, effects)
@@ -1397,7 +1429,7 @@ class Tower:
                 target.take_damage(actual_damage, damage_type="lightning")
                 self.record_damage(actual_damage)
                 if effects is not None:
-                    effects.append(FloatingText(target.x, target.y - 12, f"-{actual_damage:g}", (90, 225, 255)))
+                    effects.append(FloatingText(target.x, target.y - 12, f"-{max(1, int(round(actual_damage)))}", (90, 225, 255)))
 
                 chain_pts = [(self.x, self.y - 18), (target.x, target.y)]
                 cur_target = target
@@ -1457,7 +1489,7 @@ class Tower:
                         self.record_damage(chain_dmg)
                         chain_pts.append((next_target.x, next_target.y))
                         if effects is not None:
-                            effects.append(FloatingText(next_target.x, next_target.y - 12, f"-{chain_dmg:g}", (90, 225, 255)))
+                            effects.append(FloatingText(next_target.x, next_target.y - 12, f"-{max(1, int(round(chain_dmg)))}", (90, 225, 255)))
                         cur_target = next_target
                     else:
                         break
@@ -1692,11 +1724,11 @@ class MagicBullet:
 
             if is_crit:
                 savedata.setdefault("Stats", {})["total_crits"] = savedata.get("Stats", {}).get("total_crits", 0) + 1
-                effects.append(FloatingText(self.target.x, self.target.y - 14, f"-{actual_dmg:g} CRIT!", (240, 110, 255), is_crit=True))
+                effects.append(FloatingText(self.target.x, self.target.y - 14, f"-{max(1, int(round(actual_dmg)))} CRIT!", (240, 110, 255), is_crit=True))
                 sfx_combo.play()
             else:
                 color = (195, 155, 230) if getattr(self.target, 'magic_resist', 0.0) > 0 else (235, 175, 255)
-                effects.append(FloatingText(self.target.x, self.target.y - 12, f"-{actual_dmg:g}", color))
+                effects.append(FloatingText(self.target.x, self.target.y - 12, f"-{max(1, int(round(actual_dmg)))}", color))
             self.active = False
         else:
             self.x += (dx / dist) * step
@@ -1751,7 +1783,7 @@ class RockBullet:
                     active_meteorite.take_damage(actual_dmg, damage_type="rock")
                     if self.source_tower:
                         self.source_tower.record_damage(actual_dmg)
-                    effects.append(FloatingText(active_meteorite.x, active_meteorite.y - 12, f"-{actual_dmg:g}", (255, 175, 75)))
+                    effects.append(FloatingText(active_meteorite.x, active_meteorite.y - 12, f"-{max(1, int(round(actual_dmg)))}", (255, 175, 75)))
 
             shatter_freeze_enemies = []
             for enemy in enemies:
@@ -1770,13 +1802,13 @@ class RockBullet:
                         if is_crit:
                             had_crit = True
                             savedata.setdefault("Stats", {})["total_crits"] = savedata.get("Stats", {}).get("total_crits", 0) + 1
-                            effects.append(FloatingText(enemy.x, enemy.y - 14, f"-{actual_dmg:g} CRIT!", GOLD, is_crit=True))
+                            effects.append(FloatingText(enemy.x, enemy.y - 14, f"-{max(1, int(round(actual_dmg)))} CRIT!", GOLD, is_crit=True))
                             if enemy.health <= 0:
                                 shatter_lvl = savedata.get("Upgrades", {}).get("rock_frost_shatter", 0) if 'savedata' in globals() and isinstance(savedata, dict) else 0
                                 if shatter_lvl > 0:
                                     shatter_freeze_enemies.append((enemy, float(shatter_lvl)))
                         else:
-                            effects.append(FloatingText(enemy.x, enemy.y - 10, f"-{actual_dmg:g}", (255, 175, 75)))
+                            effects.append(FloatingText(enemy.x, enemy.y - 10, f"-{max(1, int(round(actual_dmg)))}", (255, 175, 75)))
             if had_crit:
                 sfx_combo.play()
             if shatter_freeze_enemies:
@@ -1847,7 +1879,7 @@ class FrostBullet:
                     active_meteorite.take_damage(self.damage, damage_type="freeze")
                     if self.source_tower:
                         self.source_tower.record_damage(self.damage)
-                    effects.append(FloatingText(active_meteorite.x, active_meteorite.y - 10, f"-{self.damage:g}", CYAN))
+                    effects.append(FloatingText(active_meteorite.x, active_meteorite.y - 10, f"-{max(1, int(round(self.damage)))}", CYAN))
 
             for enemy in enemies:
                 if enemy.active:
@@ -1857,7 +1889,7 @@ class FrostBullet:
                         enemy.apply_freeze(self.slow_ratio, self.slow_duration)
                         if self.source_tower:
                             self.source_tower.record_damage(self.damage)
-                        effects.append(FloatingText(enemy.x, enemy.y - 10, f"-{self.damage:g}", CYAN))
+                        effects.append(FloatingText(enemy.x, enemy.y - 10, f"-{max(1, int(round(self.damage)))}", CYAN))
             self.active = False
             effects.append(SplashEffect(self.x, self.y, self.splash_radius, (70, 200, 255)))
         else:
@@ -2260,10 +2292,17 @@ class FloatingText:
         self.vy = -40.0 if is_crit else -28.0
         self.is_crit = is_crit
         used_font = font if is_crit else small_font
-        self.txt_surf = used_font.render(self.text, True, color)
-        self.sh_surf = used_font.render(self.text, True, (0, 0, 0))
-        self.half_w = self.txt_surf.get_width() // 2
-        self.half_h = self.txt_surf.get_height() // 2
+        if hasattr(used_font, 'render_with_shadow'):
+            self.surf = used_font.render_with_shadow(self.text, color).copy()
+        else:
+            t_surf = used_font.render(self.text, True, color)
+            sh_surf = used_font.render(self.text, True, (0, 0, 0))
+            self.surf = pygame.Surface((t_surf.get_width() + 1, t_surf.get_height() + 1), pygame.SRCALPHA)
+            self.surf.blit(sh_surf, (1, 1))
+            self.surf.blit(t_surf, (0, 0))
+        self.half_w = self.surf.get_width() // 2
+        self.half_h = self.surf.get_height() // 2
+        self._last_alpha = 255
 
     def update(self, dt=0.016):
         if dt is None: dt = 0.016
@@ -2275,13 +2314,12 @@ class FloatingText:
         if self.life <= 0: return
         ratio = max(0.0, min(1.0, self.life / self.max_life))
         alpha = int(255 * ratio)
-        if alpha < 250:
-            self.txt_surf.set_alpha(alpha)
-            self.sh_surf.set_alpha(int(alpha * 0.7))
+        if alpha < 250 and alpha != self._last_alpha:
+            self.surf.set_alpha(alpha)
+            self._last_alpha = alpha
         cx = int(self.x - self.half_w)
         cy = int(self.y - self.half_h)
-        surface.blit(self.sh_surf, (cx + 1, cy + 1))
-        surface.blit(self.txt_surf, (cx, cy))
+        surface.blit(self.surf, (cx, cy))
 
 
 # -------------------------------------------------------------------------
@@ -2472,7 +2510,7 @@ class DroneSpike:
         if dist <= step or dist < 12:
             self.target.take_damage(self.damage, damage_type="physical")
             if effects is not None:
-                effects.append(FloatingText(self.target.x, self.target.y - 12, f"-{self.damage:g}", (220, 140, 255)))
+                effects.append(FloatingText(self.target.x, self.target.y - 12, f"-{max(1, int(round(self.damage)))}", (220, 140, 255)))
                 effects.append(DropSpark(self.target.x, self.target.y))
             self.active = False
         else:
@@ -3005,7 +3043,7 @@ class Enemy:
             for _, cand in spark_candidates[:2]:
                 cand.take_damage(p_dmg, damage_type="polarize")
                 if cur_effects is not None:
-                    cur_effects.append(FloatingText(cand.x, cand.y - 12, f"-{p_dmg:g} ИСКРА!", (120, 230, 255)))
+                    cur_effects.append(FloatingText(cand.x, cand.y - 12, f"-{max(1, int(round(p_dmg)))} ИСКРА!", (120, 230, 255)))
                     cur_effects.append(LightningEffect([(self.x, self.y), (cand.x, cand.y)], color=(140, 240, 255)))
 
         if self.health <= 0:
@@ -3036,7 +3074,7 @@ class Enemy:
                             other.health += heal_amt
                             healed_any = True
                             if effects is not None:
-                                effects.append(FloatingText(other.x, other.y - 14, f"+{heal_amt:g}", (80, 255, 140)))
+                                effects.append(FloatingText(other.x, other.y - 14, f"+{max(1, int(round(heal_amt)))}", (80, 255, 140)))
                 if healed_any:
                     sfx_heal.play()
                     if effects is not None:

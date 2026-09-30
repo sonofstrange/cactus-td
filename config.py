@@ -673,29 +673,91 @@ BG_GRID_B = (175, 208, 175)
 pygame.font.init()
 
 class CachedFont:
-    """Обертка над шрифтом Pygame с быстрым кэшированием отрендеренного текста."""
+    """Высокопроизводительная обертка над шрифтом Pygame с быстрым кэшированием текста, теней и метрик."""
     def __init__(self, font_obj):
         self._font = font_obj
         self._cache = {}
-        self._limit = 2500
+        self._size_cache = {}
+        self._shadow_cache = {}
+        self._limit = 4000
 
     def render(self, text, antialias, color, background=None):
-        if isinstance(text, str) and len(text) < 120:
-            c_val = tuple(color) if hasattr(color, '__iter__') else color
-            bg_val = tuple(background) if hasattr(background, '__iter__') and background is not None else background
+        if not isinstance(text, str):
+            text = str(text)
+        if len(text) < 160:
+            if isinstance(color, tuple):
+                c_val = color
+            elif isinstance(color, list):
+                c_val = tuple(color)
+            elif isinstance(color, pygame.Color):
+                c_val = (color.r, color.g, color.b, color.a)
+            else:
+                c_val = tuple(color) if hasattr(color, '__iter__') else color
+
+            if background is None or isinstance(background, tuple):
+                bg_val = background
+            elif isinstance(background, list):
+                bg_val = tuple(background)
+            elif isinstance(background, pygame.Color):
+                bg_val = (background.r, background.g, background.b, background.a)
+            else:
+                bg_val = tuple(background) if hasattr(background, '__iter__') else background
+
             key = (text, bool(antialias), c_val, bg_val)
             surf = self._cache.get(key)
             if surf is not None:
                 return surf
             surf = self._font.render(text, antialias, color, background)
             if len(self._cache) >= self._limit:
-                self._cache.clear()
+                # Мягкое вытеснение половины старых элементов вместо полного сброса (устраняет микрофризы)
+                keys_to_del = list(self._cache.keys())[:self._limit // 2]
+                for k in keys_to_del:
+                    del self._cache[k]
             self._cache[key] = surf
             return surf
         return self._font.render(text, antialias, color, background)
 
+    def render_with_shadow(self, text, color, shadow_color=(0, 0, 0), offset=(1, 1), antialias=True):
+        """Рендерит текст вместе с тенью в единую поверхность за 1 вызов blit."""
+        if not isinstance(text, str):
+            text = str(text)
+        c_val = color if isinstance(color, tuple) else (tuple(color) if hasattr(color, '__iter__') else color)
+        s_val = shadow_color if isinstance(shadow_color, tuple) else (tuple(shadow_color) if hasattr(shadow_color, '__iter__') else shadow_color)
+        off_val = offset if isinstance(offset, tuple) else tuple(offset)
+        key = (text, c_val, s_val, off_val, bool(antialias))
+        surf = self._shadow_cache.get(key)
+        if surf is not None:
+            return surf
+
+        t_surf = self.render(text, antialias, color)
+        sh_surf = self.render(text, antialias, shadow_color)
+        ox, oy = off_val
+        w = t_surf.get_width() + max(0, ox)
+        h = t_surf.get_height() + max(0, oy)
+        combo = pygame.Surface((w, h), pygame.SRCALPHA)
+        combo.blit(sh_surf, (max(0, ox), max(0, oy)))
+        combo.blit(t_surf, (0, 0))
+
+        if len(self._shadow_cache) >= 2000:
+            keys_to_del = list(self._shadow_cache.keys())[:1000]
+            for k in keys_to_del:
+                del self._shadow_cache[k]
+        self._shadow_cache[key] = combo
+        return combo
+
     def size(self, text):
-        return self._font.size(text)
+        if not isinstance(text, str):
+            text = str(text)
+        s = self._size_cache.get(text)
+        if s is not None:
+            return s
+        s = self._font.size(text)
+        if len(self._size_cache) >= 3000:
+            keys_to_del = list(self._size_cache.keys())[:1500]
+            for k in keys_to_del:
+                del self._size_cache[k]
+        self._size_cache[text] = s
+        return s
 
     def get_height(self):
         return self._font.get_height()
@@ -709,6 +771,26 @@ class CachedFont:
 
     def __getattr__(self, name):
         return getattr(self._font, name)
+
+def get_rendered_text(font_obj, text, color):
+    """Глобальный фасад получения кэшированного текста."""
+    if hasattr(font_obj, 'render'):
+        return font_obj.render(text, True, color)
+    return font_obj.render(text, True, color)
+
+def get_shadowed_text(font_obj, text, color, shadow_color=(0, 0, 0), offset=(1, 1)):
+    """Глобальный фасад получения текста с запеченной тенью на едином Surface."""
+    if hasattr(font_obj, 'render_with_shadow'):
+        return font_obj.render_with_shadow(text, color, shadow_color, offset)
+    t_surf = font_obj.render(text, True, color)
+    sh_surf = font_obj.render(text, True, shadow_color)
+    ox, oy = offset
+    w = t_surf.get_width() + max(0, ox)
+    h = t_surf.get_height() + max(0, oy)
+    combo = pygame.Surface((w, h), pygame.SRCALPHA)
+    combo.blit(sh_surf, (max(0, ox), max(0, oy)))
+    combo.blit(t_surf, (0, 0))
+    return combo
 
 def _create_font(size, bold=True):
     raw_font = None

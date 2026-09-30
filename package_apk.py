@@ -6,6 +6,7 @@ import struct
 import subprocess
 import tarfile
 import zipfile
+import hashlib
 
 PROJECT_DIR = "/mnt/c/Users/Mechrevo/.gemini/antigravity/scratch/cactus_td"
 STAGING_DIR = "/tmp/cactus_td_staging"
@@ -71,6 +72,8 @@ print(f"Found {len(proj_assets)} assets in project directory (excluding branding
 # Process members from old private.tar
 seen_names = set()
 for member in tin.getmembers():
+    if member.name == "saves" or member.name.startswith("saves/") or member.name.startswith("savedata"):
+        continue
     seen_names.add(member.name)
     if member.name in pyc_data:
         new_data = pyc_data[member.name]
@@ -141,9 +144,11 @@ for fname in py_files:
 tin.close()
 tout.close()
 new_tar_bytes = tar_out_io.getvalue()
+tar_sha1 = hashlib.sha1(new_tar_bytes).hexdigest().encode('ascii')
 print(f"Updated private.tar (gzipped): old size = {len(old_tar_bytes):,}, new size = {len(new_tar_bytes):,} bytes")
+print(f"Computed SHA-1 of private.tar: {tar_sha1.decode('ascii')}")
 
-print("4. Updating AndroidManifest.xml (versionName 0.3.0, versionCode 1021300)...")
+print("4. Updating AndroidManifest.xml and resources.arsc...")
 old_u16 = '0.2.0'.encode('utf-16le')
 new_u16 = '0.3.0'.encode('utf-16le')
 assert old_u16 in old_manifest, "old_u16 0.2.0 not found in AndroidManifest.xml"
@@ -154,6 +159,13 @@ new_vc = struct.pack('<I', 1021300)
 assert old_vc in new_manifest, "old_vc 1021200 not found in AndroidManifest.xml"
 new_manifest = new_manifest.replace(old_vc, new_vc, 1)
 print(f"AndroidManifest.xml updated: {len(old_manifest)} -> {len(new_manifest)} bytes")
+
+with zipfile.ZipFile(BASE_APK, "r") as zin:
+    old_arsc = zin.read("resources.arsc")
+old_hash = b'9b4df26cfd0a5b51ed8bc2fac1adbde66b95a3f7'
+assert old_hash in old_arsc, "old_hash not found in resources.arsc"
+new_arsc = old_arsc.replace(old_hash, tar_sha1, 1)
+print(f"resources.arsc updated: replaced {old_hash.decode('ascii')} with {tar_sha1.decode('ascii')}")
 
 print("5. Repackaging APK...")
 if os.path.exists(UNALIGNED_APK):
@@ -167,6 +179,8 @@ with zipfile.ZipFile(BASE_APK, "r") as zin:
             if item.filename == "assets/private.tar":
                 continue
             if item.filename == "AndroidManifest.xml":
+                continue
+            if item.filename == "resources.arsc":
                 continue
             if item.filename == "res/drawable/presplash.jpg":
                 custom_presplash = os.path.join(PROJECT_DIR, "assets", "branding", "presplash.jpg")
@@ -185,6 +199,11 @@ with zipfile.ZipFile(BASE_APK, "r") as zin:
         mani_info = zipfile.ZipInfo("AndroidManifest.xml")
         mani_info.compress_type = zipfile.ZIP_DEFLATED
         zout.writestr(mani_info, new_manifest)
+
+        # Write updated resources.arsc (STORED, uncompressed)
+        arsc_info = zipfile.ZipInfo("resources.arsc")
+        arsc_info.compress_type = zipfile.ZIP_STORED
+        zout.writestr(arsc_info, new_arsc)
 
         # Write updated private.tar (DEFLATED)
         tar_info = zipfile.ZipInfo("assets/private.tar")

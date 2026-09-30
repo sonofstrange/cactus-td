@@ -35,13 +35,19 @@ _tree_cactus_icon_cache = {}
 _tree_hud_bg = None
 _tree_aura_cache = {}
 _tree_title_cache = {}
+_tree_node_pill_cache = {}
+_tree_node_unlock_cache = {}
+_tree_node_unlock_cache_key = None
+_tree_stats_cache_key = None
+_tree_stats_cache_surf = None
+_gh_locked_tex_cache = {}
+_relic_glow_cache = {}
 _settings_grid_surf = None
 _settings_dim_surf = None
 _settings_profiles_cache = None
 _settings_profiles_cache_time = 0.0
 _settings_profiles_count_cache = 0
 _settings_profiles_count_time = 0.0
-_TEXT_CACHE = {}
 
 def invalidate_save_profiles_cache():
     global _settings_profiles_cache, _settings_profiles_cache_time, _settings_profiles_count_cache, _settings_profiles_count_time
@@ -55,23 +61,69 @@ def invalidate_save_profiles_cache():
         except Exception:
             pass
 
+_modal_dim_surfs = {}
+
+def get_modal_dim_surf(alpha=205):
+    dim_surf = _modal_dim_surfs.get(alpha)
+    if dim_surf is None or dim_surf.get_size() != (SCREEN_WIDTH, SCREEN_HEIGHT):
+        dim_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        dim_surf.fill((0, 0, 0, alpha))
+        _modal_dim_surfs[alpha] = dim_surf
+    return dim_surf
+
 def get_settings_dim_surf():
-    global _settings_dim_surf
-    if _settings_dim_surf is None or _settings_dim_surf.get_size() != (SCREEN_WIDTH, SCREEN_HEIGHT):
-        _settings_dim_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-        _settings_dim_surf.fill((0, 0, 0, 215))
-    return _settings_dim_surf
+    return get_modal_dim_surf(215)
+
+_UI_TEXT_CACHE = {}
 
 def get_rendered_text(font_obj, text, color):
-    col_key = tuple(color) if isinstance(color, (list, pygame.Color)) else color
-    key = (id(font_obj), text, col_key)
-    surf = _TEXT_CACHE.get(key)
-    if surf is None:
-        surf = font_obj.render(text, True, color)
-        if len(_TEXT_CACHE) > 3000:
-            _TEXT_CACHE.clear()
-        _TEXT_CACHE[key] = surf
+    if not isinstance(text, str):
+        text = str(text)
+    if isinstance(color, list):
+        color = tuple(color)
+    key = (id(font_obj), text, color)
+    surf = _UI_TEXT_CACHE.get(key)
+    if surf is not None:
+        return surf
+    if len(_UI_TEXT_CACHE) >= 4000:
+        keys_to_del = list(_UI_TEXT_CACHE.keys())[:2000]
+        for k in keys_to_del:
+            del _UI_TEXT_CACHE[k]
+    surf = font_obj.render(text, True, color)
+    _UI_TEXT_CACHE[key] = surf
     return surf
+
+_UI_SHADOW_TEXT_CACHE = {}
+
+def get_shadowed_text(font_obj, text, color, shadow_color=(0, 0, 0), offset=(1, 1)):
+    if not isinstance(text, str):
+        text = str(text)
+    if isinstance(color, list):
+        color = tuple(color)
+    if isinstance(shadow_color, list):
+        shadow_color = tuple(shadow_color)
+    key = (id(font_obj), text, color, shadow_color, offset)
+    surf = _UI_SHADOW_TEXT_CACHE.get(key)
+    if surf is not None:
+        return surf
+    if len(_UI_SHADOW_TEXT_CACHE) >= 2000:
+        keys_to_del = list(_UI_SHADOW_TEXT_CACHE.keys())[:1000]
+        for k in keys_to_del:
+            del _UI_SHADOW_TEXT_CACHE[k]
+    if hasattr(font_obj, 'render_with_shadow'):
+        surf = font_obj.render_with_shadow(text, color, shadow_color, offset)
+    else:
+        t_surf = font_obj.render(text, True, color)
+        sh_surf = font_obj.render(text, True, shadow_color)
+        ox, oy = offset
+        tw = max(t_surf.get_width() + ox, sh_surf.get_width() + ox)
+        th = max(t_surf.get_height() + oy, sh_surf.get_height() + oy)
+        surf = pygame.Surface((tw, th), pygame.SRCALPHA)
+        surf.blit(sh_surf, (ox, oy))
+        surf.blit(t_surf, (0, 0))
+    _UI_SHADOW_TEXT_CACHE[key] = surf
+    return surf
+
 
 _bg_dot_cache = {}
 
@@ -87,6 +139,10 @@ def get_cached_bg_dot(color_rgb, rad, alpha):
         _bg_dot_cache[key] = s
     return s
 
+_bg_static_cache = {}
+
+_bg_grid_cache = {}
+
 def generate_background(surf, bg_time, map_id=None, custom_cols=None):
     if custom_cols is not None:
         col_a, col_b = custom_cols
@@ -97,11 +153,9 @@ def generate_background(surf, bg_time, map_id=None, custom_cols=None):
         col_a = BG_GRID_A
         col_b = BG_GRID_B
 
-    surf.fill(col_a)
-    cell_size = 50
     sw, sh = surf.get_width(), surf.get_height()
+    cell_size = 50
 
-    # Делаем линии в подменю и на экранах значительно более выразительными, сочными и четкими
     line_col = (
         min(255, int(col_b[0] * 1.85 + 32)),
         min(255, int(col_b[1] * 1.85 + 32)),
@@ -113,34 +167,39 @@ def generate_background(surf, bg_time, map_id=None, custom_cols=None):
     )
 
     if get_graphics_preset() == "optimized":
-        ox = int((bg_time * 0.035) % cell_size)
-        oy = int((bg_time * 0.035) % cell_size)
-        for x in range(ox - cell_size, sw + cell_size, cell_size):
-            pygame.draw.line(surf, line_col, (x, 0), (x, sh), 1)
-        for y in range(oy - cell_size, sh + cell_size, cell_size):
-            pygame.draw.line(surf, line_col, (0, y), (sw, y), 1)
+        cache_key = (col_a, col_b, sw, sh)
+        cached_bg = _bg_static_cache.get(cache_key)
+        if cached_bg is None:
+            if len(_bg_static_cache) > 20:
+                _bg_static_cache.clear()
+            cached_bg = pygame.Surface((sw, sh))
+            cached_bg.fill(col_a)
+            for x in range(0, sw + cell_size, cell_size):
+                pygame.draw.line(cached_bg, line_col, (x, 0), (x, sh), 1)
+            for y in range(0, sh + cell_size, cell_size):
+                pygame.draw.line(cached_bg, line_col, (0, y), (sw, y), 1)
+            _bg_static_cache[cache_key] = cached_bg
+        surf.blit(cached_bg, (0, 0))
         return
 
-    # Интенсивные гармонические волны движения сетки (эффект шёлка, приливов и дыхания пространства)
+    # Нормальная графика: живой волнообразный фон с парящими сияющими космическими частицами
+    surf.fill(col_a)
     t = bg_time * 0.001
-    sway_x = math.sin(t * 0.9) * 22.0 + math.sin(t * 1.7) * 8.0
-    sway_y = math.cos(t * 0.8) * 20.0 + math.cos(t * 1.5) * 7.0
+    offset_x = math.sin(t) * 28.0
+    offset_y = math.cos(t * 0.9) * 28.0
 
-    for x in range(-cell_size * 2, sw + cell_size * 3, cell_size):
-        wave_top = math.sin(x * 0.008 + t * 1.6) * 25.0 + math.cos(x * 0.018 - t * 1.1) * 12.0
-        wave_bot = math.sin(x * 0.007 - t * 1.3 + 1.2) * 26.0 + math.sin(x * 0.015 + t * 1.9) * 12.0
-        pygame.draw.line(surf, line_col, (x + sway_x + wave_top, 0), (x + sway_x * 0.7 + wave_bot, sh), 1)
+    for x in range(-cell_size, sw + cell_size, cell_size):
+        warp = math.sin(x * 0.01 + t * 2.0) * 14.0
+        pygame.draw.line(surf, line_col, (x + offset_x + warp, 0), (x + offset_y - warp, sh), 2)
 
-    for y in range(-cell_size * 2, sh + cell_size * 3, cell_size):
-        wave_left = math.cos(y * 0.009 + t * 1.5) * 24.0 + math.sin(y * 0.016 - t * 1.2) * 11.0
-        wave_right = math.cos(y * 0.008 - t * 1.2 + 1.5) * 25.0 + math.cos(y * 0.014 + t * 1.8) * 11.0
-        pygame.draw.line(surf, line_col, (0, y + sway_y + wave_left), (sw, y + sway_y * 0.7 + wave_right), 1)
+    for y in range(-cell_size, sh + cell_size, cell_size):
+        warp = math.cos(y * 0.015 + t * 1.8) * 14.0
+        pygame.draw.line(surf, line_col, (0, y + offset_y + warp), (sw, y + offset_x - warp), 2)
 
-    # Атмосферные парящие светящиеся пылинки/звёздочки на фоне (прямой блит микро-спрайтов без полноэкранного альфа-буфера)
-    num_particles = 18 if IS_ANDROID else 32
-    for i in range(num_particles):
-        speed_x = 0.016 + (i % 5) * 0.008
-        speed_y = 0.011 + ((i * 3) % 6) * 0.006
+    # Парящие сияющие частицы космической пыли (кэшированные поверхности)
+    for i in range(24):
+        speed_x = 0.018 + (i % 4) * 0.007
+        speed_y = 0.012 + ((i * 2) % 5) * 0.006
         px = int((i * 127.3 + bg_time * speed_x) % (sw + 60) - 30)
         py = int((i * 79.7 + math.sin(t * 1.1 + i) * 42.0 + bg_time * speed_y) % (sh + 60) - 30)
         p_rad = 1.7 + (i % 4) * 0.9
@@ -160,12 +219,16 @@ def generate_background(surf, bg_time, map_id=None, custom_cols=None):
             surf.blit(glow_s, (px - gr - 1, py - gr - 1))
 
 
+_cached_locked_dark_ghost = None
+_cached_locked_dark_panel = {}
+
 def draw_dark_cactus_counter(surface, rect, savedata, mouse_pos=None):
     """
     Отрисовывает счётчик Тёмных кактусов:
     - Если Тёмный Космос открыт: кристально-фиолетовая панель со значением и иконкой.
     - Если заблокирован: тёмно-стальная панель под крестообразным замком с цепями!
     """
+    global _cached_locked_dark_ghost
     is_unlocked = is_dark_cacti_unlocked(savedata)
     is_hov = mouse_pos is not None and rect.collidepoint(mouse_pos)
 
@@ -173,39 +236,42 @@ def draw_dark_cactus_counter(surface, rect, savedata, mouse_pos=None):
         pygame.draw.rect(surface, (30, 18, 42), rect, border_radius=8)
         pygame.draw.rect(surface, (205, 90, 255) if is_hov else (180, 70, 240), rect, width=2 if is_hov else 1, border_radius=8)
         surface.blit(dark_cactus_img_m, (rect.left + 8, rect.centery - 18))
-        dark_txt = font.render(f"{savedata.get('DarkCactuses', 0)}", True, WHITE)
+        dark_txt = get_rendered_text(font, f"{savedata.get('DarkCactuses', 0)}", WHITE)
         surface.blit(dark_txt, (rect.left + 46, rect.centery - dark_txt.get_height() // 2))
     else:
-        # Стальная подложка с мистическим фиолетовым отливом
-        pygame.draw.rect(surface, (20, 16, 28) if not is_hov else (32, 24, 44), rect, border_radius=8)
-        pygame.draw.rect(surface, (130, 105, 160) if not is_hov else (190, 150, 230), rect, width=2 if is_hov else 1, border_radius=8)
+        # Кэшированная панель для закрытого состояния (устраняет покадровую перерисовку 8 примитивов)
+        panel_key = (rect.width, rect.height, is_hov)
+        p_surf = _cached_locked_dark_panel.get(panel_key)
+        if p_surf is None:
+            p_surf = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
+            pygame.draw.rect(p_surf, (20, 16, 28) if not is_hov else (32, 24, 44), (0, 0, rect.width, rect.height), border_radius=8)
+            pygame.draw.rect(p_surf, (130, 105, 160) if not is_hov else (190, 150, 230), (0, 0, rect.width, rect.height), width=2 if is_hov else 1, border_radius=8)
 
-        # Теневой силуэт кактуса на заднем плане
-        d_ghost = dark_cactus_img_m.copy()
-        d_ghost.fill((45, 30, 60, 100), special_flags=pygame.BLEND_RGB_MULT)
-        surface.blit(d_ghost, (rect.left + 8, rect.centery - 18))
+            if _cached_locked_dark_ghost is None:
+                _cached_locked_dark_ghost = dark_cactus_img_m.copy()
+                _cached_locked_dark_ghost.fill((45, 30, 60, 100), special_flags=pygame.BLEND_RGB_MULT)
+            p_surf.blit(_cached_locked_dark_ghost, (8, rect.height // 2 - 18))
 
-        # Перекрещенные кованые цепи (эффект звеньев крест-накрест)
-        chain_sh = (40, 35, 50)
-        chain_fg = (150, 145, 170)
-        # Тень цепей
-        pygame.draw.line(surface, chain_sh, (rect.left + 5, rect.top + 4), (rect.right - 5, rect.bottom - 4), 4)
-        pygame.draw.line(surface, chain_sh, (rect.left + 5, rect.bottom - 4), (rect.right - 5, rect.top + 4), 4)
-        # Основные цепи
-        pygame.draw.line(surface, chain_fg, (rect.left + 5, rect.top + 4), (rect.right - 5, rect.bottom - 4), 2)
-        pygame.draw.line(surface, chain_fg, (rect.left + 5, rect.bottom - 4), (rect.right - 5, rect.top + 4), 2)
-        # Звенья цепи (металлические кольца на лучах)
-        for pct in [0.22, 0.78]:
-            p1 = (int(rect.left + 5 + (rect.width - 10) * pct), int(rect.top + 4 + (rect.height - 8) * pct))
-            p2 = (int(rect.left + 5 + (rect.width - 10) * pct), int(rect.bottom - 4 - (rect.height - 8) * pct))
-            pygame.draw.circle(surface, (200, 195, 220), p1, 3, width=1)
-            pygame.draw.circle(surface, (200, 195, 220), p2, 3, width=1)
+            chain_sh = (40, 35, 50)
+            chain_fg = (150, 145, 170)
+            pygame.draw.line(p_surf, chain_sh, (5, 4), (rect.width - 5, rect.height - 4), 4)
+            pygame.draw.line(p_surf, chain_sh, (5, rect.height - 4), (rect.width - 5, 4), 4)
+            pygame.draw.line(p_surf, chain_fg, (5, 4), (rect.width - 5, rect.height - 4), 2)
+            pygame.draw.line(p_surf, chain_fg, (5, rect.height - 4), (rect.width - 5, 4), 2)
 
-        # Центральная круглая стальная печать с золотым замком
-        lock_center = (rect.centerx, rect.centery)
-        pygame.draw.circle(surface, (25, 20, 34), lock_center, 14)
-        pygame.draw.circle(surface, (220, 180, 75) if is_hov else (160, 130, 60), lock_center, 14, width=2)
-        surface.blit(lock_icon, (lock_center[0] - lock_icon.get_width() // 2, lock_center[1] - lock_icon.get_height() // 2))
+            for pct in [0.22, 0.78]:
+                p1 = (int(5 + (rect.width - 10) * pct), int(4 + (rect.height - 8) * pct))
+                p2 = (int(5 + (rect.width - 10) * pct), int(rect.height - 4 - (rect.height - 8) * pct))
+                pygame.draw.circle(p_surf, (200, 195, 220), p1, 3, width=1)
+                pygame.draw.circle(p_surf, (200, 195, 220), p2, 3, width=1)
+
+            lc = (rect.width // 2, rect.height // 2)
+            pygame.draw.circle(p_surf, (25, 20, 34), lc, 14)
+            pygame.draw.circle(p_surf, (220, 180, 75) if is_hov else (160, 130, 60), lc, 14, width=2)
+            p_surf.blit(lock_icon, (lc[0] - lock_icon.get_width() // 2, lc[1] - lock_icon.get_height() // 2))
+            _cached_locked_dark_panel[panel_key] = p_surf
+
+        surface.blit(p_surf, (rect.left, rect.top))
 
 
 # -------------------------------------------------------------------------
@@ -292,9 +358,7 @@ def draw_minimap(surface, path, tower_slots, pos_x, pos_y, width, height, select
 
 
 def draw_map_info_modal(surface, map_id, sdata, mouse_pos, inspect_wave=1):
-    dim_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-    dim_surf.fill((0, 0, 0, 205))
-    surface.blit(dim_surf, (0, 0))
+    surface.blit(get_modal_dim_surf(205), (0, 0))
 
     modal_w = 980
     modal_h = 610
@@ -314,13 +378,13 @@ def draw_map_info_modal(surface, map_id, sdata, mouse_pos, inspect_wave=1):
     cl_hov = close_btn.collidepoint(mouse_pos)
     pygame.draw.rect(surface, (180, 40, 40) if cl_hov else (40, 48, 60), close_btn, border_radius=6)
     pygame.draw.rect(surface, WHITE, close_btn, width=1, border_radius=6)
-    cl_txt = font.render("X", True, WHITE)
+    cl_txt = get_rendered_text(font, "X", WHITE)
     surface.blit(cl_txt, (close_btn.centerx - cl_txt.get_width() // 2, close_btn.centery - cl_txt.get_height() // 2))
 
     pygame.draw.line(surface, (45, 60, 80), (modal_rect.left + 20, modal_rect.top + 48), (modal_rect.right - 20, modal_rect.top + 48), 1)
 
     # Описание и мутатор карты
-    lore_txt = tiny_font.render(biome.get("lore_desc", ""), True, (215, 230, 245))
+    lore_txt = get_rendered_text(tiny_font, biome.get("lore_desc", ""), (215, 230, 245))
     surface.blit(lore_txt, (modal_rect.left + 24, modal_rect.top + 56))
 
     # Мутатор блок
@@ -328,12 +392,12 @@ def draw_map_info_modal(surface, map_id, sdata, mouse_pos, inspect_wave=1):
     pygame.draw.rect(surface, (22, 32, 46), mut_box, border_radius=8)
     pygame.draw.rect(surface, (50, 100, 165), mut_box, width=1, border_radius=8)
 
-    m_title_txt = font.render(f"МУТАТОР: {biome['mutator_title'].upper()}", True, (100, 215, 255))
+    m_title_txt = get_rendered_text(font, f"МУТАТОР: {biome['mutator_title'].upper()}", (100, 215, 255))
     surface.blit(m_title_txt, (mut_box.left + 12, mut_box.top + 6))
     m_desc_full = f"{biome['mutator_desc']}"
     if map_id == 0:
         m_desc_full += " (+10% стартовых кактусов)"
-    m_desc_txt = tiny_font.render(m_desc_full, True, (225, 240, 255))
+    m_desc_txt = get_rendered_text(tiny_font, m_desc_full, (225, 240, 255))
     surface.blit(m_desc_txt, (mut_box.left + 14 + m_title_txt.get_width(), mut_box.top + 9))
 
     # Чипы параметров карты
@@ -350,7 +414,7 @@ def draw_map_info_modal(surface, map_id, sdata, mouse_pos, inspect_wave=1):
     chips.append((f"Саундтрек: {biome.get('soundtrack', ('', ''))[0]}", (215, 170, 255), (38, 22, 50)))
     cur_cx = modal_rect.left + 24
     for c_text, c_fg, c_bg in chips:
-        c_surf = tiny_font.render(c_text, True, c_fg)
+        c_surf = get_rendered_text(tiny_font, c_text, c_fg)
         cw = c_surf.get_width() + 16
         c_rect = pygame.Rect(cur_cx, chip_y, cw, 24)
         pygame.draw.rect(surface, c_bg, c_rect, border_radius=6)
@@ -366,7 +430,7 @@ def draw_map_info_modal(surface, map_id, sdata, mouse_pos, inspect_wave=1):
     # =========================================================================
     # ПОВОЛНОВОЙ АНАЛИЗ (ИНТЕРАКТИВНЫЙ ИНСПЕКТОР ВОЛН)
     # =========================================================================
-    w_title = font.render("АНАЛИЗ ВОЛНЫ:", True, (255, 220, 100))
+    w_title = get_rendered_text(font, "АНАЛИЗ ВОЛНЫ:", (255, 220, 100))
     surface.blit(w_title, (modal_rect.left + 24, p_y + 4))
 
     nav_buttons = []
@@ -379,7 +443,7 @@ def draw_map_info_modal(surface, map_id, sdata, mouse_pos, inspect_wave=1):
     m10_hov = btn_m10.collidepoint(mouse_pos)
     pygame.draw.rect(surface, (40, 60, 85) if m10_hov else (25, 38, 55), btn_m10, border_radius=6)
     pygame.draw.rect(surface, (90, 170, 240) if m10_hov else (50, 80, 115), btn_m10, width=1, border_radius=6)
-    t_m10 = tiny_font.render("-10", True, WHITE)
+    t_m10 = get_rendered_text(tiny_font, "-10", WHITE)
     surface.blit(t_m10, (btn_m10.centerx - t_m10.get_width() // 2, btn_m10.centery - t_m10.get_height() // 2))
     nav_buttons.append((btn_m10, "-10"))
 
@@ -387,7 +451,7 @@ def draw_map_info_modal(surface, map_id, sdata, mouse_pos, inspect_wave=1):
     m1_hov = btn_m1.collidepoint(mouse_pos)
     pygame.draw.rect(surface, (40, 60, 85) if m1_hov else (25, 38, 55), btn_m1, border_radius=6)
     pygame.draw.rect(surface, (90, 170, 240) if m1_hov else (50, 80, 115), btn_m1, width=1, border_radius=6)
-    t_m1 = tiny_font.render("-1", True, WHITE)
+    t_m1 = get_rendered_text(tiny_font, "-1", WHITE)
     surface.blit(t_m1, (btn_m1.centerx - t_m1.get_width() // 2, btn_m1.centery - t_m1.get_height() // 2))
     nav_buttons.append((btn_m1, "-1"))
 
@@ -395,14 +459,14 @@ def draw_map_info_modal(surface, map_id, sdata, mouse_pos, inspect_wave=1):
     cur_w_rect = pygame.Rect(btn_m1.right + 8, nav_y - 2, 140, 32)
     pygame.draw.rect(surface, (36, 48, 70), cur_w_rect, border_radius=8)
     pygame.draw.rect(surface, (255, 215, 60), cur_w_rect, width=2, border_radius=8)
-    w_num_txt = font.render(f"ВОЛНА {inspect_wave}", True, (255, 235, 120))
+    w_num_txt = get_rendered_text(font, f"ВОЛНА {inspect_wave}", (255, 235, 120))
     surface.blit(w_num_txt, (cur_w_rect.centerx - w_num_txt.get_width() // 2, cur_w_rect.centery - w_num_txt.get_height() // 2))
 
     btn_p1 = pygame.Rect(cur_w_rect.right + 8, nav_y, 34, 28)
     p1_hov = btn_p1.collidepoint(mouse_pos)
     pygame.draw.rect(surface, (40, 60, 85) if p1_hov else (25, 38, 55), btn_p1, border_radius=6)
     pygame.draw.rect(surface, (90, 170, 240) if p1_hov else (50, 80, 115), btn_p1, width=1, border_radius=6)
-    t_p1 = tiny_font.render("+1", True, WHITE)
+    t_p1 = get_rendered_text(tiny_font, "+1", WHITE)
     surface.blit(t_p1, (btn_p1.centerx - t_p1.get_width() // 2, btn_p1.centery - t_p1.get_height() // 2))
     nav_buttons.append((btn_p1, "+1"))
 
@@ -410,7 +474,7 @@ def draw_map_info_modal(surface, map_id, sdata, mouse_pos, inspect_wave=1):
     p10_hov = btn_p10.collidepoint(mouse_pos)
     pygame.draw.rect(surface, (40, 60, 85) if p10_hov else (25, 38, 55), btn_p10, border_radius=6)
     pygame.draw.rect(surface, (90, 170, 240) if p10_hov else (50, 80, 115), btn_p10, width=1, border_radius=6)
-    t_p10 = tiny_font.render("+10", True, WHITE)
+    t_p10 = get_rendered_text(tiny_font, "+10", WHITE)
     surface.blit(t_p10, (btn_p10.centerx - t_p10.get_width() // 2, btn_p10.centery - t_p10.get_height() // 2))
     nav_buttons.append((btn_p10, "+10"))
 
@@ -423,7 +487,7 @@ def draw_map_info_modal(surface, map_id, sdata, mouse_pos, inspect_wave=1):
         pw_hov = pw_rect.collidepoint(mouse_pos)
         pygame.draw.rect(surface, (60, 48, 20) if is_cur else ((45, 55, 75) if pw_hov else (25, 34, 48)), pw_rect, border_radius=6)
         pygame.draw.rect(surface, GOLD if is_cur else ((100, 190, 255) if pw_hov else (50, 68, 92)), pw_rect, width=1, border_radius=6)
-        pw_txt = tiny_font.render(plbl, True, (255, 230, 100) if is_cur else WHITE)
+        pw_txt = get_rendered_text(tiny_font, plbl, (255, 230, 100) if is_cur else WHITE)
         surface.blit(pw_txt, (pw_rect.centerx - pw_txt.get_width() // 2, pw_rect.centery - pw_txt.get_height() // 2))
         nav_buttons.append((pw_rect, pw))
         pr_x += pw_rect.width + 6
@@ -437,19 +501,19 @@ def draw_map_info_modal(surface, map_id, sdata, mouse_pos, inspect_wave=1):
     pygame.draw.rect(surface, (20, 30, 44), sum_rect, border_radius=8)
     pygame.draw.rect(surface, (45, 80, 125), sum_rect, width=1, border_radius=8)
 
-    stat1 = tiny_font.render(f"Врагов: {w_data['total_count']} шт.", True, (160, 225, 255))
+    stat1 = get_rendered_text(tiny_font, f"Врагов: {w_data['total_count']} шт.", (160, 225, 255))
     surface.blit(stat1, (sum_rect.left + 16, sum_rect.centery - stat1.get_height() // 2))
 
-    stat2 = tiny_font.render(f"Множитель HP: x{w_data['total_hp_mult']:.2f}", True, (255, 145, 145))
+    stat2 = get_rendered_text(tiny_font, f"Множитель HP: x{w_data['total_hp_mult']:.2f}", (255, 145, 145))
     surface.blit(stat2, (sum_rect.left + 140, sum_rect.centery - stat2.get_height() // 2))
 
-    stat3 = tiny_font.render(f"Добыча волны: ~{w_data['total_reward']} какт.", True, (120, 245, 140))
+    stat3 = get_rendered_text(tiny_font, f"Добыча волны: ~{w_data['total_reward']} какт.", (120, 245, 140))
     surface.blit(stat3, (sum_rect.left + 315, sum_rect.centery - stat3.get_height() // 2))
 
     # Бейджи событий
     ev_x = sum_rect.right - 10
     for ev in reversed(w_data['events']):
-        ev_surf = tiny_font.render(ev, True, (255, 225, 110))
+        ev_surf = get_rendered_text(tiny_font, ev, (255, 225, 110))
         ev_w = ev_surf.get_width() + 14
         ev_r = pygame.Rect(ev_x - ev_w, sum_rect.centery - 12, ev_w, 24)
         pygame.draw.rect(surface, (48, 38, 16), ev_r, border_radius=6)
@@ -460,12 +524,12 @@ def draw_map_info_modal(surface, map_id, sdata, mouse_pos, inspect_wave=1):
     # Заголовок списка слаймов
     list_y = sum_y + 46
     hdr_line_y = list_y + 18
-    hdr_slime = tiny_font.render("СЛАЙМ", True, (140, 165, 195))
-    hdr_cnt = tiny_font.render("КОЛИЧЕСТВО", True, (140, 165, 195))
-    hdr_hp = tiny_font.render("HP ЕДИНИЦЫ", True, (140, 165, 195))
-    hdr_spd = tiny_font.render("СКОРОСТЬ", True, (140, 165, 195))
-    hdr_rew = tiny_font.render("ДОБЫЧА", True, (140, 165, 195))
-    hdr_spec = tiny_font.render("ОСОБЕННОСТИ И СПОСОБНОСТИ", True, (140, 165, 195))
+    hdr_slime = get_rendered_text(tiny_font, "СЛАЙМ", (140, 165, 195))
+    hdr_cnt = get_rendered_text(tiny_font, "КОЛИЧЕСТВО", (140, 165, 195))
+    hdr_hp = get_rendered_text(tiny_font, "HP ЕДИНИЦЫ", (140, 165, 195))
+    hdr_spd = get_rendered_text(tiny_font, "СКОРОСТЬ", (140, 165, 195))
+    hdr_rew = get_rendered_text(tiny_font, "ДОБЫЧА", (140, 165, 195))
+    hdr_spec = get_rendered_text(tiny_font, "ОСОБЕННОСТИ И СПОСОБНОСТИ", (140, 165, 195))
 
     surface.blit(hdr_slime, (modal_rect.left + 64, list_y))
     surface.blit(hdr_cnt, (modal_rect.left + 310, list_y))
@@ -500,54 +564,61 @@ def draw_map_info_modal(surface, map_id, sdata, mouse_pos, inspect_wave=1):
             q_box = pygame.Rect(r_box.left + 8, r_box.centery - 16, 32, 32)
             pygame.draw.rect(surface, (28, 36, 48), q_box, border_radius=6)
             pygame.draw.rect(surface, (60, 80, 105), q_box, width=1, border_radius=6)
-            q_lbl = font.render("?", True, (130, 150, 175))
+            q_lbl = get_rendered_text(font, "?", (130, 150, 175))
             surface.blit(q_lbl, (q_box.centerx - q_lbl.get_width() // 2, q_box.centery - q_lbl.get_height() // 2))
 
         # Имя слайма
         if is_known:
             name_col = (255, 215, 80) if is_boss else WHITE
-            nm_txt = font.render(r_item['name'], True, name_col)
+            nm_txt = get_rendered_text(font, r_item['name'], name_col)
         else:
             name_col = (145, 160, 180)
-            nm_txt = font.render("??? Неизвестный Босс" if is_boss else "??? Неизвестно", True, name_col)
+            nm_txt = get_rendered_text(font, "??? Неизвестный Босс" if is_boss else "??? Неизвестно", name_col)
         surface.blit(nm_txt, (r_box.left + 48, r_box.centery - nm_txt.get_height() // 2))
 
         # Количество
-        cnt_txt = font.render(f"x{r_item['count']} шт.", True, (255, 235, 120))
+        cnt_txt = get_rendered_text(font, f"x{r_item['count']} шт.", (255, 235, 120))
         surface.blit(cnt_txt, (modal_rect.left + 310, r_box.centery - cnt_txt.get_height() // 2))
 
         # HP (показываем расчетное HP для тактического планирования)
-        hp_txt = font.render(f"{r_item['hp']:,}".replace(",", " "), True, (255, 125, 125))
+        hp_txt = get_rendered_text(font, f"{r_item['hp']:,}".replace(",", " "), (255, 125, 125))
         surface.blit(hp_txt, (modal_rect.left + 405, r_box.centery - hp_txt.get_height() // 2))
 
         # Скорость
         spd_str = f"{r_item['speed']}" if is_known else "???"
-        spd_txt = font.render(spd_str, True, (255, 185, 90) if is_known else (130, 145, 165))
+        spd_txt = get_rendered_text(font, spd_str, (255, 185, 90) if is_known else (130, 145, 165))
         surface.blit(spd_txt, (modal_rect.left + 495, r_box.centery - spd_txt.get_height() // 2))
 
         # Добыча
         rew_str = f"+{r_item['reward']}" if is_known else "???"
-        rew_txt = font.render(rew_str, True, (110, 245, 140) if is_known else (130, 145, 165))
+        rew_txt = get_rendered_text(font, rew_str, (110, 245, 140) if is_known else (130, 145, 165))
         surface.blit(rew_txt, (modal_rect.left + 580, r_box.centery - rew_txt.get_height() // 2))
 
         # Особенности
         if is_known:
             tr_col = (230, 160, 255) if is_boss else (180, 215, 245)
-            tr_txt = tiny_font.render(r_item['traits'], True, tr_col)
+            tr_txt = get_rendered_text(tiny_font, r_item['traits'], tr_col)
         else:
             tr_col = (120, 140, 165)
-            tr_txt = tiny_font.render("Победите в бою для открытия в бестиарии", True, tr_col)
+            tr_txt = get_rendered_text(tiny_font, "Победите в бою для открытия в бестиарии", tr_col)
         surface.blit(tr_txt, (modal_rect.left + 670, r_box.centery - tr_txt.get_height() // 2))
 
         row_y += card_h + 5
 
     # Подсказка внизу
-    hint_txt = tiny_font.render("Подсказка: нажимайте стрелки [<-] / [->] на клавиатуре или колесо мыши для быстрой смены волны", True, (115, 145, 175))
+    hint_txt = get_rendered_text(tiny_font, "Подсказка: нажимайте стрелки [<-] / [->] на клавиатуре или колесо мыши для быстрой смены волны", (115, 145, 175))
     surface.blit(hint_txt, (modal_rect.centerx - hint_txt.get_width() // 2, modal_rect.bottom - 22))
 
     return close_btn, nav_buttons
 
+_WRAPPED_LINES_CACHE = {}
+
 def _render_wrapped_lines(text, font, max_w):
+    key = (text, id(font), int(max_w))
+    cached = _WRAPPED_LINES_CACHE.get(key)
+    if cached is not None:
+        return cached
+
     words = text.split(' ')
     lines = []
     cur = ""
@@ -561,6 +632,12 @@ def _render_wrapped_lines(text, font, max_w):
             cur = w
     if cur:
         lines.append(cur)
+
+    if len(_WRAPPED_LINES_CACHE) >= 2000:
+        keys_to_del = list(_WRAPPED_LINES_CACHE.keys())[:1000]
+        for k in keys_to_del:
+            del _WRAPPED_LINES_CACHE[k]
+    _WRAPPED_LINES_CACHE[key] = lines
     return lines
 
 
@@ -569,9 +646,7 @@ def draw_greenhouse_modal(surface, cactus_id, savedata, mouse_pos):
     if not c_data:
         return None, None
 
-    dim_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-    dim_surf.fill((0, 0, 0, 215))
-    surface.blit(dim_surf, (0, 0))
+    surface.blit(get_modal_dim_surf(215), (0, 0))
 
     modal_w = 940
     modal_h = 580
@@ -742,7 +817,7 @@ def draw_greenhouse_screen(surface, savedata, mouse_pos, inspected_cactus_id=Non
     b_hov = back_btn.collidepoint(mouse_pos)
     pygame.draw.rect(surface, (180, 45, 45) if b_hov else (145, 35, 35), back_btn, border_radius=8)
     pygame.draw.rect(surface, WHITE, back_btn, width=2, border_radius=8)
-    b_txt = font.render("< НАЗАД [ESC]", True, WHITE)
+    b_txt = get_rendered_text(font, "< НАЗАД [ESC]", WHITE)
     surface.blit(b_txt, (back_btn.centerx - b_txt.get_width() // 2, back_btn.centery - b_txt.get_height() // 2))
 
     # Кнопка Справка по Оранжерее
@@ -750,7 +825,7 @@ def draw_greenhouse_screen(surface, savedata, mouse_pos, inspected_cactus_id=Non
     inf_hov = info_btn.collidepoint(mouse_pos)
     pygame.draw.rect(surface, (25, 75, 50) if inf_hov else (18, 52, 36), info_btn, border_radius=8)
     pygame.draw.rect(surface, (80, 220, 140) if inf_hov else (45, 140, 90), info_btn, width=1, border_radius=8)
-    inf_txt = small_font.render("? ИНФО", True, (210, 255, 230))
+    inf_txt = get_rendered_text(small_font, "? ИНФО", (210, 255, 230))
     surface.blit(inf_txt, (info_btn.centerx - inf_txt.get_width() // 2, info_btn.centery - inf_txt.get_height() // 2))
 
     gh = savedata.get("Greenhouse", {})
@@ -758,11 +833,11 @@ def draw_greenhouse_screen(surface, savedata, mouse_pos, inspected_cactus_id=Non
     total_sprouts = sum(gh.get(c["id"], {}).get("sprouts", 0) for c in GREENHOUSE_CACTI)
 
     # Заголовок по центру
-    hdr_txt = large_font.render("ОРАНЖЕРЕЯ КАКТУСОВ", True, (130, 245, 175))
+    hdr_txt = get_rendered_text(large_font, "ОРАНЖЕРЕЯ КАКТУСОВ", (130, 245, 175))
     surface.blit(hdr_txt, (SCREEN_WIDTH // 2 - hdr_txt.get_width() // 2, 8))
 
     sub_str = f"Коллекция флоры Оазиса: {disc_count} / {len(GREENHOUSE_CACTI)} видов выращено  |  Всего саженцев: {total_sprouts}"
-    sub_txt = tiny_font.render(sub_str, True, (170, 220, 195))
+    sub_txt = get_rendered_text(tiny_font, sub_str, (170, 220, 195))
     surface.blit(sub_txt, (SCREEN_WIDTH // 2 - sub_txt.get_width() // 2, 44))
 
     # Счётчики ресурсов справа
@@ -770,7 +845,7 @@ def draw_greenhouse_screen(surface, savedata, mouse_pos, inspected_cactus_id=Non
     pygame.draw.rect(surface, (18, 28, 40), st_panel, border_radius=8)
     pygame.draw.rect(surface, GOLD, st_panel, width=1, border_radius=8)
     surface.blit(stellar_cactus_img_m, (st_panel.left + 8, st_panel.centery - 18))
-    st_num = font.render(f"{savedata.get('StellarCactuses', 0)}", True, WHITE)
+    st_num = get_rendered_text(font, f"{savedata.get('StellarCactuses', 0)}", WHITE)
     surface.blit(st_num, (st_panel.left + 48, st_panel.centery - st_num.get_height() // 2))
 
     dark_panel = pygame.Rect(SCREEN_WIDTH - 150, 12, 136, 46)
@@ -833,59 +908,62 @@ def draw_greenhouse_screen(surface, savedata, mouse_pos, inspected_cactus_id=Non
             if is_unl:
                 surface.blit(raw_tex, (ibox.centerx - 32, ibox.centery - 32))
             else:
-                # Силуэт для заблокированного
-                d_surf = raw_tex.copy()
-                d_surf.fill((45, 60, 52, 190), special_flags=pygame.BLEND_RGBA_MULT)
+                # Силуэт для заблокированного (кэшируем, чтобы не аллоцировать каждый кадр)
+                d_surf = _gh_locked_tex_cache.get(c_data["img_key"])
+                if d_surf is None:
+                    d_surf = raw_tex.copy()
+                    d_surf.fill((45, 60, 52, 190), special_flags=pygame.BLEND_RGBA_MULT)
+                    _gh_locked_tex_cache[c_data["img_key"]] = d_surf
                 surface.blit(d_surf, (ibox.centerx - 32, ibox.centery - 32))
-                q_txt = font.render("?", True, (130, 150, 140))
+                q_txt = get_rendered_text(font, "?", (130, 150, 140))
                 surface.blit(q_txt, (ibox.centerx - q_txt.get_width() // 2, ibox.centery - q_txt.get_height() // 2))
 
         # Заголовок и уровень справа от иконки
         tx_x = cx + 90
         n_col = GOLD if level == 5 else (WHITE if is_unl else (160, 175, 170))
         name_font = small_font if font.size(c_data["name"])[0] > (card_w - 98) else font
-        n_txt = name_font.render(c_data["name"], True, n_col)
+        n_txt = get_rendered_text(name_font, c_data["name"], n_col)
         surface.blit(n_txt, (tx_x, cy + (12 if name_font == small_font else 10)))
 
         sub_col = (130, 200, 160) if is_unl else (105, 125, 115)
-        s_txt = tiny_font.render(c_data["title"], True, sub_col)
+        s_txt = get_rendered_text(tiny_font, c_data["title"], sub_col)
         surface.blit(s_txt, (tx_x, cy + 34))
 
         # Бейдж уровня
         if level == 5:
-            badge_t = tiny_font.render("МАКСИМУМ", True, GOLD)
+            badge_t = get_rendered_text(tiny_font, "МАКСИМУМ", GOLD)
         elif is_unl:
-            badge_t = tiny_font.render(f"УРОВЕНЬ {level} / 5", True, (110, 245, 160))
+            badge_t = get_rendered_text(tiny_font, f"УРОВЕНЬ {level} / 5", (110, 245, 160))
         else:
-            badge_t = tiny_font.render("НЕ ВЫРАЩЕН", True, (150, 160, 155))
+            badge_t = get_rendered_text(tiny_font, "НЕ ВЫРАЩЕН", (150, 160, 155))
         surface.blit(badge_t, (tx_x, cy + 56))
 
         # Разделитель
         pygame.draw.line(surface, (38, 62, 50), (cx + 10, cy + 88), (cx + card_w - 10, cy + 88), 1)
 
         # Название и описание бонуса
-        bhdr = tiny_font.render(f"Дар: {c_data['buff_name']}", True, (255, 230, 130) if is_unl else (135, 150, 140))
+        bhdr = get_rendered_text(tiny_font, f"Дар: {c_data['buff_name']}", (255, 230, 130) if is_unl else (135, 150, 140))
         surface.blit(bhdr, (cx + 12, cy + 94))
 
         if is_unl:
             cur_desc = c_data["buff_desc"][level - 1]
             c_lines = _render_wrapped_lines(cur_desc, tiny_font, card_w - 24)
             for l_i, line in enumerate(c_lines[:2]):
-                surface.blit(tiny_font.render(line, True, (230, 245, 238)), (cx + 12, cy + 116 + l_i * 18))
+                surface.blit(get_rendered_text(tiny_font, line, (230, 245, 238)), (cx + 12, cy + 116 + l_i * 18))
 
             if level < 5:
                 nxt_desc = f"След. ур: {c_data['buff_desc'][level]}"
                 nxt_lines = _render_wrapped_lines(nxt_desc, tiny_font, card_w - 24)
                 if nxt_lines:
-                    surface.blit(tiny_font.render(nxt_lines[0], True, (125, 205, 160)), (cx + 12, cy + 158))
+                    surface.blit(get_rendered_text(tiny_font, nxt_lines[0], (125, 205, 160)), (cx + 12, cy + 158))
         else:
             p_desc = f"При взращивании: {c_data['buff_desc'][0]}"
             p_lines = _render_wrapped_lines(p_desc, tiny_font, card_w - 24)
             for l_i, line in enumerate(p_lines[:3]):
-                surface.blit(tiny_font.render(line, True, (135, 155, 145)), (cx + 12, cy + 116 + l_i * 18))
+                surface.blit(get_rendered_text(tiny_font, line, (135, 155, 145)), (cx + 12, cy + 116 + l_i * 18))
 
         # Подсказка подробностей
-        det_hint = tiny_font.render("[Клик: подробнее]", True, (80, 140, 110) if cd_hov else (50, 95, 75))
+        det_hint = get_rendered_text(tiny_font, "[Клик: подробнее]", (80, 140, 110) if cd_hov else (50, 95, 75))
         surface.blit(det_hint, (cx + card_w - det_hint.get_width() - 10, cy + 184))
 
         # Нижняя часть: Шкала саженцев и кнопка улучшения
@@ -903,7 +981,7 @@ def draw_greenhouse_screen(surface, savedata, mouse_pos, inspected_cactus_id=Non
 
             # Текст саженцев
             surface.blit(sprout_icon_s, (bar_rect.left + 6, bar_rect.centery - 8))
-            sp_txt = tiny_font.render(f"{sprouts} / {req_sprouts}", True, WHITE)
+            sp_txt = get_rendered_text(tiny_font, f"{sprouts} / {req_sprouts}", WHITE)
             surface.blit(sp_txt, (bar_rect.left + 26, bar_rect.centery - sp_txt.get_height() // 2))
 
             # Кнопка повышения
@@ -913,19 +991,19 @@ def draw_greenhouse_screen(surface, savedata, mouse_pos, inspected_cactus_id=Non
                 pygame.draw.rect(surface, (60, 185, 105) if u_hov else (42, 145, 80), upg_btn, border_radius=8)
                 pygame.draw.rect(surface, (160, 255, 195) if u_hov else (100, 230, 145), upg_btn, width=2, border_radius=8)
                 btn_txt_str = "ВЗРАСТИТЬ ↑" if level == 0 else "ПОВЫСИТЬ ↑"
-                u_txt = small_font.render(btn_txt_str, True, WHITE)
+                u_txt = get_rendered_text(small_font, btn_txt_str, WHITE)
                 upgrade_buttons.append((cid, upg_btn))
             else:
                 pygame.draw.rect(surface, (28, 38, 32), upg_btn, border_radius=8)
                 pygame.draw.rect(surface, (50, 70, 60), upg_btn, width=1, border_radius=8)
-                u_txt = tiny_font.render("МАЛО САЖЕНЦЕВ", True, (130, 145, 135))
+                u_txt = get_rendered_text(tiny_font, "МАЛО САЖЕНЦЕВ", (130, 145, 135))
 
             surface.blit(u_txt, (upg_btn.centerx - u_txt.get_width() // 2, upg_btn.centery - u_txt.get_height() // 2))
         else:
             m_bar = pygame.Rect(cx + 10, cy + 206, card_w - 20, 28)
             pygame.draw.rect(surface, (36, 32, 18), m_bar, border_radius=6)
             pygame.draw.rect(surface, GOLD, m_bar, width=1, border_radius=6)
-            m_txt = tiny_font.render("МАКСИМАЛЬНЫЙ УРОВЕНЬ", True, GOLD)
+            m_txt = get_rendered_text(tiny_font, "МАКСИМАЛЬНЫЙ УРОВЕНЬ", GOLD)
             surface.blit(m_txt, (m_bar.centerx - m_txt.get_width() // 2, m_bar.centery - m_txt.get_height() // 2))
 
     # Нижняя панель итоговых бонусов
@@ -1072,7 +1150,14 @@ def _get_bestiary_btn_label(label_type):
     return surf
 
 
+_WRAP_TEXT_LINES_CACHE = {}
+
 def _wrap_text_to_lines(text, f_obj, max_width):
+    key = (text, id(f_obj), int(max_width))
+    cached = _WRAP_TEXT_LINES_CACHE.get(key)
+    if cached is not None:
+        return cached
+
     lines = []
     for paragraph in text.split("\n"):
         paragraph = paragraph.strip()
@@ -1090,6 +1175,12 @@ def _wrap_text_to_lines(text, f_obj, max_width):
                 cur_line = w
         if cur_line:
             lines.append(cur_line)
+
+    if len(_WRAP_TEXT_LINES_CACHE) >= 2000:
+        keys_to_del = list(_WRAP_TEXT_LINES_CACHE.keys())[:1000]
+        for k in keys_to_del:
+            del _WRAP_TEXT_LINES_CACHE[k]
+    _WRAP_TEXT_LINES_CACHE[key] = lines
     return lines
 
 
@@ -1098,9 +1189,7 @@ def draw_bestiary_inspect_modal(surface, slime_id, savedata, mouse_pos):
     if not slime:
         return None, None, None, None
 
-    dim_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-    dim_surf.fill((0, 0, 0, 215))
-    surface.blit(dim_surf, (0, 0))
+    surface.blit(get_modal_dim_surf(215), (0, 0))
 
     modal_w, modal_h = 850, 560
     modal_rect = pygame.Rect((SCREEN_WIDTH - modal_w) // 2, (SCREEN_HEIGHT - modal_h) // 2, modal_w, modal_h)
@@ -1283,26 +1372,26 @@ def draw_bestiary_screen(surface, savedata, mouse_pos, scroll_y=0, bg_time=None,
     b_hov = back_btn.collidepoint(mouse_pos)
     pygame.draw.rect(surface, (180, 45, 45) if b_hov else (145, 35, 35), back_btn, border_radius=8)
     pygame.draw.rect(surface, WHITE, back_btn, width=2, border_radius=8)
-    b_txt = font.render("< НАЗАД [ESC]", True, WHITE)
+    b_txt = get_rendered_text(font, "< НАЗАД [ESC]", WHITE)
     surface.blit(b_txt, (back_btn.centerx - b_txt.get_width() // 2, back_btn.centery - b_txt.get_height() // 2))
 
     st_panel = pygame.Rect(SCREEN_WIDTH - 296, 12, 136, 46)
     pygame.draw.rect(surface, (22, 30, 44), st_panel, border_radius=8)
     pygame.draw.rect(surface, GOLD, st_panel, width=1, border_radius=8)
     surface.blit(stellar_cactus_img_m, (st_panel.left + 8, st_panel.centery - 18))
-    st_num = font.render(f"{savedata.get('StellarCactuses', 0)}", True, WHITE)
+    st_num = get_rendered_text(font, f"{savedata.get('StellarCactuses', 0)}", WHITE)
     surface.blit(st_num, (st_panel.left + 48, st_panel.centery - st_num.get_height() // 2))
 
     dark_panel = pygame.Rect(SCREEN_WIDTH - 150, 12, 136, 46)
     draw_dark_cactus_counter(surface, dark_panel, savedata, mouse_pos)
 
-    hdr_txt = large_font.render("БЕСТИАРИЙ СЛАЙМОВ", True, (240, 255, 245))
+    hdr_txt = get_rendered_text(large_font, "БЕСТИАРИЙ СЛАЙМОВ", (240, 255, 245))
     surface.blit(hdr_txt, (SCREEN_WIDTH // 2 - hdr_txt.get_width() // 2, 8))
 
     discovered = savedata.get("BestiaryDiscovered", [])
     claimed = savedata.get("BestiaryClaimed", {})
 
-    sub_txt = tiny_font.render(f"Изучено слаймов: {len(discovered)} / {len(BESTIARY_DATA)}  |  Кликните по карточке для детального описания и способностей!", True, (160, 190, 220))
+    sub_txt = get_rendered_text(tiny_font, f"Изучено слаймов: {len(discovered)} / {len(BESTIARY_DATA)}  |  Кликните по карточке для детального описания и способностей!", (160, 190, 220))
     surface.blit(sub_txt, (SCREEN_WIDTH // 2 - sub_txt.get_width() // 2, 44))
 
     view_rect = pygame.Rect(0, 72, SCREEN_WIDTH, SCREEN_HEIGHT - 72)
@@ -1325,6 +1414,8 @@ def draw_bestiary_screen(surface, savedata, mouse_pos, scroll_y=0, bg_time=None,
 
         card_rect = pygame.Rect(cx, cy, card_w, card_h)
         card_click_rects.append((slime["id"], card_rect, is_disc))
+        if cy + card_h < 70 or cy > SCREEN_HEIGHT:
+            continue
         cd_hov = card_rect.collidepoint(mouse_pos) and (inspected_slime_id is None)
 
         if not is_disc:
@@ -1369,7 +1460,7 @@ def draw_bestiary_screen(surface, savedata, mouse_pos, scroll_y=0, bg_time=None,
             cur_tier = get_mob_bestiary_tier(slime["id"], kills)
             t_str = f"ТИР {ROMAN_TIERS[cur_tier]}" if cur_tier > 0 else "ТИР 0"
             t_col = GOLD if cur_tier == 10 else ((120, 240, 255) if cur_tier >= 5 else (180, 195, 210))
-            t_surf = tiny_font.render(t_str, True, t_col)
+            t_surf = get_rendered_text(tiny_font, t_str, t_col)
             t_badge_rect = pygame.Rect(btn_rect.right - t_surf.get_width() - 10, cy + 8, t_surf.get_width() + 10, 18)
             pygame.draw.rect(surface, (20, 28, 38), t_badge_rect, border_radius=4)
             pygame.draw.rect(surface, t_col, t_badge_rect, width=1, border_radius=4)
@@ -1403,7 +1494,7 @@ def draw_bestiary_screen(surface, savedata, mouse_pos, scroll_y=0, bg_time=None,
                 pygame.draw.rect(surface, fill_c, (bar_rect.left, bar_rect.top, fill_w, 14), border_radius=3)
             pygame.draw.rect(surface, (55, 65, 80), bar_rect, width=1, border_radius=3)
             prog_str = "МАКСИМУМ" if cur_tier == 10 else f"{in_t}/{needed}"
-            prog_txt = tiny_font.render(prog_str, True, WHITE)
+            prog_txt = get_rendered_text(tiny_font, prog_str, WHITE)
             surface.blit(prog_txt, (bar_rect.centerx - prog_txt.get_width() // 2, bar_rect.centery - prog_txt.get_height() // 2))
         else:
             q_txt, nm_surf, un_desc, c_lbl = _get_unknown_slime_texts()
@@ -1444,6 +1535,14 @@ def draw_bestiary_screen(surface, savedata, mouse_pos, scroll_y=0, bg_time=None,
     return back_btn, claim_buttons, card_click_rects, modal_rect, modal_close_btn, modal_x_btn, modal_claim_btn, max_b_scroll
 
 
+_ui_btn_icons = {}
+def get_ui_btn_icon(key, src_img):
+    ic = _ui_btn_icons.get(key)
+    if ic is None:
+        ic = pygame.transform.smoothscale(src_img, (20, 20))
+        _ui_btn_icons[key] = ic
+    return ic
+
 def draw_map_selection_screen(surface, game_map, current_offset, savedata, mouse_pos):
     if not isinstance(savedata, dict):
         savedata = {}
@@ -1461,7 +1560,7 @@ def draw_map_selection_screen(surface, game_map, current_offset, savedata, mouse
     pygame.draw.rect(surface, (18, 28, 40), st_panel, border_radius=8)
     pygame.draw.rect(surface, GOLD, st_panel, width=2, border_radius=8)
     surface.blit(stellar_cactus_img_m, (st_panel.left + 8, st_panel.centery - 18))
-    st_txt = font.render(f"{savedata.get('StellarCactuses', 0)}", True, WHITE)
+    st_txt = get_rendered_text(font, f"{savedata.get('StellarCactuses', 0)}", WHITE)
     surface.blit(st_txt, (st_panel.left + 46, st_panel.centery - st_txt.get_height() // 2))
 
     dark_panel = pygame.Rect(144, 20, 110, 48)
@@ -1472,7 +1571,7 @@ def draw_map_selection_screen(surface, game_map, current_offset, savedata, mouse
     m_hov = menu_btn_rect.collidepoint(mouse_pos)
     pygame.draw.rect(surface, (150, 45, 45) if m_hov else (100, 30, 30), menu_btn_rect, border_radius=8)
     pygame.draw.rect(surface, (255, 120, 120) if m_hov else (180, 60, 60), menu_btn_rect, width=2, border_radius=8)
-    m_txt = small_font.render("< МЕНЮ [ESC]", True, WHITE)
+    m_txt = get_rendered_text(small_font, "< МЕНЮ [ESC]", WHITE)
     surface.blit(m_txt, (menu_btn_rect.centerx - m_txt.get_width() // 2, menu_btn_rect.centery - m_txt.get_height() // 2))
 
     # Кнопка Справка / Механики
@@ -1480,12 +1579,12 @@ def draw_map_selection_screen(surface, game_map, current_offset, savedata, mouse
     g_hov = guide_btn_rect.collidepoint(mouse_pos)
     pygame.draw.rect(surface, (30, 75, 110) if g_hov else (20, 50, 78), guide_btn_rect, border_radius=8)
     pygame.draw.rect(surface, (90, 200, 255) if g_hov else (50, 140, 190), guide_btn_rect, width=2, border_radius=8)
-    g_txt = small_font.render("? МЕХАНИКИ", True, (220, 245, 255))
+    g_txt = get_rendered_text(small_font, "? МЕХАНИКИ", (220, 245, 255))
     surface.blit(g_txt, (guide_btn_rect.centerx - g_txt.get_width() // 2, guide_btn_rect.centery - g_txt.get_height() // 2))
 
     # Свободный, гордый центрированный заголовок
-    title_shadow = large_font.render("ВЫБОР КАРТЫ", True, (10, 20, 15))
-    title = large_font.render("ВЫБОР КАРТЫ", True, (240, 255, 245))
+    title_shadow = get_rendered_text(large_font, "ВЫБОР КАРТЫ", (10, 20, 15))
+    title = get_rendered_text(large_font, "ВЫБОР КАРТЫ", (240, 255, 245))
     tx = SCREEN_WIDTH // 2 - title.get_width() // 2
     surface.blit(title_shadow, (tx + 2, 26))
     surface.blit(title, (tx, 24))
@@ -1548,7 +1647,7 @@ def draw_map_selection_screen(surface, game_map, current_offset, savedata, mouse
 
         # Шапка карточки: Номер, Название и Бейдж сложности
         name_str = f"{mid + 1}. {biome['name']}"
-        m_num_txt = font.render(name_str, True, WHITE if unlocked else (120, 130, 140))
+        m_num_txt = get_rendered_text(font, name_str, WHITE if unlocked else (120, 130, 140))
         surface.blit(m_num_txt, (x_pos + 14, y_pos + 11))
 
         # Бейдж сложности
@@ -1557,7 +1656,7 @@ def draw_map_selection_screen(surface, game_map, current_offset, savedata, mouse
         diff_rect = pygame.Rect(x_pos + card_w - diff_w - 14, y_pos + 10, diff_w, diff_h)
         pygame.draw.rect(surface, (26, 34, 46) if unlocked else (22, 24, 30), diff_rect, border_radius=6)
         pygame.draw.rect(surface, accent_col, diff_rect, width=1, border_radius=6)
-        d_lbl = tiny_font.render(biome["diff_label"], True, accent_col)
+        d_lbl = get_rendered_text(tiny_font, biome["diff_label"], accent_col)
         surface.blit(d_lbl, (diff_rect.centerx - d_lbl.get_width() // 2, diff_rect.centery - d_lbl.get_height() // 2))
 
         # Кнопка [ ℹ ИНФО ] в шапке карточки (стильный компактный чип)
@@ -1567,7 +1666,7 @@ def draw_map_selection_screen(surface, game_map, current_offset, savedata, mouse
         pygame.draw.rect(surface, (40, 75, 115) if inf_hov else (24, 38, 56), info_btn_rect, border_radius=6)
         pygame.draw.rect(surface, (100, 210, 255) if inf_hov else (52, 88, 128), info_btn_rect, width=1, border_radius=6)
         surface.blit(info_icon_s, (info_btn_rect.left + 6, info_btn_rect.centery - 8))
-        inf_lbl = tiny_font.render("ИНФО", True, (210, 240, 255) if inf_hov else (165, 200, 235))
+        inf_lbl = get_rendered_text(tiny_font, "ИНФО", (210, 240, 255) if inf_hov else (165, 200, 235))
         surface.blit(inf_lbl, (info_btn_rect.left + 26, info_btn_rect.centery - inf_lbl.get_height() // 2))
         info_btn_rects.append((mid, info_btn_rect))
 
@@ -1580,12 +1679,12 @@ def draw_map_selection_screen(surface, game_map, current_offset, savedata, mouse
 
         # Подзаголовок биома (чистая атмосфера)
         sub_str = f"Биом: {biome['sub']}"
-        sub_txt = tiny_font.render(sub_str, True, (160, 195, 225) if unlocked else (105, 115, 125))
+        sub_txt = get_rendered_text(tiny_font, sub_str, (160, 195, 225) if unlocked else (105, 115, 125))
         surface.blit(sub_txt, (x_pos + card_w // 2 - sub_txt.get_width() // 2, y_pos + 192))
 
         # Рубежи мастерства (4 звезды: 15, 30, 50, 75 волн)
         rec = recs[mid] if mid < len(recs) else 0
-        stars_lbl = tiny_font.render("РУБЕЖИ:", True, (140, 165, 195) if unlocked else (90, 95, 105))
+        stars_lbl = get_rendered_text(tiny_font, "РУБЕЖИ:", (140, 165, 195) if unlocked else (90, 95, 105))
         surface.blit(stars_lbl, (x_pos + 14, y_pos + 219))
 
         for s_idx, (mw, rew, rank) in enumerate(get_map_mastery_milestones(mid)):
@@ -1596,18 +1695,18 @@ def draw_map_selection_screen(surface, game_map, current_offset, savedata, mouse
                 pygame.draw.rect(surface, (60, 48, 20) if sb_hov else (46, 36, 14), star_box, border_radius=6)
                 pygame.draw.rect(surface, (255, 235, 130) if sb_hov else GOLD, star_box, width=2 if sb_hov else 1, border_radius=6)
                 surface.blit(stellar_cactus_img_xs, (star_box.left + 3, star_box.centery - 9))
-                s_txt = tiny_font.render(f"{mw}в", True, (255, 225, 110))
+                s_txt = get_rendered_text(tiny_font, f"{mw}в", (255, 225, 110))
                 surface.blit(s_txt, (star_box.left + 23, star_box.centery - s_txt.get_height() // 2))
             else:
                 pygame.draw.rect(surface, (26, 34, 46) if sb_hov else (16, 22, 32), star_box, border_radius=6)
                 pygame.draw.rect(surface, (70, 95, 125) if sb_hov else (44, 56, 72), star_box, width=1, border_radius=6)
-                s_txt = tiny_font.render(f"{mw}в", True, (160, 185, 205) if sb_hov else (105, 120, 135))
+                s_txt = get_rendered_text(tiny_font, f"{mw}в", (160, 185, 205) if sb_hov else (105, 120, 135))
                 surface.blit(s_txt, (star_box.centerx - s_txt.get_width() // 2, star_box.centery - s_txt.get_height() // 2))
 
             if sb_hov:
                 txt_prefix = f"{rank}: {mw} волна (+{rew}"
-                tt_txt = tiny_font.render(txt_prefix, True, (255, 235, 130) if achieved else (200, 220, 240))
-                tt_close = tiny_font.render(")", True, (255, 235, 130) if achieved else (200, 220, 240))
+                tt_txt = get_rendered_text(tiny_font, txt_prefix, (255, 235, 130) if achieved else (200, 220, 240))
+                tt_close = get_rendered_text(tiny_font, ")", (255, 235, 130) if achieved else (200, 220, 240))
                 icon_w = stellar_cactus_img_xs.get_width()
                 tt_w = tt_txt.get_width() + icon_w + tt_close.get_width() + 18
                 tt_h = 24
@@ -1628,9 +1727,9 @@ def draw_map_selection_screen(surface, game_map, current_offset, savedata, mouse
             pygame.draw.rect(surface, (36, 18, 22), bot_rect, border_radius=8)
             pygame.draw.rect(surface, (160, 48, 58), bot_rect, width=1, border_radius=8)
             surface.blit(lock_icon, (bot_rect.left + 10, bot_rect.top + 10))
-            l_hdr = tiny_font.render("КАРТА ЗАБЛОКИРОВАНА", True, (255, 95, 95))
+            l_hdr = get_rendered_text(tiny_font, "КАРТА ЗАБЛОКИРОВАНА", (255, 95, 95))
             surface.blit(l_hdr, (bot_rect.left + 32, bot_rect.top + 9))
-            l_req = tiny_font.render(lock_reason, True, (240, 180, 180))
+            l_req = get_rendered_text(tiny_font, lock_reason, (240, 180, 180))
             surface.blit(l_req, (bot_rect.left + 10, bot_rect.top + 34))
 
             # Кнопка инфо для заблокированной карты
@@ -1639,7 +1738,7 @@ def draw_map_selection_screen(surface, game_map, current_offset, savedata, mouse
             pygame.draw.rect(surface, (48, 24, 30) if li_hov else (30, 18, 22), lock_info_btn, border_radius=6)
             pygame.draw.rect(surface, (180, 70, 85) if li_hov else (90, 36, 45), lock_info_btn, width=1, border_radius=6)
             surface.blit(info_icon_s, (lock_info_btn.left + 8, lock_info_btn.centery - 8))
-            li_txt = tiny_font.render("Мутаторы и информация карты >", True, (255, 200, 210) if li_hov else (190, 140, 150))
+            li_txt = get_rendered_text(tiny_font, "Мутаторы и информация карты >", (255, 200, 210) if li_hov else (190, 140, 150))
             surface.blit(li_txt, (lock_info_btn.left + 30, lock_info_btn.centery - li_txt.get_height() // 2))
             info_btn_rects.append((mid, lock_info_btn))
         else:
@@ -1648,7 +1747,7 @@ def draw_map_selection_screen(surface, game_map, current_offset, savedata, mouse
 
             # Верхняя строка: Рекорд слева, Кнопка ВЫБРАТЬ справа
             rec_str = f"Рекорд: {rec} волн"
-            rec_txt = small_font.render(rec_str, True, (255, 195, 65))
+            rec_txt = get_rendered_text(small_font, rec_str, (255, 195, 65))
             surface.blit(rec_txt, (bot_rect.left + 10, bot_rect.top + 18 - rec_txt.get_height() // 2))
 
             if is_selected:
@@ -1656,14 +1755,14 @@ def draw_map_selection_screen(surface, game_map, current_offset, savedata, mouse
                 sel_rect = pygame.Rect(bot_rect.right - sel_w - 10, bot_rect.top + 8, sel_w, sel_h)
                 pygame.draw.rect(surface, (38, 190, 80), sel_rect, border_radius=6)
                 pygame.draw.rect(surface, (160, 255, 185), sel_rect, width=1, border_radius=6)
-                sel_txt = tiny_font.render("ВЫБРАНО", True, WHITE)
+                sel_txt = get_rendered_text(tiny_font, "ВЫБРАНО", WHITE)
                 surface.blit(sel_txt, (sel_rect.centerx - sel_txt.get_width() // 2, sel_rect.centery - sel_txt.get_height() // 2))
             else:
                 btn_w, btn_h = 104, 30
                 sel_rect = pygame.Rect(bot_rect.right - btn_w - 10, bot_rect.top + 8, btn_w, btn_h)
                 pygame.draw.rect(surface, (38, 76, 118) if c_hover else (26, 48, 76), sel_rect, border_radius=6)
                 pygame.draw.rect(surface, (95, 175, 255) if c_hover else (52, 98, 152), sel_rect, width=1, border_radius=6)
-                sel_txt = tiny_font.render("ВЫБРАТЬ", True, (220, 240, 255))
+                sel_txt = get_rendered_text(tiny_font, "ВЫБРАТЬ", (220, 240, 255))
                 surface.blit(sel_txt, (sel_rect.centerx - sel_txt.get_width() // 2, sel_rect.centery - sel_txt.get_height() // 2))
 
             # Нижняя строка: Кнопка «АНАЛИЗ ВОЛН» или «НАСТРОЙКА КАРТЫ» для карты 10
@@ -1673,17 +1772,17 @@ def draw_map_selection_screen(surface, game_map, current_offset, savedata, mouse
                 pygame.draw.rect(surface, (70, 32, 95) if wi_hov else (44, 20, 62), wave_info_btn, border_radius=6)
                 pygame.draw.rect(surface, (255, 120, 220) if wi_hov else (190, 75, 175), wave_info_btn, width=2 if wi_hov else 1, border_radius=6)
                 c_seed = savedata.get("CustomMapConfig", {}).get("seed", 777)
-                wi_t = font.render("НАСТРОИТЬ КАРТУ", True, (255, 235, 255) if wi_hov else (245, 195, 240))
+                wi_t = get_rendered_text(font, "НАСТРОИТЬ КАРТУ", (255, 235, 255) if wi_hov else (245, 195, 240))
                 surface.blit(wi_t, (wave_info_btn.left + 32, wave_info_btn.top + 5))
-                wi_sub = tiny_font.render(f"Сид: {c_seed}  |  Генерация и параметры мира >", True, (255, 200, 245) if wi_hov else (200, 150, 200))
+                wi_sub = get_rendered_text(tiny_font, f"Сид: {c_seed}  |  Генерация и параметры мира >", (255, 200, 245) if wi_hov else (200, 150, 200))
                 surface.blit(wi_sub, (wave_info_btn.left + 32, wave_info_btn.top + 24))
             else:
                 pygame.draw.rect(surface, (28, 52, 80) if wi_hov else (20, 34, 52), wave_info_btn, border_radius=6)
                 pygame.draw.rect(surface, (90, 205, 255) if wi_hov else (45, 78, 115), wave_info_btn, width=1, border_radius=6)
                 surface.blit(info_icon_s, (wave_info_btn.left + 10, wave_info_btn.centery - 8))
-                wi_t = font.render("АНАЛИЗ ВОЛН", True, (225, 245, 255) if wi_hov else (175, 215, 250))
+                wi_t = get_rendered_text(font, "АНАЛИЗ ВОЛН", (225, 245, 255) if wi_hov else (175, 215, 250))
                 surface.blit(wi_t, (wave_info_btn.left + 32, wave_info_btn.top + 5))
-                wi_sub = tiny_font.render("Слаймы, HP, скорость и награды >", True, (130, 185, 235) if wi_hov else (95, 135, 175))
+                wi_sub = get_rendered_text(tiny_font, "Слаймы, HP, скорость и награды >", (130, 185, 235) if wi_hov else (95, 135, 175))
                 surface.blit(wi_sub, (wave_info_btn.left + 32, wave_info_btn.top + 24))
             info_btn_rects.append((mid, wave_info_btn))
 
@@ -1698,13 +1797,13 @@ def draw_map_selection_screen(surface, game_map, current_offset, savedata, mouse
     if current_offset > 0:
         pygame.draw.rect(surface, (35, 62, 92) if l_hov else (20, 34, 52), l_arr_rect, border_radius=10)
         pygame.draw.rect(surface, (85, 160, 240) if l_hov else (48, 85, 128), l_arr_rect, width=2, border_radius=10)
-        l_arr = massive_font.render("<", True, WHITE)
+        l_arr = get_rendered_text(massive_font, "<", WHITE)
         surface.blit(l_arr, (l_arr_rect.centerx - l_arr.get_width() // 2, l_arr_rect.centery - l_arr.get_height() // 2 - 2))
 
     if current_offset + 3 < len(MAP_NAMES_LIST):
         pygame.draw.rect(surface, (35, 62, 92) if r_hov else (20, 34, 52), r_arr_rect, border_radius=10)
         pygame.draw.rect(surface, (85, 160, 240) if r_hov else (48, 85, 128), r_arr_rect, width=2, border_radius=10)
-        r_arr = massive_font.render(">", True, WHITE)
+        r_arr = get_rendered_text(massive_font, ">", WHITE)
         surface.blit(r_arr, (r_arr_rect.centerx - r_arr.get_width() // 2, r_arr_rect.centery - r_arr.get_height() // 2 - 2))
 
     # Индикатор страниц [ ● ○ ○ ]
@@ -1743,9 +1842,9 @@ def draw_map_selection_screen(surface, game_map, current_offset, savedata, mouse
     # 1. Кнопка Талантов [U]
     pygame.draw.rect(surface, (35, 110, 200) if upg_hover else (24, 80, 155), upg_btn_rect, border_radius=10)
     pygame.draw.rect(surface, (110, 195, 255) if upg_hover else (60, 145, 230), upg_btn_rect, width=2, border_radius=10)
-    s_stellar_icon = pygame.transform.smoothscale(stellar_cactus_img_s, (20, 20))
+    s_stellar_icon = get_ui_btn_icon("stellar", stellar_cactus_img_s)
     surface.blit(s_stellar_icon, (upg_btn_rect.left + 22, upg_btn_rect.centery - 10))
-    upg_btn_txt = nav_font.render("ТАЛАНТЫ [U]", True, WHITE)
+    upg_btn_txt = get_rendered_text(nav_font, "ТАЛАНТЫ [U]", WHITE)
     surface.blit(upg_btn_txt, (upg_btn_rect.left + 52, upg_btn_rect.centery - upg_btn_txt.get_height() // 2))
 
     # 2. Кнопка Оранжереи [G]
@@ -1755,19 +1854,19 @@ def draw_map_selection_screen(surface, game_map, current_offset, savedata, mouse
         pygame.draw.rect(surface, (45, 135, 75) if gh_hover else (32, 98, 56), greenhouse_btn_rect, border_radius=10)
         pygame.draw.rect(surface, (120, 235, 160) if gh_hover else (70, 175, 110), greenhouse_btn_rect, width=2, border_radius=10)
         surface.blit(sprout_icon_s, (greenhouse_btn_rect.left + 24, greenhouse_btn_rect.centery - 8))
-        gh_txt = nav_font.render("ОРАНЖЕРЕЯ [G]", True, WHITE)
+        gh_txt = get_rendered_text(nav_font, "ОРАНЖЕРЕЯ [G]", WHITE)
         surface.blit(gh_txt, (greenhouse_btn_rect.left + 52, greenhouse_btn_rect.centery - gh_txt.get_height() // 2))
         if has_gh_upg:
             g_dot = (greenhouse_btn_rect.right - 14, greenhouse_btn_rect.centery)
             pygame.draw.circle(surface, (80, 255, 120), g_dot, 8)
             pygame.draw.circle(surface, WHITE, g_dot, 8, width=1)
-            g_ex = tiny_font.render("↑", True, BLACK)
+            g_ex = get_rendered_text(tiny_font, "↑", BLACK)
             surface.blit(g_ex, (g_dot[0] - g_ex.get_width() // 2, g_dot[1] - g_ex.get_height() // 2 - 1))
     else:
         pygame.draw.rect(surface, (34, 42, 48) if gh_hover else (26, 32, 38), greenhouse_btn_rect, border_radius=10)
         pygame.draw.rect(surface, (90, 110, 125) if gh_hover else (55, 65, 75), greenhouse_btn_rect, width=1, border_radius=10)
         surface.blit(lock_icon, (greenhouse_btn_rect.left + 24, greenhouse_btn_rect.centery - 8))
-        gh_txt = nav_font.render("ОРАНЖЕРЕЯ [G]", True, (150, 165, 178) if gh_hover else (100, 115, 128))
+        gh_txt = get_rendered_text(nav_font, "ОРАНЖЕРЕЯ [G]", (150, 165, 178) if gh_hover else (100, 115, 128))
         surface.blit(gh_txt, (greenhouse_btn_rect.left + 52, greenhouse_btn_rect.centery - gh_txt.get_height() // 2))
 
     # 3. Кнопка Реликвий [R] (Музей)
@@ -1775,20 +1874,20 @@ def draw_map_selection_screen(surface, game_map, current_offset, savedata, mouse
     if arch_unlocked:
         pygame.draw.rect(surface, (58, 42, 24) if relics_hover else (38, 28, 16), relics_btn_rect, border_radius=10)
         pygame.draw.rect(surface, (255, 215, 80) if relics_hover else (185, 140, 50), relics_btn_rect, width=2, border_radius=10)
-        s_relic_icon = pygame.transform.smoothscale(relic_icon, (20, 20))
+        s_relic_icon = get_ui_btn_icon("relic", relic_icon)
         surface.blit(s_relic_icon, (relics_btn_rect.left + 22, relics_btn_rect.centery - 10))
-        r_txt = nav_font.render("РЕЛИКВИИ [R]", True, (255, 235, 160))
+        r_txt = get_rendered_text(nav_font, "РЕЛИКВИИ [R]", (255, 235, 160))
         surface.blit(r_txt, (relics_btn_rect.left + 52, relics_btn_rect.centery - r_txt.get_height() // 2))
         unlocked_cnt = sum(1 for r_id in RELICS_DATA if savedata.get("Relics", {}).get(r_id, {}).get("level", 0) > 0)
-        r_sub = tiny_font.render(f"{unlocked_cnt}/20", True, (240, 210, 140))
+        r_sub = get_rendered_text(tiny_font, f"{unlocked_cnt}/20", (240, 210, 140))
         surface.blit(r_sub, (relics_btn_rect.right - r_sub.get_width() - 16, relics_btn_rect.centery - r_sub.get_height() // 2))
     else:
         pygame.draw.rect(surface, (34, 38, 44) if relics_hover else (24, 28, 34), relics_btn_rect, border_radius=10)
         pygame.draw.rect(surface, (95, 110, 125) if relics_hover else (55, 65, 75), relics_btn_rect, width=1, border_radius=10)
         surface.blit(lock_icon, (relics_btn_rect.left + 24, relics_btn_rect.centery - 8))
-        r_txt = nav_font.render("РЕЛИКВИИ [R]", True, (150, 165, 178) if relics_hover else (100, 115, 128))
+        r_txt = get_rendered_text(nav_font, "РЕЛИКВИИ [R]", (150, 165, 178) if relics_hover else (100, 115, 128))
         surface.blit(r_txt, (relics_btn_rect.left + 52, relics_btn_rect.centery - r_txt.get_height() // 2))
-        r_sub = tiny_font.render("Закрыто", True, (135, 150, 162) if relics_hover else (90, 102, 115))
+        r_sub = get_rendered_text(tiny_font, "Закрыто", (135, 150, 162) if relics_hover else (90, 102, 115))
         surface.blit(r_sub, (relics_btn_rect.right - r_sub.get_width() - 16, relics_btn_rect.centery - r_sub.get_height() // 2))
 
     # --- ЦЕНТРАЛЬНАЯ КОЛОНКА (под Картой 2): Управление запуском боя ---
@@ -1805,16 +1904,16 @@ def draw_map_selection_screen(surface, game_map, current_offset, savedata, mouse
 
     pygame.draw.rect(surface, (45, 75, 110) if m_hov else (28, 48, 72), btn_minus, border_radius=8)
     pygame.draw.rect(surface, (110, 175, 245) if m_hov else (52, 92, 138), btn_minus, width=2, border_radius=8)
-    txt_m = large_font.render("-", True, WHITE)
+    txt_m = get_rendered_text(large_font, "-", WHITE)
     surface.blit(txt_m, (btn_minus.centerx - txt_m.get_width() // 2, btn_minus.centery - txt_m.get_height() // 2 - 2))
 
     pygame.draw.rect(surface, (45, 75, 110) if p_hov else (28, 48, 72), btn_plus, border_radius=8)
     pygame.draw.rect(surface, (110, 175, 245) if p_hov else (52, 92, 138), btn_plus, width=2, border_radius=8)
-    txt_p = large_font.render("+", True, WHITE)
+    txt_p = get_rendered_text(large_font, "+", WHITE)
     surface.blit(txt_p, (btn_plus.centerx - txt_p.get_width() // 2, btn_plus.centery - txt_p.get_height() // 2 - 2))
 
     w_str = f"СТАРТОВАЯ ВОЛНА: {selected_wave}"
-    w_txt = font.render(w_str, True, (245, 250, 255))
+    w_txt = get_rendered_text(font, w_str, (245, 250, 255))
     surface.blit(w_txt, (wave_box_rect.centerx - w_txt.get_width() // 2, wave_box_rect.centery - w_txt.get_height() // 2))
 
     # 5. Кнопка «НАЧАТЬ ИГРУ [ПРОБЕЛ]» (большая премиальная кнопка)
@@ -1838,8 +1937,8 @@ def draw_map_selection_screen(surface, game_map, current_offset, savedata, mouse
     pygame.draw.rect(surface, btn_bg, start_btn_rect, border_radius=12)
     pygame.draw.rect(surface, btn_border, start_btn_rect, width=3 if st_hover and cur_unlocked else 2, border_radius=12)
     
-    start_txt = font.render(txt_str, True, WHITE)
-    sub_txt = tiny_font.render(sub_str, True, (215, 250, 225) if cur_unlocked else (190, 170, 170))
+    start_txt = get_rendered_text(font, txt_str, WHITE)
+    sub_txt = get_rendered_text(tiny_font, sub_str, (215, 250, 225) if cur_unlocked else (190, 170, 170))
     tot_h = start_txt.get_height() + sub_txt.get_height() + 6
     top_y = start_btn_rect.centery - tot_h // 2
     
@@ -1853,37 +1952,37 @@ def draw_map_selection_screen(surface, game_map, current_offset, savedata, mouse
     # 6. Кнопка Бестиария [B]
     pygame.draw.rect(surface, (125, 45, 185) if bes_hover else (95, 32, 145), bestiary_btn_rect, border_radius=10)
     pygame.draw.rect(surface, (230, 160, 255) if bes_hover else (160, 90, 225), bestiary_btn_rect, width=2, border_radius=10)
-    s_dark_icon = pygame.transform.smoothscale(dark_cactus_img_s, (20, 20))
+    s_dark_icon = get_ui_btn_icon("dark", dark_cactus_img_s)
     surface.blit(s_dark_icon, (bestiary_btn_rect.left + 22, bestiary_btn_rect.centery - 10))
-    bes_txt = nav_font.render("БЕСТИАРИЙ [B]", True, WHITE)
+    bes_txt = get_rendered_text(nav_font, "БЕСТИАРИЙ [B]", WHITE)
     surface.blit(bes_txt, (bestiary_btn_rect.left + 52, bestiary_btn_rect.centery - bes_txt.get_height() // 2))
     if has_unclaimed_bestiary(savedata):
         b_dot = (bestiary_btn_rect.right - 14, bestiary_btn_rect.centery)
         pygame.draw.circle(surface, (255, 215, 0), b_dot, 8)
         pygame.draw.circle(surface, WHITE, b_dot, 8, width=1)
-        b_ex = tiny_font.render("!", True, BLACK)
+        b_ex = get_rendered_text(tiny_font, "!", BLACK)
         surface.blit(b_ex, (b_dot[0] - b_ex.get_width() // 2, b_dot[1] - b_ex.get_height() // 2 - 1))
 
     # 7. Кнопка Достижений [A]
     has_unclaimed = has_unclaimed_achievements(savedata)
     pygame.draw.rect(surface, (195, 115, 20) if ach_hover else (155, 88, 12), ach_btn_rect, border_radius=10)
     pygame.draw.rect(surface, (255, 210, 100) if ach_hover else (215, 155, 45), ach_btn_rect, width=2, border_radius=10)
-    s_trophy_icon = pygame.transform.smoothscale(trophy_icon, (20, 20))
+    s_trophy_icon = get_ui_btn_icon("trophy", trophy_icon)
     surface.blit(s_trophy_icon, (ach_btn_rect.left + 22, ach_btn_rect.centery - 10))
-    ach_txt = nav_font.render("ДОСТИЖЕНИЯ [A]", True, WHITE)
+    ach_txt = get_rendered_text(nav_font, "ДОСТИЖЕНИЯ [A]", WHITE)
     surface.blit(ach_txt, (ach_btn_rect.left + 52, ach_btn_rect.centery - ach_txt.get_height() // 2))
     if has_unclaimed:
         badge_center = (ach_btn_rect.right - 14, ach_btn_rect.centery)
         pygame.draw.circle(surface, RED, badge_center, 8)
         pygame.draw.circle(surface, WHITE, badge_center, 8, width=1)
-        b_ex = tiny_font.render("!", True, WHITE)
+        b_ex = get_rendered_text(tiny_font, "!", WHITE)
         surface.blit(b_ex, (badge_center[0] - b_ex.get_width() // 2, badge_center[1] - b_ex.get_height() // 2 - 1))
 
     # 8. Кнопка Опций [O]
     pygame.draw.rect(surface, (55, 75, 105) if settings_hover else (36, 52, 74), settings_btn_rect, border_radius=10)
     pygame.draw.rect(surface, (140, 195, 255) if settings_hover else (75, 110, 155), settings_btn_rect, width=2, border_radius=10)
     surface.blit(gear_icon, (settings_btn_rect.left + 22, settings_btn_rect.centery - 10))
-    set_txt = nav_font.render("ОПЦИИ [O]", True, WHITE)
+    set_txt = get_rendered_text(nav_font, "ОПЦИИ [O]", WHITE)
     surface.blit(set_txt, (settings_btn_rect.left + 52, settings_btn_rect.centery - set_txt.get_height() // 2))
 
     return upg_btn_rect, ach_btn_rect, bestiary_btn_rect, settings_btn_rect, map_rects, info_btn_rects, btn_minus, btn_plus, start_btn_rect, l_arr_rect, r_arr_rect, dot_rects, greenhouse_btn_rect, relics_btn_rect, dark_panel, menu_btn_rect, guide_btn_rect
@@ -2113,7 +2212,7 @@ def get_node_texture(icon_key):
 def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selected_node_id, is_dragging=False, zoom=1.0, bg_time=None):
     if bg_time is None:
         bg_time = pygame.time.get_ticks()
-    if IS_ANDROID or get_graphics_preset() == "optimized":
+    if get_graphics_preset() == "optimized":
         surface.fill((14, 18, 26))
     else:
         generate_background(surface, bg_time, custom_cols=((14, 18, 26), (22, 30, 42)))
@@ -2123,18 +2222,28 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
     viewport_rect = pygame.Rect(0, 64, viewport_w, viewport_h)
 
     # 1. Сетка фонового холста
-    grid_spacing = max(24, int(60 * zoom))
-    ox = int(-cam_x * zoom) % grid_spacing
-    oy = int((64 - cam_y * zoom)) % grid_spacing
-    for gx in range(ox, viewport_w, grid_spacing):
-        pygame.draw.line(surface, (23, 30, 42), (gx, 64), (gx, 64 + viewport_h), 1)
-    for gy in range(64 + oy, 64 + viewport_h, grid_spacing):
-        pygame.draw.line(surface, (23, 30, 42), (0, gy), (viewport_w, gy), 1)
+    if get_graphics_preset() != "optimized":
+        grid_spacing = max(24, int(60 * zoom))
+        ox = int(-cam_x * zoom) % grid_spacing
+        oy = int((64 - cam_y * zoom)) % grid_spacing
+        for gx in range(ox, viewport_w, grid_spacing):
+            pygame.draw.line(surface, (23, 30, 42), (gx, 64), (gx, 64 + viewport_h), 1)
+        for gy in range(64 + oy, 64 + viewport_h, grid_spacing):
+            pygame.draw.line(surface, (23, 30, 42), (0, gy), (viewport_w, gy), 1)
 
     # Устанавливаем отсечение для холста древа
     surface.set_clip(viewport_rect)
 
     upgrades = savedata.get("Upgrades", {})
+
+    global _tree_node_unlock_cache, _tree_node_unlock_cache_key
+    upg_tuple = tuple(sorted(upgrades.items()))
+    if _tree_node_unlock_cache_key != upg_tuple:
+        _tree_node_unlock_cache = {}
+        for nid in UPGRADE_TREE_NODES:
+            unl, req_d = check_node_requirements(nid, savedata)
+            _tree_node_unlock_cache[nid] = (unl, req_d)
+        _tree_node_unlock_cache_key = upg_tuple
 
     # 1.5. Тематические зоны древа (полупрозрачные подложки с неоновыми заголовками)
     tree_zones = [
@@ -2220,10 +2329,10 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
 
             if zoom >= 0.45:
                 zt_font = font if zoom >= 0.75 else small_font
-                zt_surf = zt_font.render(zone["title"], True, zone["color"])
+                zt_surf = get_rendered_text(zt_font, zone["title"], zone["color"])
                 surface.blit(zt_surf, (zsx + max(12, int(18 * zoom)), zsy + max(8, int(12 * zoom))))
                 if zoom >= 0.7:
-                    zs_surf = tiny_font.render(zone["sub"], True, (160, 175, 195))
+                    zs_surf = get_rendered_text(tiny_font, zone["sub"], (160, 175, 195))
                     surface.blit(zs_surf, (zsx + max(12, int(18 * zoom)), zsy + max(8, int(12 * zoom)) + zt_surf.get_height() + 2))
 
     # 2. Отрисовка соединительных линий (ребер графа)
@@ -2238,6 +2347,15 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
                 continue
             psx = int((parent["x"] - cam_x) * zoom)
             psy = int((parent["y"] - cam_y) * zoom)
+
+            # Viewport culling: если оба узла вне видимости экрана — пропускаем всю геометрию линии!
+            min_lx = min(psx, csx)
+            max_lx = max(psx, csx)
+            min_ly = min(psy, csy)
+            max_ly = max(psy, csy)
+            cull_margin = 80
+            if max_lx < -cull_margin or min_lx > viewport_w + cull_margin or max_ly < 64 - cull_margin or min_ly > 64 + viewport_h + cull_margin:
+                continue
 
             p_lvl = upgrades.get(parent_id, 0)
             p_max = parent["max_lvl"]
@@ -2268,7 +2386,7 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
             pts = [((wx - cam_x) * zoom, (wy - cam_y) * zoom) for wx, wy in world_pts]
 
             int_pts = [(int(round(px)), int(round(py))) for px, py in pts]
-            if req_met and glow_col and zoom >= 0.55:
+            if get_graphics_preset() != "optimized" and req_met and glow_col and zoom >= 0.55:
                 gw = line_w + max(2, int(2 * zoom))
                 pygame.draw.lines(surface, glow_col, False, int_pts, gw)
                 pygame.draw.circle(surface, glow_col, int_pts[0], gw // 2)
@@ -2279,7 +2397,7 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
                 pygame.draw.circle(surface, line_col, int_pts[0], line_w // 2)
                 pygame.draw.circle(surface, line_col, int_pts[-1], line_w // 2)
 
-            if req_met:
+            if get_graphics_preset() != "optimized" and req_met:
                 # Анимированный импульс энергии по Metro-линии
                 if zoom >= 0.5 and len(pts) >= 2:
                     seg_lens = []
@@ -2324,19 +2442,19 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
         cur_lvl = upgrades.get(node_id, 0)
         max_lvl = node["max_lvl"]
         is_maxed = (cur_lvl >= max_lvl)
-        unlocked, _ = check_node_requirements(node_id, savedata)
+        unlocked, _ = _tree_node_unlock_cache.get(node_id, (True, []))
         is_selected = (node_id == selected_node_id)
         is_hov = (math.hypot(mouse_pos[0] - nsx, mouse_pos[1] - nsy) <= hit_rad and viewport_rect.collidepoint(mouse_pos))
 
-        # Спецэффект пульсирующей ауры для великих нод (scale > 1.2, например Оранжерея)
-        if scale > 1.2:
+        # Спецэффект пульсирующей ауры для великих нод
+        if scale > 1.2 and get_graphics_preset() != "optimized":
             t_now = pygame.time.get_ticks()
-            pulse = math.sin(t_now * 0.005) * 4 * zoom
-            aura_rad = max(12, int(base_rad + 8 * zoom + pulse))
+            pulse_step = int(round(math.sin(t_now * 0.005) * 2))
+            aura_rad = max(12, int(base_rad + 8 * zoom + pulse_step * 2))
             a_key = (aura_rad, unlocked, max(1, int(4 * zoom)), max(1, int(2 * zoom)))
             aura_surf = _tree_aura_cache.get(a_key)
             if aura_surf is None:
-                if len(_tree_aura_cache) > 24:
+                if len(_tree_aura_cache) > 48:
                     _tree_aura_cache.clear()
                 aura_surf = pygame.Surface((aura_rad * 2 + 10, aura_rad * 2 + 10), pygame.SRCALPHA)
                 aura_col = (80, 240, 150, 48 if unlocked else 20)
@@ -2402,118 +2520,123 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
                 t_font = font if eff_scale > 1.2 else tiny_font
                 words = node["title"].split(" ")
                 if len(words) == 2 and t_font.size(node["title"])[0] > (95 if scale > 1.2 else 75):
-                    l1 = t_font.render(words[0], True, t_col)
-                    l2 = t_font.render(words[1], True, t_col)
-                    l1_sh = t_font.render(words[0], True, (6, 8, 12))
-                    l2_sh = t_font.render(words[1], True, (6, 8, 12))
-                    cached_title = (True, l1, l2, l1_sh, l2_sh, l1.get_height() + l2.get_height(), l1.get_width() // 2, l2.get_width() // 2, l1.get_height())
+                    s1 = t_font.render_with_shadow(words[0], t_col, shadow_color=(6, 8, 12))
+                    s2 = t_font.render_with_shadow(words[1], t_col, shadow_color=(6, 8, 12))
+                    tw = max(s1.get_width(), s2.get_width())
+                    th = s1.get_height() + s2.get_height()
+                    combo = pygame.Surface((tw, th), pygame.SRCALPHA)
+                    combo.blit(s1, ((tw - s1.get_width()) // 2, 0))
+                    combo.blit(s2, ((tw - s2.get_width()) // 2, s1.get_height()))
+                    cached_title = (combo, tw // 2, th)
                 else:
-                    title_surf = t_font.render(node["title"], True, t_col)
-                    sh_surf = t_font.render(node["title"], True, (6, 8, 12))
-                    cached_title = (False, title_surf, sh_surf, title_surf.get_height(), title_surf.get_width() // 2)
+                    s = t_font.render_with_shadow(node["title"], t_col, shadow_color=(6, 8, 12))
+                    cached_title = (s, s.get_width() // 2, s.get_height())
                 _tree_title_cache[(node_id, eff_scale > 1.2)] = cached_title
 
-            if cached_title[0]:
-                _, l1, l2, l1_sh, l2_sh, th, l1_half_w, l2_half_w, l1_h = cached_title
-                ty = nsy - (base_rad + th + 6)
-                surface.blit(l1_sh, (nsx - l1_half_w + 1, ty + 1))
-                surface.blit(l1, (nsx - l1_half_w, ty))
-                surface.blit(l2_sh, (nsx - l2_half_w + 1, ty + l1_h + 1))
-                surface.blit(l2, (nsx - l2_half_w, ty + l1_h))
-            else:
-                _, title_surf, sh_surf, t_h, t_half_w = cached_title
-                ty = nsy - (base_rad + t_h + 5)
-                surface.blit(sh_surf, (nsx - t_half_w + 1, ty + 1))
-                surface.blit(title_surf, (nsx - t_half_w, ty))
-
-        cost, dark_cost, _ = get_upgrade_node_cost(node_id, cur_lvl)
-        is_node_toggleable = node.get("toggleable", False)
-        is_node_toggled_off = is_node_toggleable and (cur_lvl > 0) and not savedata.get("Toggles", {}).get(node_id, True)
-
-        icon_sz = max(8, int((14 if scale > 1.2 else 12) * min(1.2, max(0.7, zoom))))
-        s_ic = _tree_cactus_icon_cache.get((False, icon_sz))
-        if s_ic is None:
-            s_ic = pygame.transform.smoothscale(stellar_cactus_img_xs, (icon_sz, icon_sz))
-            _tree_cactus_icon_cache[(False, icon_sz)] = s_ic
-        d_ic = _tree_cactus_icon_cache.get((True, icon_sz))
-        if d_ic is None:
-            d_ic = pygame.transform.smoothscale(dark_cactus_img_xs, (icon_sz, icon_sz))
-            _tree_cactus_icon_cache[(True, icon_sz)] = d_ic
+            combo_title, half_w, th = cached_title
+            surface.blit(combo_title, (nsx - half_w, nsy - (base_rad + th + 5)))
 
         pill_h = max(14, int((22 if scale > 1.2 else 18) * min(1.2, max(0.75, zoom))))
+        q_zoom = round(zoom, 1)
+        is_node_toggled_off = node.get("toggleable", False) and cur_lvl > 0 and not savedata.get("Toggles", {}).get(node_id, True)
+        pill_cache_key = (node_id, cur_lvl, is_maxed, not unlocked, is_node_toggled_off, q_zoom, scale > 1.2)
+        cached_pill = _tree_node_pill_cache.get(pill_cache_key)
 
-        if is_maxed:
-            if is_node_toggled_off:
-                pill_bg = (140, 35, 35)
-                p_surf = tiny_font.render("ВЫКЛ", True, (255, 210, 210))
+        if cached_pill is None:
+            icon_sz = max(8, int((14 if scale > 1.2 else 12) * min(1.2, max(0.7, zoom))))
+            s_ic = _tree_cactus_icon_cache.get((False, icon_sz))
+            if s_ic is None:
+                s_ic = pygame.transform.smoothscale(stellar_cactus_img_xs, (icon_sz, icon_sz))
+                _tree_cactus_icon_cache[(False, icon_sz)] = s_ic
+            d_ic = _tree_cactus_icon_cache.get((True, icon_sz))
+            if d_ic is None:
+                d_ic = pygame.transform.smoothscale(dark_cactus_img_xs, (icon_sz, icon_sz))
+                _tree_cactus_icon_cache[(True, icon_sz)] = d_ic
+
+            if is_maxed:
+                if is_node_toggled_off:
+                    pill_bg = (140, 35, 35)
+                    p_surf = get_rendered_text(tiny_font, "ВЫКЛ", (255, 210, 210))
+                else:
+                    pill_bg = (190, 150, 25)
+                    p_surf = get_rendered_text(tiny_font, "ОТКРЫТО" if scale > 1.2 else "МАКС", WHITE)
+                pill_w = max(int((56 if scale > 1.2 else 48) * zoom), p_surf.get_width() + 12)
+                p_surf_final = pygame.Surface((pill_w, pill_h), pygame.SRCALPHA)
+                pygame.draw.rect(p_surf_final, pill_bg, (0, 0, pill_w, pill_h), border_radius=5)
+                p_surf_final.blit(p_surf, (pill_w // 2 - p_surf.get_width() // 2, pill_h // 2 - p_surf.get_height() // 2))
+                cached_pill = (p_surf_final, pill_w)
+
+            elif not unlocked:
+                pill_bg = (36, 42, 50)
+                p_surf = get_rendered_text(tiny_font, "ЗАКРЫТО", (150, 160, 170))
+                pill_w = max(int((62 if scale > 1.2 else 54) * zoom), p_surf.get_width() + 12)
+                p_surf_final = pygame.Surface((pill_w, pill_h), pygame.SRCALPHA)
+                pygame.draw.rect(p_surf_final, pill_bg, (0, 0, pill_w, pill_h), border_radius=5)
+                p_surf_final.blit(p_surf, (pill_w // 2 - p_surf.get_width() // 2, pill_h // 2 - p_surf.get_height() // 2))
+                cached_pill = (p_surf_final, pill_w)
+
             else:
-                pill_bg = (190, 150, 25)
-                p_surf = tiny_font.render("ОТКРЫТО" if scale > 1.2 else "МАКС", True, WHITE)
-            pill_w = max(int((56 if scale > 1.2 else 48) * zoom), p_surf.get_width() + 12)
-            pill_rect = pygame.Rect(nsx - pill_w // 2, nsy + base_rad - 1, pill_w, pill_h)
-            pygame.draw.rect(surface, pill_bg, pill_rect, border_radius=5)
-            surface.blit(p_surf, (pill_rect.centerx - p_surf.get_width() // 2, pill_rect.centery - p_surf.get_height() // 2))
+                cost, dark_cost, _ = get_upgrade_node_cost(node_id, cur_lvl)
+                is_dark_curr = (node.get("currency") == "dark") or (dark_cost > 0 and (cost is None or cost == 0))
+                is_hybrid = (dark_cost is not None and dark_cost > 0 and cost is not None and cost > 0)
 
-        elif not unlocked:
-            pill_bg = (36, 42, 50)
-            p_surf = tiny_font.render("ЗАКРЫТО", True, (150, 160, 170))
-            pill_w = max(int((62 if scale > 1.2 else 54) * zoom), p_surf.get_width() + 12)
-            pill_rect = pygame.Rect(nsx - pill_w // 2, nsy + base_rad - 1, pill_w, pill_h)
-            pygame.draw.rect(surface, pill_bg, pill_rect, border_radius=5)
-            surface.blit(p_surf, (pill_rect.centerx - p_surf.get_width() // 2, pill_rect.centery - p_surf.get_height() // 2))
+                if cur_lvl > 0:
+                    pill_bg = (140, 35, 35) if is_node_toggled_off else (24, 115, 60)
+                elif is_hybrid:
+                    pill_bg = (75, 30, 105)
+                elif is_dark_curr:
+                    pill_bg = (65, 26, 88)
+                else:
+                    pill_bg = (25, 95, 135)
 
-        else:
-            # Узел доступен для прокачки (cur_lvl == 0 или в процессе 0 < cur_lvl < max_lvl)
-            is_dark_curr = (node.get("currency") == "dark") or (dark_cost > 0 and (cost is None or cost == 0))
-            is_hybrid = (dark_cost is not None and dark_cost > 0 and cost is not None and cost > 0)
+                items = []
+                if cur_lvl > 0:
+                    lvl_str = f"{cur_lvl} ВЫКЛ" if is_node_toggled_off else f"{cur_lvl}/{max_lvl}"
+                    lvl_surf = get_rendered_text(tiny_font, lvl_str, (255, 220, 220) if is_node_toggled_off else (210, 255, 220))
+                    items.append((lvl_surf, False))
+                    sep_surf = get_rendered_text(tiny_font, "|", (160, 210, 180))
+                    items.append((sep_surf, False))
 
-            if cur_lvl > 0:
-                pill_bg = (140, 35, 35) if is_node_toggled_off else (24, 115, 60)
-            elif is_hybrid:
-                pill_bg = (75, 30, 105)
-            elif is_dark_curr:
-                pill_bg = (65, 26, 88)
-            else:
-                pill_bg = (25, 95, 135)
+                if is_hybrid:
+                    t1 = get_rendered_text(tiny_font, str(cost), (255, 235, 160))
+                    items.append((t1, False))
+                    items.append((s_ic, True))
+                    plus_t = get_rendered_text(tiny_font, "+", (220, 210, 235))
+                    items.append((plus_t, False))
+                    t2 = get_rendered_text(tiny_font, str(dark_cost), (235, 175, 255))
+                    items.append((t2, False))
+                    items.append((d_ic, True))
+                elif is_dark_curr:
+                    t2 = get_rendered_text(tiny_font, str(dark_cost), (235, 175, 255))
+                    items.append((t2, False))
+                    items.append((d_ic, True))
+                else:
+                    c_val = cost if cost is not None else 0
+                    t1 = get_rendered_text(tiny_font, str(c_val), (255, 230, 110))
+                    items.append((t1, False))
+                    items.append((s_ic, True))
 
-            items = []
-            if cur_lvl > 0:
-                lvl_str = f"{cur_lvl} ВЫКЛ" if is_node_toggled_off else f"{cur_lvl}/{max_lvl}"
-                lvl_surf = tiny_font.render(lvl_str, True, (255, 220, 220) if is_node_toggled_off else (210, 255, 220))
-                items.append((lvl_surf, False))
-                sep_surf = tiny_font.render("|", True, (160, 210, 180))
-                items.append((sep_surf, False))
+                spacing = 2
+                tot_w = sum(img.get_width() for img, _ in items) + spacing * (len(items) - 1)
+                pill_w = max(int((52 if scale <= 1.2 else 64) * zoom), tot_w + 10)
+                p_surf_final = pygame.Surface((pill_w, pill_h), pygame.SRCALPHA)
+                pygame.draw.rect(p_surf_final, pill_bg, (0, 0, pill_w, pill_h), border_radius=5)
 
-            if is_hybrid:
-                t1 = tiny_font.render(str(cost), True, (255, 235, 160))
-                items.append((t1, False))
-                items.append((s_ic, True))
-                plus_t = tiny_font.render("+", True, (220, 210, 235))
-                items.append((plus_t, False))
-                t2 = tiny_font.render(str(dark_cost), True, (235, 175, 255))
-                items.append((t2, False))
-                items.append((d_ic, True))
-            elif is_dark_curr:
-                t2 = tiny_font.render(str(dark_cost), True, (235, 175, 255))
-                items.append((t2, False))
-                items.append((d_ic, True))
-            else:
-                c_val = cost if cost is not None else 0
-                t1 = tiny_font.render(str(c_val), True, (255, 230, 110))
-                items.append((t1, False))
-                items.append((s_ic, True))
+                curr_x = pill_w // 2 - tot_w // 2
+                for img, _ in items:
+                    img_y = pill_h // 2 - img.get_height() // 2
+                    p_surf_final.blit(img, (curr_x, img_y))
+                    curr_x += img.get_width() + spacing
+                cached_pill = (p_surf_final, pill_w)
 
-            spacing = 2
-            tot_w = sum(img.get_width() for img, _ in items) + spacing * (len(items) - 1)
-            pill_w = max(int((52 if scale <= 1.2 else 64) * zoom), tot_w + 10)
-            pill_rect = pygame.Rect(nsx - pill_w // 2, nsy + base_rad - 1, pill_w, pill_h)
-            pygame.draw.rect(surface, pill_bg, pill_rect, border_radius=5)
+            if len(_tree_node_pill_cache) >= 500:
+                keys_to_del = list(_tree_node_pill_cache.keys())[:250]
+                for k in keys_to_del:
+                    del _tree_node_pill_cache[k]
+            _tree_node_pill_cache[pill_cache_key] = cached_pill
 
-            curr_x = pill_rect.centerx - tot_w // 2
-            for img, _ in items:
-                img_y = pill_rect.centery - img.get_height() // 2
-                surface.blit(img, (curr_x, img_y))
-                curr_x += img.get_width() + spacing
+        pill_surf, pill_w = cached_pill
+        surface.blit(pill_surf, (nsx - pill_w // 2, nsy + base_rad - 1))
 
     surface.set_clip(None)
 
@@ -2535,7 +2658,7 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
     zo_hov = zoom_out_rect.collidepoint(mouse_pos)
     pygame.draw.rect(surface, (42, 60, 84) if zo_hov else (22, 32, 46), zoom_out_rect, border_radius=6)
     pygame.draw.rect(surface, (90, 150, 215) if zo_hov else (52, 76, 105), zoom_out_rect, width=1, border_radius=6)
-    zo_txt = font.render("-", True, WHITE if zo_hov else (200, 220, 240))
+    zo_txt = get_rendered_text(font, "-", WHITE if zo_hov else (200, 220, 240))
     surface.blit(zo_txt, (zoom_out_rect.centerx - zo_txt.get_width() // 2, zoom_out_rect.centery - zo_txt.get_height() // 2 - 1))
 
     # Кнопка Индикатор / Сброс [ 100% ]
@@ -2544,7 +2667,7 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
     pygame.draw.rect(surface, (45, 68, 96) if zr_hov else (22, 32, 46), zoom_reset_rect, border_radius=6)
     pygame.draw.rect(surface, GOLD if zr_hov else (52, 76, 105), zoom_reset_rect, width=1, border_radius=6)
     pct_str = f"ЗУМ {int(round(zoom * 100))}%"
-    zr_txt = small_font.render(pct_str, True, GOLD if zr_hov else (220, 235, 255))
+    zr_txt = get_rendered_text(small_font, pct_str, GOLD if zr_hov else (220, 235, 255))
     surface.blit(zr_txt, (zoom_reset_rect.centerx - zr_txt.get_width() // 2, zoom_reset_rect.centery - zr_txt.get_height() // 2))
 
     # Кнопка Увеличить [+]
@@ -2552,7 +2675,7 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
     zi_hov = zoom_in_rect.collidepoint(mouse_pos)
     pygame.draw.rect(surface, (42, 60, 84) if zi_hov else (22, 32, 46), zoom_in_rect, border_radius=6)
     pygame.draw.rect(surface, (90, 150, 215) if zi_hov else (52, 76, 105), zoom_in_rect, width=1, border_radius=6)
-    zi_txt = font.render("+", True, WHITE if zi_hov else (200, 220, 240))
+    zi_txt = get_rendered_text(font, "+", WHITE if zi_hov else (200, 220, 240))
     surface.blit(zi_txt, (zoom_in_rect.centerx - zi_txt.get_width() // 2, zoom_in_rect.centery - zi_txt.get_height() // 2))
 
     # 4. Верхняя панель навигации
@@ -2565,7 +2688,7 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
     pygame.draw.rect(surface, (20, 28, 38), bal_rect, border_radius=8)
     pygame.draw.rect(surface, GOLD, bal_rect, width=2, border_radius=8)
     surface.blit(stellar_cactus_img_m, (bal_rect.left + 8, bal_rect.centery - 18))
-    bal_txt = font.render(f"{savedata.get('StellarCactuses', 0)}", True, WHITE)
+    bal_txt = get_rendered_text(font, str(savedata.get('StellarCactuses', 0)), WHITE)
     surface.blit(bal_txt, (bal_rect.left + 48, bal_rect.centery - bal_txt.get_height() // 2))
 
     # Тёмные кактусы
@@ -2577,36 +2700,40 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
     inf_hov = info_btn_rect.collidepoint(mouse_pos)
     pygame.draw.rect(surface, (30, 75, 110) if inf_hov else (20, 50, 78), info_btn_rect, border_radius=8)
     pygame.draw.rect(surface, (90, 200, 255) if inf_hov else (50, 140, 190), info_btn_rect, width=1, border_radius=8)
-    inf_txt = small_font.render("? ИНФО", True, (220, 245, 255))
+    inf_txt = get_rendered_text(small_font, "? ИНФО", (220, 245, 255))
     surface.blit(inf_txt, (info_btn_rect.centerx - inf_txt.get_width() // 2, info_btn_rect.centery - inf_txt.get_height() // 2))
 
     center_btn_rect = pygame.Rect(SCREEN_WIDTH - 340, 10, 120, 44)
     c_hov = center_btn_rect.collidepoint(mouse_pos)
     pygame.draw.rect(surface, (40, 60, 80) if c_hov else (28, 42, 58), center_btn_rect, border_radius=8)
     pygame.draw.rect(surface, (100, 140, 180), center_btn_rect, width=1, border_radius=8)
-    c_txt = small_font.render("[C] ЦЕНТР", True, WHITE)
+    c_txt = get_rendered_text(small_font, "[C] ЦЕНТР", WHITE)
     surface.blit(c_txt, (center_btn_rect.centerx - c_txt.get_width() // 2, center_btn_rect.centery - c_txt.get_height() // 2))
 
     back_btn_rect = pygame.Rect(SCREEN_WIDTH - 200, 10, 180, 44)
     b_hov = back_btn_rect.collidepoint(mouse_pos)
     pygame.draw.rect(surface, (200, 50, 50) if b_hov else (160, 40, 40), back_btn_rect, border_radius=8)
     pygame.draw.rect(surface, WHITE, back_btn_rect, width=2, border_radius=8)
-    back_txt = font.render("< НАЗАД [ESC]", True, WHITE)
+    back_txt = get_rendered_text(font, "< НАЗАД [ESC]", WHITE)
     surface.blit(back_txt, (back_btn_rect.centerx - back_txt.get_width() // 2, back_btn_rect.centery - back_txt.get_height() // 2))
 
     hdr_center_x = (dark_bal_rect.right + info_btn_rect.left) // 2
-    t_main = large_font.render("ДРЕВО УЛУЧШЕНИЙ ОАЗИСА", True, GOLD)
+    t_main = get_rendered_text(large_font, "ДРЕВО УЛУЧШЕНИЙ ОАЗИСА", GOLD)
     surface.blit(t_main, (hdr_center_x - t_main.get_width() // 2, 6))
 
     # Счётчик прогресса древа: куплено нод X/Y, куплено улучшений A/B
-    total_nodes = len(UPGRADE_TREE_NODES)
-    bought_nodes = sum(1 for nid, n in UPGRADE_TREE_NODES.items() if upgrades.get(nid, 0) > 0)
-    total_upgrades = sum(n["max_lvl"] for n in UPGRADE_TREE_NODES.values())
-    bought_upgrades = sum(min(n["max_lvl"], upgrades.get(nid, 0)) for nid, n in UPGRADE_TREE_NODES.items())
-    upg_pct = int(round(bought_upgrades / max(1, total_upgrades) * 100))
+    global _tree_stats_cache_key, _tree_stats_cache_surf
+    if _tree_stats_cache_key != upg_tuple:
+        total_nodes = len(UPGRADE_TREE_NODES)
+        bought_nodes = sum(1 for nid, n in UPGRADE_TREE_NODES.items() if upgrades.get(nid, 0) > 0)
+        total_upgrades = sum(n["max_lvl"] for n in UPGRADE_TREE_NODES.values())
+        bought_upgrades = sum(min(n["max_lvl"], upgrades.get(nid, 0)) for nid, n in UPGRADE_TREE_NODES.items())
+        upg_pct = int(round(bought_upgrades / max(1, total_upgrades) * 100))
 
-    stat_str = f"Куплено нод: {bought_nodes}/{total_nodes}   •   Куплено улучшений: {bought_upgrades}/{total_upgrades} ({upg_pct}%)"
-    stat_surf = small_font.render(stat_str, True, (160, 245, 195))
+        stat_str = f"Куплено нод: {bought_nodes}/{total_nodes}   •   Куплено улучшений: {bought_upgrades}/{total_upgrades} ({upg_pct}%)"
+        _tree_stats_cache_surf = get_rendered_text(small_font, stat_str, (160, 245, 195))
+        _tree_stats_cache_key = upg_tuple
+    stat_surf = _tree_stats_cache_surf
     surface.blit(stat_surf, (hdr_center_x - stat_surf.get_width() // 2, 38))
 
     # 5. Боковой Инспектор выбранной ноды
@@ -2618,7 +2745,7 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
     cur_lvl = upgrades.get(selected_node_id, 0)
     max_lvl = sel_node["max_lvl"]
     is_maxed = (cur_lvl >= max_lvl)
-    unlocked, req_details = check_node_requirements(selected_node_id, savedata)
+    unlocked, req_details = _tree_node_unlock_cache.get(selected_node_id, (True, []))
 
     iy = inspector_rect.top + 16
 
@@ -2633,7 +2760,7 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
     }
     b_bg, b_fg = b_tag_cols.get(sel_node["branch"], ((40, 50, 60), WHITE))
 
-    t_surf = font.render(sel_node["title"], True, WHITE)
+    t_surf = get_rendered_text(font, sel_node["title"], WHITE)
     surface.blit(t_surf, (inspector_rect.left + 14, iy))
     iy += 30
 
@@ -2646,7 +2773,7 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
         s_lock = get_crisp_lock_icon(16)
         surface.blit(s_lock, (icon_box.right - 18, icon_box.bottom - 18))
 
-    lvl_txt = font.render(f"УРОВЕНЬ: {cur_lvl} / {max_lvl if max_lvl < 90 else 'МАКС'}", True, GOLD if is_maxed else WHITE)
+    lvl_txt = get_rendered_text(font, f"УРОВЕНЬ: {cur_lvl} / {max_lvl if max_lvl < 90 else 'МАКС'}", GOLD if is_maxed else WHITE)
     surface.blit(lvl_txt, (inspector_rect.left + 80, iy + 6))
 
     pips_x = inspector_rect.left + 80
@@ -2681,20 +2808,8 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
 
     max_w = inspector_rect.width - 28
     for line in sel_node["desc"]:
-        words = line.split()
-        current_line = []
-        for word in words:
-            test_line = " ".join(current_line + [word])
-            if tiny_font.size(test_line)[0] <= max_w:
-                current_line.append(word)
-            else:
-                if current_line:
-                    d_surf = tiny_font.render(" ".join(current_line), True, (185, 200, 215))
-                    surface.blit(d_surf, (inspector_rect.left + 14, iy))
-                    iy += 17
-                current_line = [word]
-        if current_line:
-            d_surf = tiny_font.render(" ".join(current_line), True, (185, 200, 215))
+        for wrapped_line in _render_wrapped_lines(line, tiny_font, max_w):
+            d_surf = get_rendered_text(tiny_font, wrapped_line, (185, 200, 215))
             surface.blit(d_surf, (inspector_rect.left + 14, iy))
             iy += 17
         iy += 2
@@ -2703,37 +2818,25 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
     pygame.draw.line(surface, (40, 52, 68), (inspector_rect.left + 14, iy), (inspector_rect.right - 14, iy), 1)
     iy += 10
 
-    ef_title = small_font.render("ХАРАКТЕРИСТИКА:", True, (140, 210, 255))
+    ef_title = get_rendered_text(small_font, "ХАРАКТЕРИСТИКА:", (140, 210, 255))
     surface.blit(ef_title, (inspector_rect.left + 14, iy))
     iy += 22
 
-    max_w = inspector_rect.width - 28
     def draw_wrapped_stat(prefix, text, color):
         nonlocal iy
         full_text = f"{prefix} {text}"
-        words = full_text.split()
-        current_line = []
-        for word in words:
-            test_line = " ".join(current_line + [word])
-            if tiny_font.size(test_line)[0] <= max_w:
-                current_line.append(word)
-            else:
-                if current_line:
-                    line_surf = tiny_font.render(" ".join(current_line), True, color)
-                    surface.blit(line_surf, (inspector_rect.left + 14, iy))
-                    iy += 17
-                current_line = [word]
-        if current_line:
-            line_surf = tiny_font.render(" ".join(current_line), True, color)
+        for wrapped_line in _render_wrapped_lines(full_text, tiny_font, max_w):
+            line_surf = get_rendered_text(tiny_font, wrapped_line, color)
             surface.blit(line_surf, (inspector_rect.left + 14, iy))
-            iy += 20
+            iy += 17
+        iy += 3
 
     draw_wrapped_stat("Текущий:", sel_node['stat_cur'](cur_lvl), GOLD if cur_lvl > 0 else (160, 175, 190))
 
     if not is_maxed:
         draw_wrapped_stat("Следующий:", sel_node['stat_nxt'](cur_lvl), GREEN)
     else:
-        max_stat_txt = tiny_font.render("Достигнут максимальный предел развития!", True, GOLD)
+        max_stat_txt = get_rendered_text(tiny_font, "Достигнут максимальный предел развития!", GOLD)
         surface.blit(max_stat_txt, (inspector_rect.left + 14, iy))
         iy += 22
 
@@ -2741,13 +2844,13 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
     pygame.draw.line(surface, (40, 52, 68), (inspector_rect.left + 14, iy), (inspector_rect.right - 14, iy), 1)
     iy += 10
 
-    req_title = small_font.render("УСЛОВИЯ РАЗБЛОКИРОВКИ:", True, (255, 215, 100))
+    req_title = get_rendered_text(small_font, "УСЛОВИЯ РАЗБЛОКИРОВКИ:", (255, 215, 100))
     surface.blit(req_title, (inspector_rect.left + 14, iy))
     iy += 22
 
     jump_btn_rects = []
     if not sel_node.get("requires") and not sel_node.get("meta_requires"):
-        r_txt = tiny_font.render("Доступно со старта оазиса", True, GREEN)
+        r_txt = get_rendered_text(tiny_font, "Доступно со старта оазиса", GREEN)
         surface.blit(r_txt, (inspector_rect.left + 14, iy))
         iy += 22
     else:
@@ -2765,17 +2868,17 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
                 badge_rect = pygame.Rect(inspector_rect.right - 14 - badge_w, iy - 1, badge_w, badge_h)
                 pygame.draw.rect(surface, tag_bg, badge_rect, border_radius=4)
                 pygame.draw.rect(surface, tag_border, badge_rect, width=1, border_radius=4)
-                badge_txt = tiny_font.render("[OK]" if met else "[ИГРА]", True, tag_txt_col)
+                badge_txt = get_rendered_text(tiny_font, "[OK]" if met else "[ИГРА]", tag_txt_col)
                 surface.blit(badge_txt, (badge_rect.centerx - badge_txt.get_width() // 2, badge_rect.centery - badge_txt.get_height() // 2))
 
                 status_tag = "(OK)" if met else f"({r_item['cur_lvl']}/{r_item['max_lvl']})"
                 row_txt = f"{r_item['title']} {status_tag}"
                 max_txt_w = badge_rect.left - (inspector_rect.left + 14) - 6
-                r_surf = tiny_font.render(row_txt, True, col)
+                r_surf = get_rendered_text(tiny_font, row_txt, col)
                 if r_surf.get_width() > max_txt_w:
                     short_title = r_item['title'][:16] + ".."
                     row_txt = f"{short_title} {status_tag}"
-                    r_surf = tiny_font.render(row_txt, True, col)
+                    r_surf = get_rendered_text(tiny_font, row_txt, col)
                 surface.blit(r_surf, (inspector_rect.left + 14, iy))
                 iy += 22
             else:
@@ -2796,7 +2899,7 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
 
                 pygame.draw.rect(surface, btn_bg, btn_rect, border_radius=4)
                 pygame.draw.rect(surface, btn_border, btn_rect, width=1, border_radius=4)
-                j_txt = tiny_font.render("К УЗЛУ >>", True, btn_txt_col)
+                j_txt = get_rendered_text(tiny_font, "К УЗЛУ >>", btn_txt_col)
                 surface.blit(j_txt, (btn_rect.centerx - j_txt.get_width() // 2, btn_rect.centery - j_txt.get_height() // 2))
 
                 # Текст требования с обрезкой по ширине
@@ -2805,11 +2908,11 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
                 row_txt = f"{meta_tag}{r_item['title']} {status_tag}"
 
                 max_txt_w = btn_rect.left - (inspector_rect.left + 14) - 6
-                r_surf = tiny_font.render(row_txt, True, (225, 165, 255) if is_meta and not met else col)
+                r_surf = get_rendered_text(tiny_font, row_txt, (225, 165, 255) if is_meta and not met else col)
                 if r_surf.get_width() > max_txt_w:
                     short_title = r_item['title'][:11] + ".."
                     row_txt = f"{meta_tag}{short_title} {status_tag}"
-                    r_surf = tiny_font.render(row_txt, True, (225, 165, 255) if is_meta and not met else col)
+                    r_surf = get_rendered_text(tiny_font, row_txt, (225, 165, 255) if is_meta and not met else col)
 
                 surface.blit(r_surf, (inspector_rect.left + 14, iy))
                 iy += 22
@@ -2832,7 +2935,7 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
 
         pygame.draw.rect(surface, t_bg, toggle_btn_rect, border_radius=8)
         pygame.draw.rect(surface, t_border, toggle_btn_rect, width=2 if t_hov else 1, border_radius=8)
-        t_surf = small_font.render(t_str, True, t_col)
+        t_surf = get_rendered_text(small_font, t_str, t_col)
         surface.blit(t_surf, (toggle_btn_rect.centerx - t_surf.get_width() // 2, toggle_btn_rect.centery - t_surf.get_height() // 2))
 
     buy_btn_rect = pygame.Rect(inspector_rect.left + 14, inspector_rect.bottom - 54, inspector_rect.width - 28, 42)
@@ -2843,13 +2946,13 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
             pygame.draw.rect(surface, (68, 50, 24) if b_hov else (46, 32, 16), buy_btn_rect, border_radius=8)
             pygame.draw.rect(surface, (255, 220, 80) if b_hov else (190, 150, 50), buy_btn_rect, width=2, border_radius=8)
             surface.blit(relic_icon, (buy_btn_rect.left + 14, buy_btn_rect.centery - 12))
-            b_txt = font.render("В МУЗЕЙ РЕЛИКВИЙ [R]", True, (255, 235, 160))
+            b_txt = get_rendered_text(font, "В МУЗЕЙ РЕЛИКВИЙ [R]", (255, 235, 160))
             surface.blit(b_txt, (buy_btn_rect.left + 44, buy_btn_rect.centery - b_txt.get_height() // 2))
         elif selected_node_id == "greenhouse_unlock":
             pygame.draw.rect(surface, (36, 115, 65) if b_hov else (24, 85, 45), buy_btn_rect, border_radius=8)
             pygame.draw.rect(surface, (120, 245, 160) if b_hov else (60, 180, 100), buy_btn_rect, width=2, border_radius=8)
             surface.blit(sprout_icon_s, (buy_btn_rect.left + 14, buy_btn_rect.centery - 8))
-            b_txt = font.render("В ОРАНЖЕРЕЮ [G]", True, WHITE)
+            b_txt = get_rendered_text(font, "В ОРАНЖЕРЕЮ [G]", WHITE)
             surface.blit(b_txt, (buy_btn_rect.left + 42, buy_btn_rect.centery - b_txt.get_height() // 2))
         elif selected_node_id == "astral_beacon":
             st_have = savedata.get("StellarCactuses", 0)
@@ -2858,8 +2961,8 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
             border_col = (230, 140, 255) if can_transmute else (120, 75, 125)
             pygame.draw.rect(surface, bg_col, buy_btn_rect, border_radius=8)
             pygame.draw.rect(surface, border_col, buy_btn_rect, width=2 if (b_hov and can_transmute) else 1, border_radius=8)
-            lbl_trans = font.render("ОБМЕН: 150", True, (255, 235, 140) if can_transmute else (160, 140, 160))
-            lbl_one = font.render("1", True, (240, 210, 255) if can_transmute else (140, 120, 150))
+            lbl_trans = get_rendered_text(font, "ОБМЕН: 150", (255, 235, 140) if can_transmute else (160, 140, 160))
+            lbl_one = get_rendered_text(font, "1", (240, 210, 255) if can_transmute else (140, 120, 150))
             arrow_w = 14
             tot_w = lbl_trans.get_width() + 6 + 20 + 8 + arrow_w + 8 + lbl_one.get_width() + 6 + 20
             bx = buy_btn_rect.centerx - tot_w // 2
@@ -2878,12 +2981,12 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
             surface.blit(dark_cactus_img_s, (bx, buy_btn_rect.centery - 10))
         else:
             pygame.draw.rect(surface, (40, 48, 56), buy_btn_rect, border_radius=8)
-            b_txt = small_font.render("МАКСИМАЛЬНЫЙ УРОВЕНЬ", True, (150, 160, 170))
+            b_txt = get_rendered_text(small_font, "МАКСИМАЛЬНЫЙ УРОВЕНЬ", (150, 160, 170))
             surface.blit(b_txt, (buy_btn_rect.centerx - b_txt.get_width() // 2, buy_btn_rect.centery - b_txt.get_height() // 2))
     elif not unlocked:
         pygame.draw.rect(surface, (55, 26, 30), buy_btn_rect, border_radius=8)
         pygame.draw.rect(surface, (110, 45, 50), buy_btn_rect, width=1, border_radius=8)
-        b_txt = small_font.render("ТРЕБОВАНИЯ НЕ ВЫПОЛНЕНЫ", True, (255, 130, 130))
+        b_txt = get_rendered_text(small_font, "ТРЕБОВАНИЯ НЕ ВЫПОЛНЕНЫ", (255, 130, 130))
         surface.blit(lock_icon, (buy_btn_rect.centerx - b_txt.get_width() // 2 - 18, buy_btn_rect.centery - 8))
         surface.blit(b_txt, (buy_btn_rect.centerx - b_txt.get_width() // 2 + 6, buy_btn_rect.centery - b_txt.get_height() // 2))
     else:
@@ -2899,10 +3002,10 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
             pygame.draw.rect(surface, b_col, buy_btn_rect, border_radius=8)
             pygame.draw.rect(surface, WHITE, buy_btn_rect, width=2 if b_hov else 1, border_radius=8)
             if is_hybrid:
-                a_txt = font.render("КУПИТЬ: ", True, WHITE)
-                c1_txt = font.render(str(cost), True, WHITE)
-                plus_txt = font.render(" + ", True, (225, 210, 240))
-                c2_txt = font.render(str(dark_cost), True, WHITE)
+                a_txt = get_rendered_text(font, "КУПИТЬ: ", WHITE)
+                c1_txt = get_rendered_text(font, str(cost), WHITE)
+                plus_txt = get_rendered_text(font, " + ", (225, 210, 240))
+                c2_txt = get_rendered_text(font, str(dark_cost), WHITE)
                 tot_w = a_txt.get_width() + c1_txt.get_width() + 26 + plus_txt.get_width() + c2_txt.get_width() + 26
                 bx = buy_btn_rect.centerx - tot_w // 2
                 surface.blit(a_txt, (bx, buy_btn_rect.centery - a_txt.get_height() // 2))
@@ -2917,13 +3020,13 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
                 bx += c2_txt.get_width() + 2
                 surface.blit(dark_cactus_img_s, (bx, buy_btn_rect.centery - 12))
             elif is_dark_only:
-                b_txt = font.render(f"КУПИТЬ: {dark_cost}", True, WHITE)
+                b_txt = get_rendered_text(font, f"КУПИТЬ: {dark_cost}", WHITE)
                 tot_w = b_txt.get_width() + 28
                 start_bx = buy_btn_rect.centerx - tot_w // 2
                 surface.blit(b_txt, (start_bx, buy_btn_rect.centery - b_txt.get_height() // 2))
                 surface.blit(dark_cactus_img_s, (start_bx + b_txt.get_width() + 4, buy_btn_rect.centery - 12))
             else:
-                b_txt = font.render(f"КУПИТЬ: {cost}", True, WHITE)
+                b_txt = get_rendered_text(font, f"КУПИТЬ: {cost}", WHITE)
                 tot_w = b_txt.get_width() + 28
                 start_bx = buy_btn_rect.centerx - tot_w // 2
                 surface.blit(b_txt, (start_bx, buy_btn_rect.centery - b_txt.get_height() // 2))
@@ -2932,10 +3035,10 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
             pygame.draw.rect(surface, (170, 50, 50), buy_btn_rect, border_radius=8)
             pygame.draw.rect(surface, (220, 80, 80), buy_btn_rect, width=1, border_radius=8)
             if is_hybrid:
-                a_txt = font.render("НУЖНО: ", True, WHITE)
-                c1_txt = font.render(str(cost), True, WHITE)
-                plus_txt = font.render(" + ", True, (225, 210, 240))
-                c2_txt = font.render(str(dark_cost), True, WHITE)
+                a_txt = get_rendered_text(font, "НУЖНО: ", WHITE)
+                c1_txt = get_rendered_text(font, str(cost), WHITE)
+                plus_txt = get_rendered_text(font, " + ", (225, 210, 240))
+                c2_txt = get_rendered_text(font, str(dark_cost), WHITE)
                 tot_w = a_txt.get_width() + c1_txt.get_width() + 26 + plus_txt.get_width() + c2_txt.get_width() + 26
                 bx = buy_btn_rect.centerx - tot_w // 2
                 surface.blit(a_txt, (bx, buy_btn_rect.centery - a_txt.get_height() // 2))
@@ -2950,13 +3053,13 @@ def draw_upgrade_tree_screen(surface, savedata, mouse_pos, cam_x, cam_y, selecte
                 bx += c2_txt.get_width() + 2
                 surface.blit(dark_cactus_img_s, (bx, buy_btn_rect.centery - 12))
             elif is_dark_only:
-                b_txt = font.render(f"НУЖНО: {dark_cost}", True, WHITE)
+                b_txt = get_rendered_text(font, f"НУЖНО: {dark_cost}", WHITE)
                 tot_w = b_txt.get_width() + 28
                 start_bx = buy_btn_rect.centerx - tot_w // 2
                 surface.blit(b_txt, (start_bx, buy_btn_rect.centery - b_txt.get_height() // 2))
                 surface.blit(dark_cactus_img_s, (start_bx + b_txt.get_width() + 4, buy_btn_rect.centery - 12))
             else:
-                b_txt = font.render(f"НУЖНО: {cost}", True, WHITE)
+                b_txt = get_rendered_text(font, f"НУЖНО: {cost}", WHITE)
                 tot_w = b_txt.get_width() + 28
                 start_bx = buy_btn_rect.centerx - tot_w // 2
                 surface.blit(b_txt, (start_bx, buy_btn_rect.centery - b_txt.get_height() // 2))
@@ -2972,7 +3075,10 @@ draw_upgrades_screen = draw_upgrade_tree_screen
 # -------------------------------------------------------------------------
 
 def draw_achievements_screen(surface, savedata, mouse_pos, scroll_y=0, filter_status="all", filter_cat="all", bg_time=None):
-    check_achievements(savedata)
+    now = time.time()
+    if now - getattr(draw_achievements_screen, "_last_check", 0.0) > 1.5:
+        draw_achievements_screen._last_check = now
+        check_achievements(savedata)
     if bg_time is None:
         bg_time = pygame.time.get_ticks()
     generate_background(surface, bg_time, custom_cols=((16, 22, 32), (24, 32, 46)))
@@ -3100,7 +3206,7 @@ def draw_achievements_screen(surface, savedata, mouse_pos, scroll_y=0, filter_st
             # Тег категории (бейдж)
             cat_key = ach.get("category", "combat")
             bg_badge, fg_badge, badge_lbl = cat_badge_colors.get(cat_key, ((40, 60, 80), WHITE, "ОАЗИС"))
-            b_surf = tiny_font.render(badge_lbl, True, fg_badge)
+            b_surf = get_rendered_text(tiny_font, badge_lbl, fg_badge)
             b_rect = pygame.Rect(cx + 68, cy + 12, b_surf.get_width() + 10, 16)
             pygame.draw.rect(surface, bg_badge, b_rect, border_radius=4)
             surface.blit(b_surf, (b_rect.centerx - b_surf.get_width() // 2, b_rect.centery - b_surf.get_height() // 2))
@@ -3116,14 +3222,14 @@ def draw_achievements_screen(surface, savedata, mouse_pos, scroll_y=0, filter_st
             avail_title_w = btn_x - (b_rect.right + 10) - 8
             t_col = GOLD if is_unlocked else (WHITE if not is_claimed else (160, 175, 190))
             use_t_font = font if font.size(ach["title"])[0] <= avail_title_w else small_font
-            title_surf = use_t_font.render(ach["title"], True, t_col)
+            title_surf = get_rendered_text(use_t_font, ach["title"], t_col)
             surface.blit(title_surf, (b_rect.right + 8, cy + 10 if use_t_font == font else cy + 12))
 
             # Описание (перенос строк с ограничением ширины max_w = 285px)
             d_col = (185, 200, 215) if not is_claimed else (135, 150, 165)
             desc_lines = _render_wrapped_lines(ach["desc"], small_font, 285)
             for l_idx, l_str in enumerate(desc_lines[:2]):
-                l_surf = small_font.render(l_str, True, d_col)
+                l_surf = get_rendered_text(small_font, l_str, d_col)
                 surface.blit(l_surf, (cx + 68, cy + 34 + l_idx * 16))
 
             # Прогресс
@@ -3139,13 +3245,13 @@ def draw_achievements_screen(surface, savedata, mouse_pos, scroll_y=0, filter_st
 
             pct_val = int(p_ratio * 100)
             p_txt_str = f"{cur_p:,} / {max_p:,} ({pct_val}%)".replace(",", " ") if max_p >= 1000 else f"{cur_p} / {max_p} ({pct_val}%)"
-            p_txt = tiny_font.render(p_txt_str, True, (230, 240, 250))
+            p_txt = get_rendered_text(tiny_font, p_txt_str, (230, 240, 250))
             surface.blit(p_txt, (bar_rect.centerx - p_txt.get_width() // 2, bar_rect.centery - p_txt.get_height() // 2))
 
             if is_claimed:
                 pygame.draw.rect(surface, (26, 34, 44), btn_rect, border_radius=8)
                 pygame.draw.rect(surface, (50, 65, 80), btn_rect, width=1, border_radius=8)
-                lbl = small_font.render("ВЫПОЛНЕНО", True, (130, 160, 190))
+                lbl = get_rendered_text(small_font, "ВЫПОЛНЕНО", (130, 160, 190))
                 # Рисуем аккуратную векторную галочку перед текстом
                 chk_x = btn_rect.centerx - lbl.get_width() // 2 - 12
                 chk_y = btn_rect.centery
@@ -3155,13 +3261,13 @@ def draw_achievements_screen(surface, savedata, mouse_pos, scroll_y=0, filter_st
                 pygame.draw.rect(surface, (45, 175, 75) if not b_hover else (60, 205, 95), btn_rect, border_radius=8)
                 pygame.draw.rect(surface, YELLOW, btn_rect, width=2, border_radius=8)
                 if ach.get('reward', 0) > 0:
-                    claim_txt = font.render(f"ЗАБРАТЬ +{ach['reward']}", True, WHITE)
+                    claim_txt = get_rendered_text(font, f"ЗАБРАТЬ +{ach['reward']}", WHITE)
                     tot_w = claim_txt.get_width() + 26
                     start_cx = btn_rect.centerx - tot_w // 2
                     surface.blit(claim_txt, (start_cx, btn_rect.centery - claim_txt.get_height() // 2))
                     surface.blit(stellar_cactus_img_s, (start_cx + claim_txt.get_width() + 4, btn_rect.centery - 12))
                 else:
-                    claim_txt = font.render("ЗАВЕРШИТЬ", True, WHITE)
+                    claim_txt = get_rendered_text(font, "ЗАВЕРШИТЬ", WHITE)
                     surface.blit(claim_txt, (btn_rect.centerx - claim_txt.get_width() // 2, btn_rect.centery - claim_txt.get_height() // 2))
                 if btn_rect.bottom >= 182 and btn_rect.top <= SCREEN_HEIGHT:
                     claim_buttons.append((aid, btn_rect, ach['reward']))
@@ -3169,13 +3275,13 @@ def draw_achievements_screen(surface, savedata, mouse_pos, scroll_y=0, filter_st
                 pygame.draw.rect(surface, (26, 33, 44), btn_rect, border_radius=8)
                 pygame.draw.rect(surface, (48, 60, 76), btn_rect, width=1, border_radius=8)
                 if ach.get('reward', 0) > 0:
-                    lbl = small_font.render(f"НАГРАДА: +{ach['reward']}", True, (165, 185, 210))
+                    lbl = get_rendered_text(small_font, f"НАГРАДА: +{ach['reward']}", (165, 185, 210))
                     tot_w = lbl.get_width() + 26
                     start_lx = btn_rect.centerx - tot_w // 2
                     surface.blit(lbl, (start_lx, btn_rect.centery - lbl.get_height() // 2))
                     surface.blit(stellar_cactus_img_s, (start_lx + lbl.get_width() + 4, btn_rect.centery - 12))
                 else:
-                    lbl = small_font.render("ПРЕСТИЖ", True, (255, 215, 120))
+                    lbl = get_rendered_text(small_font, "ПРЕСТИЖ", (255, 215, 120))
                     surface.blit(lbl, (btn_rect.centerx - lbl.get_width() // 2, btn_rect.centery - lbl.get_height() // 2))
 
     # Снимаем клиппинг
@@ -3980,7 +4086,7 @@ def draw_tower_inspect_card(surface, tower, upgrade_mode, cacti, mouse_pos, save
 
     # Кэшированная тень карточки (только в нормальном режиме графики для максимального FPS)
     global _cached_card_shadow_surf
-    if not IS_ANDROID and get_graphics_preset() != "optimized":
+    if get_graphics_preset() != "optimized":
         if _cached_card_shadow_surf is None:
             _cached_card_shadow_surf = pygame.Surface((card_w, card_h), pygame.SRCALPHA)
             pygame.draw.rect(_cached_card_shadow_surf, (0, 0, 0, 110), (0, 0, card_w, card_h), border_radius=12)
@@ -4177,10 +4283,7 @@ def draw_custom_map_setup_modal(surface, savedata, mouse_pos):
         "endless": True
     })
 
-    # Затемняющий оверлей
-    overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-    overlay.fill((0, 0, 0, 185))
-    surface.blit(overlay, (0, 0))
+    surface.blit(get_modal_dim_surf(185), (0, 0))
 
     box_w, box_h = 840, 614
     box_x = (SCREEN_WIDTH - box_w) // 2
@@ -4399,10 +4502,7 @@ def draw_mechanics_guide_modal(surface, mouse_pos, current_tab=0, context="comba
     - 'greenhouse': 8 сортов кактусов, циклы созревания, полив (+100% темпа), саженцы [1, 3, 8, 18, 35], Резонанс и Компост.
     - 'relics': 20 реликвий биомов (по 2 на карту), 2-5 активных пьедесталов, Тёмный Резонанс (+5%/ур. до +20%), раскопки 5х5, прогрессия 2^(lvl-1).
     """
-    # 1. Затемняющий оверлей
-    overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-    overlay.fill((0, 0, 0, 205))
-    surface.blit(overlay, (0, 0))
+    surface.blit(get_modal_dim_surf(205), (0, 0))
 
     box_w = 980
     box_h = 610
@@ -6359,9 +6459,7 @@ def draw_difficulty_select_modal(surface, mouse_pos, selected_diff="normal"):
     Показывается при старте игры или если сложность ещё не была выбрана.
     Возвращает: (diff_btns_dict, confirm_btn_rect)
     """
-    dim_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-    dim_surf.fill((0, 0, 0, 225))
-    surface.blit(dim_surf, (0, 0))
+    surface.blit(get_modal_dim_surf(225), (0, 0))
 
     mw, mh = 900, 520
     mx = (SCREEN_WIDTH - mw) // 2
@@ -6663,68 +6761,87 @@ def draw_dig_window(surface, dig_session, mouse_pos):
 # -------------------------------------------------------------------------
 # ПЬЕДЕСТАЛ И СТЕНДЫ ДРЕВНИХ РЕЛИКВИЙ
 # -------------------------------------------------------------------------
+_pedestal_stand_cache = {}
+
 def draw_pedestal_stand(surface, cx, cy, w=68, h=34, is_active=False, is_unlocked=True, is_hovered=False):
     """
-    Отрисовывает полноценный графический 3D-пьедестал:
+    Отрисовывает полноценный графический 3D-пьедестал с кэшированием (для 60+ FPS):
     - Нижнее ступенчатое основание (цоколь) с контактной тенью и фаской
     - Рельефная колонна (ствол пьедестала) с вертикальными бороздками и центральным руническим кристаллом
     - Верхний карниз (капитель) с полированной площадкой для размещения реликвии
     Возвращает y-координату центра верхней площадки, на которой лежит реликвия.
     """
-    # 1. Тень под основанием
-    sh_w = w + 12
-    pygame.draw.ellipse(surface, (0, 0, 0, 110), (cx - sh_w // 2, cy + h // 2 - 4, sh_w, 9))
+    cache_key = (w, h, is_active, is_unlocked, is_hovered)
+    cached = _pedestal_stand_cache.get(cache_key)
+    if cached is None:
+        pad_x = 10
+        pad_y = 6
+        surf_w = w + pad_x * 2
+        surf_h = h + pad_y * 2
+        p_surf = pygame.Surface((surf_w, surf_h), pygame.SRCALPHA)
+        local_cx = surf_w // 2
+        local_cy = surf_h // 2
 
-    # 2. Нижний ступенчатый цоколь (Base Plinth)
-    b1_w = w
-    b1_h = 7
-    b1_y = cy + h // 2 - b1_h
-    col_base = (46, 52, 64) if is_unlocked else (24, 28, 36)
-    col_edge = (255, 215, 80) if is_active else ((100, 125, 160) if is_unlocked else (45, 52, 65))
-    if is_hovered and is_unlocked:
-        col_edge = (255, 235, 120) if is_active else (135, 185, 245)
+        # 1. Тень под основанием
+        sh_w = w + 12
+        pygame.draw.ellipse(p_surf, (0, 0, 0, 110), (local_cx - sh_w // 2, local_cy + h // 2 - 4, sh_w, 9))
 
-    pygame.draw.rect(surface, col_base, (cx - b1_w // 2, b1_y, b1_w, b1_h), border_radius=3)
-    pygame.draw.rect(surface, col_edge, (cx - b1_w // 2, b1_y, b1_w, b1_h), width=1, border_radius=3)
-    pygame.draw.line(surface, (min(255, col_edge[0] + 30), min(255, col_edge[1] + 30), min(255, col_edge[2] + 30)),
-                     (cx - b1_w // 2 + 2, b1_y + 1), (cx + b1_w // 2 - 2, b1_y + 1), 1)
+        # 2. Нижний ступенчатый цоколь (Base Plinth)
+        b1_w = w
+        b1_h = 7
+        b1_y = local_cy + h // 2 - b1_h
+        col_base = (46, 52, 64) if is_unlocked else (24, 28, 36)
+        col_edge = (255, 215, 80) if is_active else ((100, 125, 160) if is_unlocked else (45, 52, 65))
+        if is_hovered and is_unlocked:
+            col_edge = (255, 235, 120) if is_active else (135, 185, 245)
 
-    # 3. Ствол колонны / тело постамента (Fluted Shaft)
-    col_w = int(w * 0.72)
-    col_h = int(h * 0.44)
-    col_y = b1_y - col_h + 2
-    col_shaft = (38, 44, 56) if is_unlocked else (18, 22, 28)
-    pygame.draw.rect(surface, col_shaft, (cx - col_w // 2, col_y, col_w, col_h))
-    pygame.draw.rect(surface, col_edge, (cx - col_w // 2, col_y, col_w, col_h), width=1)
+        pygame.draw.rect(p_surf, col_base, (local_cx - b1_w // 2, b1_y, b1_w, b1_h), border_radius=3)
+        pygame.draw.rect(p_surf, col_edge, (local_cx - b1_w // 2, b1_y, b1_w, b1_h), width=1, border_radius=3)
+        pygame.draw.line(p_surf, (min(255, col_edge[0] + 30), min(255, col_edge[1] + 30), min(255, col_edge[2] + 30)),
+                         (local_cx - b1_w // 2 + 2, b1_y + 1), (local_cx + b1_w // 2 - 2, b1_y + 1), 1)
 
-    # Вертикальные желобки колонны
-    step_g = max(5, col_w // 5)
-    for gx in range(cx - col_w // 2 + step_g, cx + col_w // 2, step_g):
-        pygame.draw.line(surface, (14, 18, 24), (gx, col_y + 1), (gx, col_y + col_h - 1), 1)
-        pygame.draw.line(surface, (70, 85, 110) if is_unlocked else (32, 38, 48), (gx + 1, col_y + 1), (gx + 1, col_y + col_h - 1), 1)
+        # 3. Ствол колонны / тело постамента (Fluted Shaft)
+        col_w = int(w * 0.72)
+        col_h = int(h * 0.44)
+        col_y = b1_y - col_h + 2
+        col_shaft = (38, 44, 56) if is_unlocked else (18, 22, 28)
+        pygame.draw.rect(p_surf, col_shaft, (local_cx - col_w // 2, col_y, col_w, col_h))
+        pygame.draw.rect(p_surf, col_edge, (local_cx - col_w // 2, col_y, col_w, col_h), width=1)
 
-    # Центральный рунический кристалл
-    if is_active:
-        pygame.draw.polygon(surface, (255, 215, 80), [(cx, col_y + 3), (cx + 4, col_y + col_h // 2), (cx, col_y + col_h - 3), (cx - 4, col_y + col_h // 2)])
-    elif is_unlocked:
-        pygame.draw.polygon(surface, (75, 110, 155), [(cx, col_y + 4), (cx + 3, col_y + col_h // 2), (cx, col_y + col_h - 4), (cx - 3, col_y + col_h // 2)])
+        # Вертикальные желобки колонны
+        step_g = max(5, col_w // 5)
+        for gx in range(local_cx - col_w // 2 + step_g, local_cx + col_w // 2, step_g):
+            pygame.draw.line(p_surf, (14, 18, 24), (gx, col_y + 1), (gx, col_y + col_h - 1), 1)
+            pygame.draw.line(p_surf, (70, 85, 110) if is_unlocked else (32, 38, 48), (gx + 1, col_y + 1), (gx + 1, col_y + col_h - 1), 1)
 
-    # 4. Верхняя капитель и полированная площадка (Capital & Platform)
-    t_w = int(w * 0.88)
-    t_h = 8
-    t_y = col_y - t_h + 2
-    top_col = (54, 62, 78) if is_unlocked else (28, 34, 44)
-    pygame.draw.rect(surface, top_col, (cx - t_w // 2, t_y, t_w, t_h), border_radius=2)
-    pygame.draw.rect(surface, col_edge, (cx - t_w // 2, t_y, t_w, t_h), width=1, border_radius=2)
+        # Центральный рунический кристалл
+        if is_active:
+            pygame.draw.polygon(p_surf, (255, 215, 80), [(local_cx, col_y + 3), (local_cx + 4, col_y + col_h // 2), (local_cx, col_y + col_h - 3), (local_cx - 4, col_y + col_h // 2)])
+        elif is_unlocked:
+            pygame.draw.polygon(p_surf, (75, 110, 155), [(local_cx, col_y + 4), (local_cx + 3, col_y + col_h // 2), (local_cx, col_y + col_h - 4), (local_cx - 3, col_y + col_h // 2)])
 
-    # 5. Верхняя платформа-подушка
-    plat_w = t_w - 6
-    plat_rect = (cx - plat_w // 2, t_y - 2, plat_w, 5)
-    inlay_col = (30, 52, 40) if is_active else ((24, 30, 40) if is_unlocked else (16, 20, 26))
-    pygame.draw.ellipse(surface, inlay_col, plat_rect)
-    pygame.draw.ellipse(surface, col_edge, plat_rect, width=1)
+        # 4. Верхняя капитель и полированная площадка (Capital & Platform)
+        t_w = int(w * 0.88)
+        t_h = 8
+        t_y = col_y - t_h + 2
+        top_col = (54, 62, 78) if is_unlocked else (28, 34, 44)
+        pygame.draw.rect(p_surf, top_col, (local_cx - t_w // 2, t_y, t_w, t_h), border_radius=2)
+        pygame.draw.rect(p_surf, col_edge, (local_cx - t_w // 2, t_y, t_w, t_h), width=1, border_radius=2)
 
-    return t_y
+        # 5. Верхняя платформа-подушка
+        plat_w = t_w - 6
+        plat_rect = (local_cx - plat_w // 2, t_y - 2, plat_w, 5)
+        inlay_col = (30, 52, 40) if is_active else ((24, 30, 40) if is_unlocked else (16, 20, 26))
+        pygame.draw.ellipse(p_surf, inlay_col, plat_rect)
+        pygame.draw.ellipse(p_surf, col_edge, plat_rect, width=1)
+
+        rel_top_y = t_y - local_cy
+        cached = (p_surf, rel_top_y)
+        _pedestal_stand_cache[cache_key] = cached
+
+    p_surf, rel_top_y = cached
+    surface.blit(p_surf, (cx - p_surf.get_width() // 2, cy - p_surf.get_height() // 2))
+    return cy + rel_top_y
 
 
 # -------------------------------------------------------------------------
@@ -6742,7 +6859,7 @@ def draw_relics_screen(surface, savedata, mouse_pos, bg_time=None):
     pygame.draw.rect(surface, (180, 140, 55), head_panel, width=2, border_radius=10)
 
     surface.blit(relic_icon, (head_panel.left + 14, head_panel.centery - 12))
-    title = font.render("МУЗЕЙ ДРЕВНИХ РЕЛИКВИЙ", True, (255, 230, 140))
+    title = get_rendered_text(font, "МУЗЕЙ ДРЕВНИХ РЕЛИКВИЙ", (255, 230, 140))
     surface.blit(title, (head_panel.left + 44, head_panel.top + 6))
 
     relics_dict = savedata.get("Relics", {})
@@ -6754,9 +6871,10 @@ def draw_relics_screen(surface, savedata, mouse_pos, bg_time=None):
     dark_res_lvl = savedata.get("Upgrades", {}).get("dark_relic_resonance", 0)
     extra_res = f"  |  Тёмный Резонанс: +{dark_res_lvl * 5}% пассивно" if dark_res_lvl > 0 else ""
 
-    sub_txt = tiny_font.render(
+    sub_txt = get_rendered_text(
+        tiny_font,
         f"Найдено: {unlocked_count}/20  |  Экипировано: {len(equipped)}/{max_pedestals}  |  Всего раскопано: {tot_excavated}  |  Предел: {max_cap} ур.{extra_res}",
-        True, (170, 205, 235)
+        (170, 205, 235)
     )
     surface.blit(sub_txt, (head_panel.left + 46, head_panel.top + 28))
 
@@ -6765,14 +6883,14 @@ def draw_relics_screen(surface, savedata, mouse_pos, bg_time=None):
     inf_hov = info_btn.collidepoint(mouse_pos)
     pygame.draw.rect(surface, (28, 62, 85) if inf_hov else (18, 38, 55), info_btn, border_radius=8)
     pygame.draw.rect(surface, (90, 200, 255) if inf_hov else (45, 120, 165), info_btn, width=2, border_radius=8)
-    inf_txt = small_font.render("? ИНФО", True, (210, 245, 255))
+    inf_txt = get_rendered_text(small_font, "? ИНФО", (210, 245, 255))
     surface.blit(inf_txt, (info_btn.centerx - inf_txt.get_width() // 2, info_btn.centery - inf_txt.get_height() // 2))
 
     back_btn = pygame.Rect(head_panel.right - 130, head_panel.centery - 17, 120, 34)
     b_hov = back_btn.collidepoint(mouse_pos)
     pygame.draw.rect(surface, (45, 68, 98) if b_hov else (28, 42, 62), back_btn, border_radius=8)
     pygame.draw.rect(surface, (110, 175, 245) if b_hov else (52, 92, 138), back_btn, width=2, border_radius=8)
-    b_txt = small_font.render("НАЗАД [ESC]", True, WHITE)
+    b_txt = get_rendered_text(small_font, "НАЗАД [ESC]", WHITE)
     surface.blit(b_txt, (back_btn.centerx - b_txt.get_width() // 2, back_btn.centery - b_txt.get_height() // 2))
 
     # 2. Полка активных пьедесталов (эффекты действуют только с пьедесталов!)
@@ -6812,14 +6930,14 @@ def draw_relics_screen(surface, savedata, mouse_pos, bg_time=None):
             pygame.draw.ellipse(surface, (0, 0, 0, 140), (ped_cx - 12, ped_y - 2, 24, 6))
             surface.blit(icon_p, (ped_cx - icon_p.get_width() // 2, ped_y - icon_p.get_height() + 2))
 
-            name_s = small_font.render(rdata.get("name", "Реликвия"), True, GOLD if s_hov else WHITE)
+            name_s = get_rendered_text(small_font, rdata.get("name", "Реликвия"), GOLD if s_hov else WHITE)
             surface.blit(name_s, (s_rect.left + 72, s_rect.top + 7))
 
             cur_eq_lvl = relics_dict.get(eq_rid, {}).get("level", 1)
-            bonus_s = tiny_font.render(f"Бонус: {get_relic_bonus_summary(eq_rid, cur_eq_lvl)}", True, (130, 255, 170))
+            bonus_s = get_rendered_text(tiny_font, f"Бонус: {get_relic_bonus_summary(eq_rid, cur_eq_lvl)}", (130, 255, 170))
             surface.blit(bonus_s, (s_rect.left + 72, s_rect.top + 28))
 
-            status_p = tiny_font.render("КЛИК: СНЯТЬ" if s_hov else "[АКТИВЕН В БОЮ]", True, (255, 140, 140) if s_hov else (100, 220, 140))
+            status_p = get_rendered_text(tiny_font, "КЛИК: СНЯТЬ" if s_hov else "[АКТИВЕН В БОЮ]", (255, 140, 140) if s_hov else (100, 220, 140))
             surface.blit(status_p, (s_rect.left + 72, s_rect.top + 48))
         elif is_unlocked:
             pedestal_click_rects.append((s_i, s_rect, None))
@@ -6830,11 +6948,11 @@ def draw_relics_screen(surface, savedata, mouse_pos, bg_time=None):
             pygame.draw.rect(surface, p_brd, s_rect, width=1, border_radius=6)
 
             ped_y = draw_pedestal_stand(surface, ped_cx, ped_cy, w=56, h=28, is_active=False, is_unlocked=True, is_hovered=s_hov)
-            plus_s = small_font.render("+", True, (130, 215, 255) if s_hov else (75, 140, 190))
+            plus_s = get_rendered_text(small_font, "+", (130, 215, 255) if s_hov else (75, 140, 190))
             surface.blit(plus_s, (ped_cx - plus_s.get_width() // 2, ped_y - plus_s.get_height() + 1))
 
-            txt1 = small_font.render(f"ПЬЕДЕСТАЛ #{s_i + 1}", True, (160, 205, 255) if s_hov else (115, 150, 190))
-            txt2 = tiny_font.render("Свободен (клик по реликвии)", True, (130, 160, 195))
+            txt1 = get_rendered_text(small_font, f"ПЬЕДЕСТАЛ #{s_i + 1}", (160, 205, 255) if s_hov else (115, 150, 190))
+            txt2 = get_rendered_text(tiny_font, "Свободен (клик по реликвии)", (130, 160, 195))
             surface.blit(txt1, (s_rect.left + 72, s_rect.top + 16))
             surface.blit(txt2, (s_rect.left + 72, s_rect.top + 38))
         else:
@@ -6847,8 +6965,8 @@ def draw_relics_screen(surface, savedata, mouse_pos, bg_time=None):
             s_lock = get_crisp_lock_icon(16)
             surface.blit(s_lock, (ped_cx - s_lock.get_width() // 2, ped_y - 13))
 
-            txt1 = small_font.render(f"СЛОТ #{s_i + 1} [ЗАКРЫТ]", True, (90, 100, 115))
-            txt2 = tiny_font.render("Талант «Пьедесталы»", True, (75, 85, 98))
+            txt1 = get_rendered_text(small_font, f"СЛОТ #{s_i + 1} [ЗАКРЫТ]", (90, 100, 115))
+            txt2 = get_rendered_text(tiny_font, "Талант «Пьедесталы»", (75, 85, 98))
             surface.blit(txt1, (s_rect.left + 72, s_rect.top + 16))
             surface.blit(txt2, (s_rect.left + 72, s_rect.top + 38))
 
@@ -6903,23 +7021,23 @@ def draw_relics_screen(surface, savedata, mouse_pos, bg_time=None):
         pygame.draw.rect(surface, border_col, stand_rect, width=border_w, border_radius=8)
 
         mid = rdata["map"]
-        map_lbl = tiny_font.render(f"Карта {mid + 1}", True, (160, 205, 245) if is_unlocked else (95, 110, 125))
+        map_lbl = get_rendered_text(tiny_font, f"Карта {mid + 1}", (160, 205, 245) if is_unlocked else (95, 110, 125))
         surface.blit(map_lbl, (sx + 8, sy + 4))
 
         if is_equipped:
-            lvl_lbl = tiny_font.render("[В БОЮ]", True, (120, 255, 160))
+            lvl_lbl = get_rendered_text(tiny_font, "[В БОЮ]", (120, 255, 160))
         elif is_maxed:
             if dark_res_lvl > 0:
-                lvl_lbl = tiny_font.render(f"МАКС ({dark_res_lvl * 5}%)", True, (215, 165, 255))
+                lvl_lbl = get_rendered_text(tiny_font, f"МАКС ({dark_res_lvl * 5}%)", (215, 165, 255))
             else:
-                lvl_lbl = tiny_font.render("МАКС", True, (255, 220, 90))
+                lvl_lbl = get_rendered_text(tiny_font, "МАКС", (255, 220, 90))
         elif is_unlocked:
             if dark_res_lvl > 0:
-                lvl_lbl = tiny_font.render(f"Ур. {cur_lvl}/{max_cap} ({dark_res_lvl * 5}%)", True, (200, 160, 255))
+                lvl_lbl = get_rendered_text(tiny_font, f"Ур. {cur_lvl}/{max_cap} ({dark_res_lvl * 5}%)", (200, 160, 255))
             else:
-                lvl_lbl = tiny_font.render(f"Ур. {cur_lvl}/{max_cap}", True, (110, 245, 150))
+                lvl_lbl = get_rendered_text(tiny_font, f"Ур. {cur_lvl}/{max_cap}", (110, 245, 150))
         else:
-            lvl_lbl = tiny_font.render("СКРЫТО", True, (110, 120, 130))
+            lvl_lbl = get_rendered_text(tiny_font, "СКРЫТО", (110, 120, 130))
         surface.blit(lvl_lbl, (sx + col_w - lvl_lbl.get_width() - 8, sy + 4))
 
         cx = sx + col_w // 2
@@ -6934,9 +7052,12 @@ def draw_relics_screen(surface, savedata, mouse_pos, bg_time=None):
 
         if s_hov:
             # Мягкое сияние вокруг парящей реликвии
-            glow_surf = pygame.Surface((64, 48), pygame.SRCALPHA)
             glow_col = (255, 220, 100, 45) if is_equipped else ((100, 210, 255, 45) if is_unlocked else (100, 120, 140, 20))
-            pygame.draw.ellipse(glow_surf, glow_col, (0, 0, 64, 48))
+            if glow_col not in _relic_glow_cache:
+                gs = pygame.Surface((64, 48), pygame.SRCALPHA)
+                pygame.draw.ellipse(gs, glow_col, (0, 0, 64, 48))
+                _relic_glow_cache[glow_col] = gs
+            glow_surf = _relic_glow_cache[glow_col]
             surface.blit(glow_surf, (cx - 32, relic_draw_y - 24))
 
             # Динамическая мягкая тень под парящей реликвией
@@ -6950,7 +7071,7 @@ def draw_relics_screen(surface, savedata, mouse_pos, bg_time=None):
             c_icon = get_relic_icon_preview(rid, 34)
             surface.blit(c_icon, (cx - c_icon.get_width() // 2, relic_draw_y - c_icon.get_height() // 2))
         else:
-            q_surf = large_font.render("?", True, (95, 110, 125))
+            q_surf = get_rendered_text(large_font, "?", (95, 110, 125))
             surface.blit(q_surf, (cx - q_surf.get_width() // 2, relic_draw_y - q_surf.get_height() // 2))
 
         # Разделитель
@@ -6960,19 +7081,19 @@ def draw_relics_screen(surface, savedata, mouse_pos, bg_time=None):
         # Название реликвии
         if is_unlocked:
             name_col = (255, 225, 120) if is_maxed else (235, 215, 140)
-            name_txt = small_font.render(rdata["name"], True, name_col)
+            name_txt = get_rendered_text(small_font, rdata["name"], name_col)
         else:
-            name_txt = small_font.render("??? [Тайна]", True, (95, 105, 118))
+            name_txt = get_rendered_text(small_font, "??? [Тайна]", (95, 105, 118))
         surface.blit(name_txt, (cx - name_txt.get_width() // 2, sy + 62))
 
         # Прогресс / Статус
         if is_maxed:
-            prog_txt = tiny_font.render("Эффект максимален", True, (130, 255, 150))
+            prog_txt = get_rendered_text(tiny_font, "Эффект максимален", (130, 255, 150))
         elif is_unlocked:
-            prog_txt = tiny_font.render(f"Находок: {finds}/{req}", True, (170, 205, 235))
+            prog_txt = get_rendered_text(tiny_font, f"Находок: {finds}/{req}", (170, 205, 235))
         else:
             map_name = MAP_NAMES_LIST[mid] if mid < len(MAP_NAMES_LIST) else f"Карта {mid + 1}"
-            prog_txt = tiny_font.render(f"Раскопки: {map_name}", True, (100, 115, 130))
+            prog_txt = get_rendered_text(tiny_font, f"Раскопки: {map_name}", (100, 115, 130))
         surface.blit(prog_txt, (cx - prog_txt.get_width() // 2, sy + 77))
 
         # Описание баффа / Актуальный бонус
@@ -6986,15 +7107,15 @@ def draw_relics_screen(surface, savedata, mouse_pos, bg_time=None):
             else:
                 b_txt = f"Бонус: {get_relic_bonus_summary(rid, cur_lvl)}"
                 b_col = (130, 255, 160) if is_maxed else (140, 235, 180)
-            b_surf = tiny_font.render(b_txt, True, b_col)
+            b_surf = get_rendered_text(tiny_font, b_txt, b_col)
             surface.blit(b_surf, (cx - b_surf.get_width() // 2, sy + 93))
 
             desc_lines = _render_wrapped_lines(rdata["desc"], tiny_font, col_w - 14)
-            d_surf = tiny_font.render(desc_lines[0], True, (190, 215, 240))
+            d_surf = get_rendered_text(tiny_font, desc_lines[0], (190, 215, 240))
             surface.blit(d_surf, (cx - d_surf.get_width() // 2, sy + 107))
         else:
-            h1 = tiny_font.render("Свойство откроется", True, (75, 88, 102))
-            h2 = tiny_font.render("после раскопок", True, (75, 88, 102))
+            h1 = get_rendered_text(tiny_font, "Свойство откроется", (75, 88, 102))
+            h2 = get_rendered_text(tiny_font, "после раскопок", (75, 88, 102))
             surface.blit(h1, (cx - h1.get_width() // 2, sy + 93))
             surface.blit(h2, (cx - h2.get_width() // 2, sy + 107))
 
@@ -7002,7 +7123,7 @@ def draw_relics_screen(surface, savedata, mouse_pos, bg_time=None):
         if s_hov and is_unlocked:
             act_txt = "Снять" if is_equipped else ("Экипировать" if len(equipped) < max_pedestals else "Мест нет")
             act_col = (255, 160, 160) if is_equipped else ((140, 255, 180) if len(equipped) < max_pedestals else (255, 200, 100))
-            a_surf = tiny_font.render(f"[{act_txt}]", True, act_col)
+            a_surf = get_rendered_text(tiny_font, f"[{act_txt}]", act_col)
             surface.blit(a_surf, (cx - a_surf.get_width() // 2, sy + 122))
 
     return back_btn, relic_click_rects, pedestal_click_rects, info_btn
@@ -7042,6 +7163,18 @@ class MenuDemoSimulation:
             self.map_decor = None
         self.spawn_timer = 0.5
         self.base_hp = float('inf')
+
+        # Предварительно отрисовываем дорогу на отдельный Surface, чтобы не нагружать CPU в каждом кадре
+        self.road_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        r_border = self.biome.get("road_border", (85, 70, 50))
+        r_col = self.biome.get("road_col", (125, 110, 85))
+        if self.path:
+            for p_i in range(len(self.path) - 1):
+                pygame.draw.line(self.road_surf, r_border, self.path[p_i], self.path[p_i + 1], 40)
+                pygame.draw.circle(self.road_surf, r_border, self.path[p_i + 1], 20)
+            for p_i in range(len(self.path) - 1):
+                pygame.draw.line(self.road_surf, r_col, self.path[p_i], self.path[p_i + 1], 32)
+                pygame.draw.circle(self.road_surf, r_col, self.path[p_i + 1], 16)
 
         # Размещаем 4-6 настоящих башен Tower из entities.py на случайных слотах
         num_towers = min(len(self.slots), random.randint(4, 6))
@@ -7145,10 +7278,12 @@ class MenuDemoSimulation:
             except Exception:
                 pass
 
-        # Дорожка биома (прямая быстрая отрисовка)
-        r_border = self.biome.get("road_border", (85, 70, 50))
-        r_col = self.biome.get("road_col", (125, 110, 85))
-        if self.path:
+        # Дорожка биома (быстрый блит предварительно отрисованной дороги)
+        if getattr(self, "road_surf", None):
+            surf.blit(self.road_surf, (0, 0))
+        elif self.path:
+            r_border = self.biome.get("road_border", (85, 70, 50))
+            r_col = self.biome.get("road_col", (125, 110, 85))
             for p_i in range(len(self.path) - 1):
                 pygame.draw.line(surf, r_border, self.path[p_i], self.path[p_i + 1], 40)
                 pygame.draw.circle(surf, r_border, self.path[p_i + 1], 20)

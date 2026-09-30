@@ -1058,7 +1058,18 @@ DEFAULT_SAVE = {
         "bestiary_stars": 0,
         "botanic_harvest": 0,
         "sonar_ping": 0,
-        "dark_vitality": 0
+        "dark_vitality": 0,
+        "astral_slot": 0,
+        "archaeology_gold_vein": 0,
+        "tesla_conductor": 0,
+        "astral_rewind": 0,
+        "sun_armor_melt": 0,
+        "selective_targeting": 0,
+        "rock_frost_shatter": 0,
+        "tesla_emp": 0,
+        "tent_pierce": 0,
+        "sell_refund": 0,
+        "tesla_polarization": 0
     },
     "Toggles": {
         "wave_rush": True,
@@ -1881,6 +1892,13 @@ def load_data(save_id=None):
             for k, v in DEFAULT_SAVE["Upgrades"].items():
                 if k not in data["Upgrades"]:
                     data["Upgrades"][k] = v
+            nodes = globals().get("UPGRADE_TREE_NODES")
+            if not nodes:
+                from tree_data_v02 import get_all_81_nodes
+                nodes = get_all_81_nodes()
+            for k in nodes:
+                if k not in data["Upgrades"]:
+                    data["Upgrades"][k] = 0
         data["Upgrades"]["oasis_core"] = max(1, data["Upgrades"].get("oasis_core", 1))
         data["Upgrades"]["magic_tower"] = max(1, data["Upgrades"].get("magic_tower", 1))
         if data["Upgrades"].get("rock_tower", 0) == 0 and data["Upgrades"].get("inferno_mastery", 0) > 0:
@@ -1998,17 +2016,31 @@ def save_settings(settings):
     except Exception as e:
         print(f"Error saving global settings: {e}")
 
+_cached_global_achievements = None
+_cached_global_achievements_time = 0.0
+
 def load_global_achievements():
     """Загружает глобальные достижения, разделяемые между всеми сейвами."""
+    global _cached_global_achievements, _cached_global_achievements_time
+    now = time.time()
+    if _cached_global_achievements is not None and (now - _cached_global_achievements_time) < 2.0:
+        return _cached_global_achievements
     if os.path.exists(GLOBAL_ACHIEVEMENTS_PATH):
         try:
-            return read_save_file(GLOBAL_ACHIEVEMENTS_PATH)
+            _cached_global_achievements = read_save_file(GLOBAL_ACHIEVEMENTS_PATH)
+            _cached_global_achievements_time = now
+            return _cached_global_achievements
         except Exception as e:
             print(f"Error loading global achievements: {e}")
-    return {}
+    _cached_global_achievements = {}
+    _cached_global_achievements_time = now
+    return _cached_global_achievements
 
 def save_global_achievements(global_data):
     """Сохраняет глобальные достижения в saves/global_achievements.json в зашифрованном формате CTD."""
+    global _cached_global_achievements, _cached_global_achievements_time
+    _cached_global_achievements = global_data
+    _cached_global_achievements_time = time.time()
     try:
         os.makedirs(SAVES_DIR, exist_ok=True)
         write_save_file(GLOBAL_ACHIEVEMENTS_PATH, global_data)
@@ -3803,7 +3835,25 @@ def unequip_relic(savedata, relic_id):
         return True
     return False
 
+_cached_relic_buffs = None
+_cached_relic_signature = None
+
+def invalidate_relic_cache():
+    global _cached_relic_buffs, _cached_relic_signature
+    _cached_relic_buffs = None
+    _cached_relic_signature = None
+
 def get_all_relic_buffs(savedata):
+    global _cached_relic_buffs, _cached_relic_signature
+    if not isinstance(savedata, dict):
+        return {}
+    relics_dict = savedata.get("Relics", {})
+    eq = tuple(savedata.get("EquippedRelics", []))
+    res_lvl = savedata.get("Upgrades", {}).get("dark_relic_resonance", 0)
+    sig = (eq, res_lvl, len(relics_dict), id(relics_dict))
+    if _cached_relic_signature == sig and _cached_relic_buffs is not None:
+        return _cached_relic_buffs
+
     buffs = {
         "farm_income_mult": 0.0,
         "range_mult": 0.0,
@@ -3871,5 +3921,7 @@ def get_all_relic_buffs(savedata):
     if "tesla_extra_targets" in buffs:
         buffs["tesla_extra_targets"] = int(round(buffs["tesla_extra_targets"]))
 
+    _cached_relic_signature = sig
+    _cached_relic_buffs = buffs
     return buffs
 
