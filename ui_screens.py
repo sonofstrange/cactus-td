@@ -136,6 +136,10 @@ def get_cached_bg_dot(color_rgb, rad, alpha):
         dim = rad * 2 + 2
         s = pygame.Surface((dim, dim), pygame.SRCALPHA)
         pygame.draw.circle(s, (*color_rgb, q_alpha), (rad + 1, rad + 1), rad)
+        try:
+            s = s.convert_alpha()
+        except Exception:
+            pass
         _bg_dot_cache[key] = s
     return s
 
@@ -187,36 +191,30 @@ def generate_background(surf, bg_time, map_id=None, custom_cols=None):
     t = bg_time * 0.001
     offset_x = math.sin(t) * 28.0
     offset_y = math.cos(t * 0.9) * 28.0
+    line_w = 1 if IS_ANDROID else 2
 
     for x in range(-cell_size, sw + cell_size, cell_size):
         warp = math.sin(x * 0.01 + t * 2.0) * 14.0
-        pygame.draw.line(surf, line_col, (x + offset_x + warp, 0), (x + offset_y - warp, sh), 2)
+        pygame.draw.line(surf, line_col, (int(x + offset_x + warp), 0), (int(x + offset_y - warp), sh), line_w)
 
     for y in range(-cell_size, sh + cell_size, cell_size):
         warp = math.cos(y * 0.015 + t * 1.8) * 14.0
-        pygame.draw.line(surf, line_col, (0, y + offset_y + warp), (sw, y + offset_x - warp), 2)
+        pygame.draw.line(surf, line_col, (0, int(y + offset_y + warp)), (sw, int(y + offset_x - warp)), line_w)
 
-    # Парящие сияющие частицы космической пыли (кэшированные поверхности)
+    # Парящие сияющие частицы космической пыли
     for i in range(24):
         speed_x = 0.018 + (i % 4) * 0.007
         speed_y = 0.012 + ((i * 2) % 5) * 0.006
         px = int((i * 127.3 + bg_time * speed_x) % (sw + 60) - 30)
         py = int((i * 79.7 + math.sin(t * 1.1 + i) * 42.0 + bg_time * speed_y) % (sh + 60) - 30)
-        p_rad = 1.7 + (i % 4) * 0.9
-        alpha = int(75 + 55 * math.sin(t * 2.0 + i * 1.3))
+        p_rad = 1 + (i % 3)
         if i % 3 == 0:
             p_rgb = (min(255, line_col[0] + 90), min(255, line_col[1] + 95), min(255, line_col[2] + 125))
         elif i % 3 == 1:
             p_rgb = (min(255, line_col[0] + 120), min(255, line_col[1] + 115), min(255, line_col[2] + 75))
         else:
             p_rgb = (min(255, line_col[0] + 75), min(255, line_col[1] + 125), min(255, line_col[2] + 135))
-        pr = max(1, int(p_rad))
-        dot_s = get_cached_bg_dot(p_rgb, pr, alpha)
-        surf.blit(dot_s, (px - pr - 1, py - pr - 1))
-        if p_rad > 2.2:
-            gr = max(1, int(p_rad * 2.2))
-            glow_s = get_cached_bg_dot(p_rgb, gr, alpha // 3)
-            surf.blit(glow_s, (px - gr - 1, py - gr - 1))
+        pygame.draw.circle(surf, p_rgb, (px, py), p_rad)
 
 
 _cached_locked_dark_ghost = None
@@ -7175,15 +7173,19 @@ class MenuDemoSimulation:
             for p_i in range(len(self.path) - 1):
                 pygame.draw.line(self.road_surf, r_col, self.path[p_i], self.path[p_i + 1], 32)
                 pygame.draw.circle(self.road_surf, r_col, self.path[p_i + 1], 16)
+        try:
+            self.road_surf = self.road_surf.convert_alpha()
+        except Exception:
+            pass
 
-        # Размещаем 4-6 настоящих башен Tower из entities.py на случайных слотах
-        num_towers = min(len(self.slots), random.randint(4, 6))
+        # Размещаем 3-4 башни Tower из entities.py на случайных слотах
+        num_towers = min(len(self.slots), 4 if IS_ANDROID else 5)
         chosen_slots = random.sample(self.slots, num_towers)
         tower_types = ["magic", "rock", "freeze", "tesla", "tent"]
         random.shuffle(tower_types)
         for idx, (sx, sy) in enumerate(chosen_slots):
             ttype = tower_types[idx % len(tower_types)]
-            t_lvl = random.randint(1, 6)
+            t_lvl = random.randint(1, 4)
             try:
                 tw = Tower(sx, sy, ttype, starting_level=t_lvl, game_map=self.map_id)
                 self.towers.append(tw)
@@ -7191,11 +7193,12 @@ class MenuDemoSimulation:
                 pass
 
     def update(self, dt):
-        dt = min(dt, 0.1)
+        dt = min(dt, 0.05)
 
         self.spawn_timer -= dt
-        if self.spawn_timer <= 0:
-            self.spawn_timer = random.uniform(1.2, 2.2)
+        max_demo_mobs = 6 if IS_ANDROID else 9
+        if self.spawn_timer <= 0 and len(self.enemies) < max_demo_mobs:
+            self.spawn_timer = random.uniform(1.4, 2.4)
             slime_pool = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 50, 51]
             slime_type = random.choice(slime_pool)
             demo_wave = random.randint(3, 16)
@@ -7221,22 +7224,23 @@ class MenuDemoSimulation:
             except Exception:
                 if p in self.projectiles:
                     self.projectiles.remove(p)
+        if len(self.projectiles) > 15:
+            self.projectiles = self.projectiles[-15:]
 
         # 3. Обновление врагов (мобы получают урон и умирают; в конце пути просто уходят)
         for e in self.enemies[:]:
             try:
                 reached = e.update(dt, self.towers, self.enemies, self.effects)
                 if reached:
-                    # Враг дошел до конца пути: просто исчезает/уходит
                     self.enemies.remove(e)
                 elif not e.active or e.health <= 0:
                     self.enemies.remove(e)
                     if get_graphics_preset() != "optimized":
                         splat_col = e.get_splat_color() if hasattr(e, "get_splat_color") else (100, 220, 80)
                         self.slime_splats.append(SlimeSplat(e.x, e.y, splat_col))
-                        for _ in range(5):
+                        for _ in range(4):
                             self.effects.append(JellyDroplet(e.x, e.y, splat_col))
-                    for _ in range(6):
+                    for _ in range(4):
                         self.effects.append(DropSpark(e.x, e.y, burst=True))
             except Exception:
                 if e in self.enemies:
@@ -7250,6 +7254,8 @@ class MenuDemoSimulation:
             except Exception:
                 if eff in self.effects:
                     self.effects.remove(eff)
+        if len(self.effects) > (16 if IS_ANDROID else 25):
+            self.effects = self.effects[-(16 if IS_ANDROID else 25):]
 
         # Обновление желейных пятен на земле
         for splat in self.slime_splats[:]:
@@ -7258,8 +7264,8 @@ class MenuDemoSimulation:
                     self.slime_splats.remove(splat)
             except Exception:
                 pass
-        if len(self.slime_splats) > 25:
-            self.slime_splats = self.slime_splats[-25:]
+        if len(self.slime_splats) > 15:
+            self.slime_splats = self.slime_splats[-15:]
 
         # 5. Атмосферные частицы биома
         if self.ambient_particles:
@@ -7367,6 +7373,10 @@ def draw_main_menu_screen(surface, mouse_pos, demo_sim, bg_time=None):
         for y in range(170):
             alpha = int(160 * ((170 - y) / 170.0) ** 1.4)
             pygame.draw.line(_vignette_top_surf, (8, 12, 18, alpha), (0, y), (SCREEN_WIDTH, y))
+        try:
+            _vignette_top_surf = _vignette_top_surf.convert_alpha()
+        except Exception:
+            pass
     surface.blit(_vignette_top_surf, (0, 0))
 
     if _vignette_bot_surf is None:
@@ -7374,6 +7384,10 @@ def draw_main_menu_screen(surface, mouse_pos, demo_sim, bg_time=None):
         for y in range(180):
             alpha = int(170 * (y / 180.0) ** 1.4)
             pygame.draw.line(_vignette_bot_surf, (8, 12, 18, alpha), (0, y), (SCREEN_WIDTH, SCREEN_HEIGHT - 180 + y))
+        try:
+            _vignette_bot_surf = _vignette_bot_surf.convert_alpha()
+        except Exception:
+            pass
     surface.blit(_vignette_bot_surf, (0, SCREEN_HEIGHT - 180))
 
     cx = SCREEN_WIDTH // 2
@@ -7403,6 +7417,10 @@ def draw_main_menu_screen(surface, mouse_pos, demo_sim, bg_time=None):
         sub_pill = pygame.Surface((pw, ph), pygame.SRCALPHA)
         pygame.draw.rect(sub_pill, (14, 24, 34, 190), (0, 0, pw, ph), border_radius=15)
         pygame.draw.rect(sub_pill, (55, 175, 130, 220), (0, 0, pw, ph), width=1, border_radius=15)
+        try:
+            sub_pill = sub_pill.convert_alpha()
+        except Exception:
+            pass
         _sub_pill_cache[pw] = sub_pill
     surface.blit(sub_pill, (cx - pw // 2, title_y + 168))
     surface.blit(st_surf, (cx - st_surf.get_width() // 2, title_y + 171))
@@ -7421,6 +7439,10 @@ def draw_main_menu_screen(surface, mouse_pos, demo_sim, bg_time=None):
         p_brd = (120, 255, 170, 255) if p_hov else (60, 180, 100, 220)
         pygame.draw.rect(p_surf, p_bg, (0, 0, btn_w, 60), border_radius=16)
         pygame.draw.rect(p_surf, p_brd, (0, 0, btn_w, 60), width=2, border_radius=16)
+        try:
+            p_surf = p_surf.convert_alpha()
+        except Exception:
+            pass
         _main_menu_btn_cache[("play", p_hov)] = p_surf
     surface.blit(p_surf, play_btn)
 
@@ -7437,6 +7459,10 @@ def draw_main_menu_screen(surface, mouse_pos, demo_sim, bg_time=None):
         a_brd = (255, 225, 100, 255) if a_hov else (180, 140, 45, 220)
         pygame.draw.rect(a_surf, a_bg, (0, 0, btn_w, 54), border_radius=14)
         pygame.draw.rect(a_surf, a_brd, (0, 0, btn_w, 54), width=2, border_radius=14)
+        try:
+            a_surf = a_surf.convert_alpha()
+        except Exception:
+            pass
         _main_menu_btn_cache[("ach", a_hov)] = a_surf
     surface.blit(a_surf, ach_btn)
 
@@ -7453,6 +7479,10 @@ def draw_main_menu_screen(surface, mouse_pos, demo_sim, bg_time=None):
         s_brd = (110, 205, 255, 255) if s_hov else (55, 100, 155, 220)
         pygame.draw.rect(s_surf, s_bg, (0, 0, btn_w, 52), border_radius=14)
         pygame.draw.rect(s_surf, s_brd, (0, 0, btn_w, 52), width=2, border_radius=14)
+        try:
+            s_surf = s_surf.convert_alpha()
+        except Exception:
+            pass
         _main_menu_btn_cache[("settings", s_hov)] = s_surf
     surface.blit(s_surf, set_btn)
 
@@ -7469,6 +7499,10 @@ def draw_main_menu_screen(surface, mouse_pos, demo_sim, bg_time=None):
         e_brd = (255, 110, 120, 255) if e_hov else (145, 45, 52, 220)
         pygame.draw.rect(e_surf, e_bg, (0, 0, btn_w, 48), border_radius=14)
         pygame.draw.rect(e_surf, e_brd, (0, 0, btn_w, 48), width=2, border_radius=14)
+        try:
+            e_surf = e_surf.convert_alpha()
+        except Exception:
+            pass
         _main_menu_btn_cache[("exit", e_hov)] = e_surf
     surface.blit(e_surf, exit_btn)
 
@@ -7485,6 +7519,10 @@ def draw_main_menu_screen(surface, mouse_pos, demo_sim, bg_time=None):
         foot_pill = pygame.Surface((fp_w, fp_h), pygame.SRCALPHA)
         pygame.draw.rect(foot_pill, (10, 14, 22, 180), (0, 0, fp_w, fp_h), border_radius=14)
         pygame.draw.rect(foot_pill, (50, 75, 110, 180), (0, 0, fp_w, fp_h), width=1, border_radius=14)
+        try:
+            foot_pill = foot_pill.convert_alpha()
+        except Exception:
+            pass
         _foot_pill_cache[fp_w] = foot_pill
     foot_y = SCREEN_HEIGHT - 38
     surface.blit(foot_pill, (cx - fp_w // 2, foot_y))

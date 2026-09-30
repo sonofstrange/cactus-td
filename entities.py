@@ -683,7 +683,7 @@ class Tower:
 
         max_level_bonus_final = max_level_bonus
         self.max_level = self.base_max_level + max_level_bonus_final
-        self.timer = 0.0
+        self.timer = self.cooldown if tower_type == "tent" else 0.0
         self.rect = self.image.get_rect(center=(x, y - 8))
         self.target_priority = "FIRST"  # "FIRST", "LAST", "STRONGEST", "CLOSEST"
         self.damage_dealt = 0.0
@@ -1033,16 +1033,7 @@ class Tower:
             self.slow_ratio = stats["slow_ratio"]
             self.slow_duration = stats["slow_dur"]
         elif self.type == "tent":
-            old_max = getattr(self, "max_soldiers", 0)
             self.max_soldiers = stats["soldiers"]
-            if getattr(self, "rally_point", None) and self.max_soldiers > old_max:
-                rx, ry = self.rally_point
-                pidx = self.target_path_point[2] if self.target_path_point else 0
-                for _ in range(self.max_soldiers - len([s for s in self.soldiers if s.active])):
-                    spawn_x = self.x
-                    spawn_y = self.y + 6
-                    self.soldiers.append(Soldier(spawn_x, spawn_y, pidx, self, target_x=rx, target_y=ry))
-                self._reposition_soldiers()
         elif self.type == "tesla":
             self.max_chains = stats["chains"]
         elif self.type == "farm":
@@ -1324,32 +1315,18 @@ class Tower:
 
             self.soldiers = [s for s in self.soldiers if s.active]
 
-            # Мгновенный спавн начального гарнизона при размещении палатки
-            if not self.soldiers and self.rally_point and self.max_soldiers > 0:
-                rx, ry = self.rally_point
-                pidx = self.target_path_point[2] if self.target_path_point else 0
-                offsets = self._get_soldier_formation_offsets(self.max_soldiers)
-                for i in range(self.max_soldiers):
-                    assigned_offset = offsets[i] if i < len(offsets) else (0, 0)
-                    target_x = rx + assigned_offset[0]
-                    target_y = ry + assigned_offset[1]
+            # Спавн бойцов строго по кулдауну палатки (self.cooldown)
+            if len(self.soldiers) < self.max_soldiers and self.rally_point:
+                if self.timer >= self.cooldown:
+                    self.timer = 0.0
+                    rx, ry = self.rally_point
+                    pidx = self.target_path_point[2] if self.target_path_point else 0
                     spawn_x = self.x
                     spawn_y = self.y + 6
-                    self.soldiers.append(Soldier(spawn_x, spawn_y, pidx, self, target_x=target_x, target_y=target_y))
-                self._reposition_soldiers()
+                    self.soldiers.append(Soldier(spawn_x, spawn_y, pidx, self, target_x=rx, target_y=ry))
+                    self._reposition_soldiers()
+            else:
                 self.timer = 0.0
-
-            if len(self.soldiers) >= self.max_soldiers:
-                self.timer = min(self.timer, self.cooldown)
-
-            if self.timer >= self.cooldown and len(self.soldiers) < self.max_soldiers and self.rally_point:
-                self.timer = 0.0
-                rx, ry = self.rally_point
-                pidx = self.target_path_point[2] if self.target_path_point else 0
-                spawn_x = self.x
-                spawn_y = self.y + 6
-                self.soldiers.append(Soldier(spawn_x, spawn_y, pidx, self, target_x=rx, target_y=ry))
-                self._reposition_soldiers()
 
             for s in self.soldiers:
                 s.update(dt, enemies, effects)
@@ -3960,28 +3937,34 @@ class MapDecorManager:
 
     def _get_decor_surface(self, d_type, rng):
         if d_type == "mini_cactus":
-            return _create_mini_cactus(), False
+            s, is_glow = _create_mini_cactus(), False
         elif d_type == "desert_rock":
-            return _create_desert_rock(), False
+            s, is_glow = _create_desert_rock(), False
         elif d_type == "desert_shrub":
-            return _create_desert_shrub(), False
+            s, is_glow = _create_desert_shrub(), False
         elif d_type == "canyon_rock":
-            return _create_canyon_rock(), False
+            s, is_glow = _create_canyon_rock(), False
         elif d_type == "crystal_cyan":
-            return _create_crystal((70, 215, 250)), True
+            s, is_glow = _create_crystal((70, 215, 250)), True
         elif d_type == "crystal_purple":
-            return _create_crystal((195, 90, 255)), True
+            s, is_glow = _create_crystal((195, 90, 255)), True
         elif d_type == "ice_shard":
-            return _create_ice_shard(), True
+            s, is_glow = _create_ice_shard(), True
         elif d_type == "rune_stone":
-            return _create_rune_stone(), True
+            s, is_glow = _create_rune_stone(), True
         elif d_type == "desert_flower":
-            return _create_desert_flower(), False
+            s, is_glow = _create_desert_flower(), False
         elif d_type == "magma_crack":
-            return _create_magma_crack(), True
+            s, is_glow = _create_magma_crack(), True
         elif d_type == "astral_star":
-            return _create_astral_star(), True
-        return _create_desert_rock(), False
+            s, is_glow = _create_astral_star(), True
+        else:
+            s, is_glow = _create_desert_rock(), False
+        try:
+            s = s.convert_alpha()
+        except Exception:
+            pass
+        return s, is_glow
 
     def draw(self, surface, bg_time=0):
         if get_graphics_preset() == "optimized":

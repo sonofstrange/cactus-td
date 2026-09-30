@@ -71,39 +71,6 @@ def get_cached_combat_backdrop(map_id, path_coords, r_border, r_col):
         _cached_combat_backdrop[key] = surf
     return surf
 
-_cached_combat_biome_bg = {}
-
-def get_cached_combat_biome_bg(map_id):
-    surf = _cached_combat_biome_bg.get(map_id)
-    if surf is None:
-        surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
-        generate_background(surf, 0, map_id=map_id)
-        try:
-            surf = surf.convert()
-        except Exception:
-            pass
-        _cached_combat_biome_bg[map_id] = surf
-    return surf
-
-_cached_combat_road_surfs = {}
-
-def get_cached_combat_road_surf(map_id, path_coords, r_border, r_col):
-    key = (map_id, r_border, r_col)
-    surf = _cached_combat_road_surfs.get(key)
-    if surf is None:
-        surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-        for i in range(len(path_coords) - 1):
-            pygame.draw.line(surf, r_border, path_coords[i], path_coords[i + 1], 40)
-            pygame.draw.circle(surf, r_border, path_coords[i + 1], 20)
-        for i in range(len(path_coords) - 1):
-            pygame.draw.line(surf, r_col, path_coords[i], path_coords[i + 1], 32)
-            pygame.draw.circle(surf, r_col, path_coords[i + 1], 16)
-        try:
-            surf = surf.convert_alpha()
-        except Exception:
-            pass
-        _cached_combat_road_surfs[key] = surf
-    return surf
 
 
 
@@ -348,8 +315,17 @@ def run_game():
             bx, by = 18, 16
 
         badge_rect = pygame.Rect(bx, by, bw, bh)
-        badge = pygame.Surface((bw, bh), pygame.SRCALPHA)
-        badge.fill((12, 18, 28, 215))
+        if not hasattr(render_global_fps_overlay, "_badge_cache"):
+            render_global_fps_overlay._badge_cache = {}
+        badge = render_global_fps_overlay._badge_cache.get((bw, bh))
+        if badge is None:
+            badge = pygame.Surface((bw, bh), pygame.SRCALPHA)
+            badge.fill((12, 18, 28, 215))
+            try:
+                badge = badge.convert_alpha()
+            except Exception:
+                pass
+            render_global_fps_overlay._badge_cache[(bw, bh)] = badge
         surf.blit(badge, badge_rect)
         pygame.draw.rect(surf, (55, 85, 125), badge_rect, width=1, border_radius=6)
         surf.blit(fps_txt, (badge_rect.centerx - tw // 2, badge_rect.centery - th // 2))
@@ -4418,11 +4394,22 @@ def run_game():
 
                 draw_surf = screen if (ox == 0 and oy == 0) else field_surf
 
-                # Единый аппаратно-ускоренный блит фона и дороги биома (0.3ms вместо 43ms)
+                # Отрисовка фона и дороги биома
                 biome = MAP_BIOMES_DATA.get(game_map, MAP_BIOMES_DATA[0])
                 r_border = biome["road_border"]
                 r_col = biome["road_col"]
-                draw_surf.blit(get_cached_combat_backdrop(game_map, path, r_border, r_col), (0, 0))
+                if get_graphics_preset() != "optimized":
+                    # Нормальная графика: плавный живой волнообразный фон в реальном времени (60-120 FPS, ~0.4ms) + прямая отрисовка дороги (~0.12ms)
+                    generate_background(draw_surf, bg_time, map_id=game_map)
+                    for p_i in range(len(path) - 1):
+                        pygame.draw.line(draw_surf, r_border, path[p_i], path[p_i + 1], 40)
+                        pygame.draw.circle(draw_surf, r_border, path[p_i + 1], 20)
+                    for p_i in range(len(path) - 1):
+                        pygame.draw.line(draw_surf, r_col, path[p_i], path[p_i + 1], 32)
+                        pygame.draw.circle(draw_surf, r_col, path[p_i + 1], 16)
+                else:
+                    # Оптимизированная графика: статичный единый предрендеренный бэкдроп биома
+                    draw_surf.blit(get_cached_combat_backdrop(game_map, path, r_border, r_col), (0, 0))
 
                 # Атмосферный фоновый декор биома (кристаллы, камни, кактусы, лавовые трещины)
                 map_decor.draw(draw_surf, bg_time)
