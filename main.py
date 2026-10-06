@@ -267,9 +267,15 @@ def run_game():
     def push_achievement_toasts(unlocked_list):
         if not unlocked_list:
             return
-        sfx_achievement.play()
+        try:
+            sfx_achievement.play()
+        except Exception:
+            pass
         for ach in unlocked_list:
-            active_achievement_toasts.append(AchievementToast(ach.get("title", "Достижение"), ach.get("desc", ""), icon=ach.get("icon", None)))
+            try:
+                active_achievement_toasts.append(AchievementToast(ach.get("title", "Достижение"), ach.get("desc", ""), icon=ach.get("icon", None)))
+            except Exception as e:
+                print(f"Error creating achievement toast: {e}")
 
     def render_global_fps_overlay(surf):
         if not savedata.get("Settings", {}).get("show_fps", True):
@@ -332,10 +338,15 @@ def run_game():
 
     def render_achievement_toasts(surf, dt):
         for toast in active_achievement_toasts[:]:
-            if toast.update(dt):
-                active_achievement_toasts.remove(toast)
-            else:
-                toast.draw(surf)
+            try:
+                if toast.update(dt):
+                    active_achievement_toasts.remove(toast)
+                else:
+                    toast.draw(surf)
+            except Exception as e:
+                print(f"Error rendering achievement toast: {e}")
+                if toast in active_achievement_toasts:
+                    active_achievement_toasts.remove(toast)
         render_global_fps_overlay(surf)
 
     cacti = 200

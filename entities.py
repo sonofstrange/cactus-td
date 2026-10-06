@@ -31,6 +31,10 @@ _burrow_sand_surf = None
 _protector_aura_surf = None
 
 def get_cached_spark_surf(color, r, alpha):
+    if isinstance(color, (int, float)) and isinstance(r, (tuple, list)):
+        color, r = r, color
+    if isinstance(color, list):
+        color = tuple(color)
     r = max(1, min(14, int(r)))
     q_alpha = max(16, min(240, (int(alpha) // 16) * 16))
     key = (color, r, q_alpha)
@@ -2077,77 +2081,83 @@ class AchievementToast:
 
     def draw(self, surface):
         if self.life <= 0: return
-        t_elapsed = self.max_life - self.life
-        w, h = 420, 68
-        target_y = 80
+        try:
+            t_elapsed = self.max_life - self.life
+            w, h = 420, 68
+            target_y = 80
 
-        if t_elapsed < 0.35:
-            prog = t_elapsed / 0.35
-            cur_y = int(-h + (target_y + h) * (math.sin(prog * math.pi * 0.5) ** 1.2))
-        elif self.life < 0.35:
-            prog = self.life / 0.35
-            cur_y = int(-h + (target_y + h) * (prog ** 1.5))
-        else:
-            cur_y = target_y
+            if t_elapsed < 0.35:
+                prog = t_elapsed / 0.35
+                cur_y = int(-h + (target_y + h) * (math.sin(prog * math.pi * 0.5) ** 1.2))
+            elif self.life < 0.35:
+                prog = self.life / 0.35
+                cur_y = int(-h + (target_y + h) * (prog ** 1.5))
+            else:
+                cur_y = target_y
 
-        cx = (SCREEN_WIDTH - w) // 2
+            cx = (SCREEN_WIDTH - w) // 2
 
-        # Тень под баннером для полного отделения от любого интерфейса и текста
-        shadow_surf = pygame.Surface((w + 12, h + 12), pygame.SRCALPHA)
-        pygame.draw.rect(shadow_surf, (0, 0, 0, 180), (0, 0, w + 12, h + 12), border_radius=16)
-        surface.blit(shadow_surf, (cx - 6, cur_y + 4))
+            # Тень под баннером для полного отделения от любого интерфейса и текста
+            shadow_surf = pygame.Surface((w + 12, h + 12), pygame.SRCALPHA)
+            pygame.draw.rect(shadow_surf, (0, 0, 0, 180), (0, 0, w + 12, h + 12), border_radius=16)
+            surface.blit(shadow_surf, (cx - 6, cur_y + 4))
 
-        # 100% непрозрачный сплошной глубокий фон баннера
-        banner_surf = pygame.Surface((w, h), pygame.SRCALPHA)
-        pygame.draw.rect(banner_surf, (14, 20, 32, 255), (0, 0, w, h), border_radius=12)
-        pygame.draw.rect(banner_surf, (22, 30, 46, 255), (2, 2, w - 4, h - 4), border_radius=10)
+            # 100% непрозрачный сплошной глубокий фон баннера
+            banner_surf = pygame.Surface((w, h), pygame.SRCALPHA)
+            pygame.draw.rect(banner_surf, (14, 20, 32, 255), (0, 0, w, h), border_radius=12)
+            pygame.draw.rect(banner_surf, (22, 30, 46, 255), (2, 2, w - 4, h - 4), border_radius=10)
 
-        pulse = (math.sin(pygame.time.get_ticks() * 0.008) + 1.0) * 0.5
-        border_col = (int(225 + 30 * pulse), int(180 + 35 * pulse), 55)
-        pygame.draw.rect(banner_surf, border_col, (0, 0, w, h), width=2, border_radius=12)
+            pulse = (math.sin(pygame.time.get_ticks() * 0.008) + 1.0) * 0.5
+            border_col = (int(225 + 30 * pulse), int(180 + 35 * pulse), 55)
+            pygame.draw.rect(banner_surf, border_col, (0, 0, w, h), width=2, border_radius=12)
 
-        ix = 14
-        iy = (h - 40) // 2
-        pygame.draw.circle(banner_surf, (40, 50, 70), (ix + 20, iy + 20), 22)
-        pygame.draw.circle(banner_surf, GOLD, (ix + 20, iy + 20), 22, width=2)
-        if self.icon:
-            scaled_icon = pygame.transform.smoothscale(self.icon, (32, 32))
-            banner_surf.blit(scaled_icon, (ix + 4, iy + 4))
+            ix = 14
+            iy = (h - 40) // 2
+            pygame.draw.circle(banner_surf, (40, 50, 70), (ix + 20, iy + 20), 22)
+            pygame.draw.circle(banner_surf, GOLD, (ix + 20, iy + 20), 22, width=2)
+            if self.icon and isinstance(self.icon, pygame.Surface):
+                try:
+                    scaled_icon = pygame.transform.smoothscale(self.icon, (32, 32))
+                    banner_surf.blit(scaled_icon, (ix + 4, iy + 4))
+                except Exception:
+                    pass
 
-        # Заголовок без спецсимволов звездочек для избежания квадратов □
-        t_header = tiny_font.render("[ НОВОЕ ДОСТИЖЕНИЕ ]", True, GOLD)
-        hx = ix + 48
-        hy = 16
-        pygame.draw.polygon(banner_surf, GOLD, [(hx - 10, hy), (hx - 6, hy - 4), (hx - 2, hy), (hx - 6, hy + 4)])
-        banner_surf.blit(t_header, (hx + 4, 10))
-        rx = hx + 8 + t_header.get_width()
-        pygame.draw.polygon(banner_surf, GOLD, [(rx, hy), (rx + 4, hy - 4), (rx + 8, hy), (rx + 4, hy + 4)])
+            # Заголовок без спецсимволов звездочек для избежания квадратов □
+            t_header = tiny_font.render("[ НОВОЕ ДОСТИЖЕНИЕ ]", True, GOLD)
+            hx = ix + 48
+            hy = 16
+            pygame.draw.polygon(banner_surf, GOLD, [(hx - 10, hy), (hx - 6, hy - 4), (hx - 2, hy), (hx - 6, hy + 4)])
+            banner_surf.blit(t_header, (hx + 4, 10))
+            rx = hx + 8 + t_header.get_width()
+            pygame.draw.polygon(banner_surf, GOLD, [(rx, hy), (rx + 4, hy - 4), (rx + 8, hy), (rx + 4, hy + 4)])
 
-        t_title = font.render(self.title, True, WHITE)
-        if t_title.get_width() > w - ix - 58:
-            t_title = small_font.render(self.title, True, WHITE)
-        if t_title.get_width() > w - ix - 58:
-            t_title = tiny_font.render(self.title, True, WHITE)
-        banner_surf.blit(t_title, (ix + 48, 28))
+            t_title = font.render(self.title, True, WHITE)
+            if t_title.get_width() > w - ix - 58:
+                t_title = small_font.render(self.title, True, WHITE)
+            if t_title.get_width() > w - ix - 58:
+                t_title = tiny_font.render(self.title, True, WHITE)
+            banner_surf.blit(t_title, (ix + 48, 28))
 
-        if self.desc:
-            max_desc_w = w - ix - 58
-            desc_str = self.desc
-            t_desc = tiny_font.render(desc_str, True, (200, 215, 230))
-            if t_desc.get_width() > max_desc_w:
-                while len(desc_str) > 5 and tiny_font.render(desc_str + "...", True, (200, 215, 230)).get_width() > max_desc_w:
-                    desc_str = desc_str[:-1]
-                t_desc = tiny_font.render(desc_str + "...", True, (200, 215, 230))
-            banner_surf.blit(t_desc, (ix + 48, 48))
+            if self.desc:
+                max_desc_w = w - ix - 58
+                desc_str = self.desc
+                t_desc = tiny_font.render(desc_str, True, (200, 215, 230))
+                if t_desc.get_width() > max_desc_w:
+                    while len(desc_str) > 5 and tiny_font.render(desc_str + "...", True, (200, 215, 230)).get_width() > max_desc_w:
+                        desc_str = desc_str[:-1]
+                    t_desc = tiny_font.render(desc_str + "...", True, (200, 215, 230))
+                banner_surf.blit(t_desc, (ix + 48, 48))
 
-        surface.blit(banner_surf, (cx, cur_y))
+            surface.blit(banner_surf, (cx, cur_y))
 
-        for p in self.particles:
-            if p[4] > 0:
-                p_alpha = int(255 * (p[4] / 1.4))
-                p_surf = get_cached_spark_surf(2, (255, 220, 80), p_alpha)
-                if p_surf:
-                    surface.blit(p_surf, (cx + ix + 20 + int(p[0]) - 2, cur_y + iy + 20 + int(p[1]) - 2))
+            for p in self.particles:
+                if p[4] > 0:
+                    p_alpha = int(255 * (p[4] / 1.4))
+                    p_surf = get_cached_spark_surf((255, 220, 80), 2, p_alpha)
+                    if p_surf:
+                        surface.blit(p_surf, (cx + ix + 20 + int(p[0]) - 2, cur_y + iy + 20 + int(p[1]) - 2))
+        except Exception as e:
+            pass
 
 
 class JellyDroplet:
