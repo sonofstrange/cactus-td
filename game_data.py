@@ -2006,6 +2006,30 @@ def load_settings():
             pass
     return s
 
+def get_account_id():
+    """Возвращает единый глобальный идентификатор игрока на устройстве."""
+    settings = load_settings()
+    acc_id = settings.get("account_id")
+    if not acc_id:
+        import uuid
+        acc_id = str(uuid.uuid4())
+        settings["account_id"] = acc_id
+        save_settings(settings)
+    return acc_id
+
+def get_account_nickname(fallback="Игрок"):
+    """Возвращает единый никнейм игрока для таблицы лидеров."""
+    settings = load_settings()
+    return settings.get("player_nickname") or fallback
+
+def set_account_nickname(new_nick):
+    """Сохраняет единый никнейм игрока глобально в настройках."""
+    settings = load_settings()
+    clean = str(new_nick).strip()[:16] if new_nick else "Игрок"
+    settings["player_nickname"] = clean
+    save_settings(settings)
+    return clean
+
 def save_settings(settings):
     """Сохраняет глобальные настройки игры в saves/settings.json в зашифрованном формате CTD."""
     try:
@@ -2243,6 +2267,19 @@ def calculate_account_score(sdata):
     # 10. Просмотрены ли финальные титры
     credits_seen = bool(sdata.get("CreditsSeen", False) or sdata.get("GameCompleted", False))
 
+    # 11. Модификатор сложности:
+    # Хардкор: x1.15, Нормальная: x1.0, Казуальная: x0.75
+    diff_val = str(sdata.get("difficulty", "normal")).lower()
+    if diff_val == "hardcore":
+        m_diff = 1.15
+        diff_name = "Хардкор"
+    elif diff_val == "casual":
+        m_diff = 0.75
+        diff_name = "Казуальная"
+    else:
+        m_diff = 1.0
+        diff_name = "Нормальная"
+
     # Множители формулы
     m_waves = (waves + 1) ** 0.5
     m_stars = (star_cacti + 1) ** 0.25
@@ -2255,7 +2292,7 @@ def calculate_account_score(sdata):
     m_best = (bestiary + 1) ** 0.33
     m_cred = 1.1 if credits_seen else 1.0
 
-    score = m_waves * m_stars * m_dark * m_upg * m_gh * m_rel * m_play * m_ach * m_best * m_cred
+    score = m_waves * m_stars * m_dark * m_upg * m_gh * m_rel * m_play * m_ach * m_best * m_cred * m_diff
     score = round(score, 1)
 
     details = {
@@ -2270,6 +2307,8 @@ def calculate_account_score(sdata):
         "achievements": achievements,
         "bestiary": bestiary,
         "credits_seen": credits_seen,
+        "difficulty": diff_val,
+        "difficulty_name": diff_name,
         "m_waves": round(m_waves, 2),
         "m_stars": round(m_stars, 2),
         "m_dark": round(m_dark, 2),
@@ -2280,6 +2319,7 @@ def calculate_account_score(sdata):
         "m_ach": round(m_ach, 2),
         "m_best": round(m_best, 2),
         "m_cred": m_cred,
+        "m_diff": m_diff,
     }
     return score, details
 

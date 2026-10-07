@@ -724,11 +724,12 @@ def run_game():
                         sfx_click.play()
                     elif event.key in [pygame.K_l, pygame.K_t]:
                         import leaderboard_client
+                        from game_data import get_account_id
                         current_state = STATE_LEADERBOARD
                         leaderboard_scroll_y = 0
                         leaderboard_modal = None
                         leaderboard_client.async_submit_score(savedata)
-                        leaderboard_client.async_fetch_leaderboard(leaderboard_tab, savedata.get("leaderboard_player_id"))
+                        leaderboard_client.async_fetch_leaderboard(leaderboard_tab, get_account_id())
                         sfx_click.play()
                     elif event.key == pygame.K_a:
                         current_state = STATE_GLOBAL_ACHIEVEMENTS
@@ -749,11 +750,12 @@ def run_game():
                         sfx_click.play()
                     elif lead_btn and lead_btn.collidepoint(mouse_pos):
                         import leaderboard_client
+                        from game_data import get_account_id
                         current_state = STATE_LEADERBOARD
                         leaderboard_scroll_y = 0
                         leaderboard_modal = None
                         leaderboard_client.async_submit_score(savedata)
-                        leaderboard_client.async_fetch_leaderboard(leaderboard_tab, savedata.get("leaderboard_player_id"))
+                        leaderboard_client.async_fetch_leaderboard(leaderboard_tab, get_account_id())
                         sfx_click.play()
                     elif ach_btn and ach_btn.collidepoint(mouse_pos):
                         current_state = STATE_GLOBAL_ACHIEVEMENTS
@@ -1764,11 +1766,13 @@ def run_game():
                                 new_name = leaderboard_modal.get("text", "").strip()
                                 if new_name:
                                     clean_nick = new_name[:16]
+                                    from game_data import set_account_nickname, get_account_id
+                                    set_account_nickname(clean_nick)
                                     savedata["PlayerName"] = clean_nick
                                     save_data(savedata)
-                                    p_id = savedata.get("leaderboard_player_id")
+                                    p_id = get_account_id()
                                     leaderboard_client.async_rename_player(p_id, clean_nick)
-                                    leaderboard_client.async_submit_score(savedata)
+                                    leaderboard_client.async_submit_score(savedata, force=True)
                                     leaderboard_client.async_fetch_leaderboard(leaderboard_tab, p_id, force=True)
                                 leaderboard_modal = None
                                 sfx_click.play()
@@ -1789,11 +1793,13 @@ def run_game():
                                 new_name = leaderboard_modal.get("text", "").strip()
                                 if new_name:
                                     clean_nick = new_name[:16]
+                                    from game_data import set_account_nickname, get_account_id
+                                    set_account_nickname(clean_nick)
                                     savedata["PlayerName"] = clean_nick
                                     save_data(savedata)
-                                    p_id = savedata.get("leaderboard_player_id")
+                                    p_id = get_account_id()
                                     leaderboard_client.async_rename_player(p_id, clean_nick)
-                                    leaderboard_client.async_submit_score(savedata)
+                                    leaderboard_client.async_submit_score(savedata, force=True)
                                     leaderboard_client.async_fetch_leaderboard(leaderboard_tab, p_id, force=True)
                                 leaderboard_modal = None
                                 sfx_click.play()
@@ -1824,8 +1830,9 @@ def run_game():
                     elif event.key in [pygame.K_DOWN, pygame.K_s]:
                         leaderboard_scroll_y = min(max_lb_scroll, leaderboard_scroll_y + 60)
                     elif event.key == pygame.K_r:
-                        leaderboard_client.async_submit_score(savedata)
-                        leaderboard_client.async_fetch_leaderboard(leaderboard_tab, savedata.get("leaderboard_player_id"), force=True)
+                        from game_data import get_account_id
+                        leaderboard_client.async_submit_score(savedata, force=True)
+                        leaderboard_client.async_fetch_leaderboard(leaderboard_tab, get_account_id(), force=True)
                         sfx_click.play()
 
                 elif event.type == pygame.MOUSEWHEEL:
@@ -1845,25 +1852,29 @@ def run_game():
                                 current_state = STATE_MAIN_MENU
                                 sfx_click.play()
                             elif lb_ui.get("refresh") and lb_ui["refresh"].collidepoint(mouse_pos):
-                                leaderboard_client.async_submit_score(savedata)
-                                leaderboard_client.async_fetch_leaderboard(leaderboard_tab, savedata.get("leaderboard_player_id"), force=True)
+                                from game_data import get_account_id
+                                leaderboard_client.async_submit_score(savedata, force=True)
+                                leaderboard_client.async_fetch_leaderboard(leaderboard_tab, get_account_id(), force=True)
                                 sfx_click.play()
                             elif lb_ui.get("rename") and lb_ui["rename"].collidepoint(mouse_pos):
-                                leaderboard_modal = {"type": "rename", "text": savedata.get("PlayerName", "Игрок")}
+                                from game_data import get_account_nickname
+                                leaderboard_modal = {"type": "rename", "text": get_account_nickname(fallback=savedata.get("PlayerName", "Игрок"))}
                                 sfx_click.play()
                             elif lb_ui.get("info") and lb_ui["info"].collidepoint(mouse_pos):
                                 leaderboard_modal = {"type": "score_info"}
                                 sfx_click.play()
                             elif lb_ui.get("submit") and lb_ui["submit"].collidepoint(mouse_pos):
-                                leaderboard_client.async_submit_score(savedata)
-                                leaderboard_client.async_fetch_leaderboard(leaderboard_tab, savedata.get("leaderboard_player_id"), force=True)
+                                from game_data import get_account_id
+                                leaderboard_client.async_submit_score(savedata, force=True)
+                                leaderboard_client.async_fetch_leaderboard(leaderboard_tab, get_account_id(), force=True)
                                 sfx_click.play()
                             else:
                                 for t_key, t_r in lb_ui.get("tabs", {}).items():
                                     if t_r and t_r.collidepoint(mouse_pos):
                                         leaderboard_tab = t_key
                                         leaderboard_scroll_y = 0
-                                        leaderboard_client.async_fetch_leaderboard(leaderboard_tab, savedata.get("leaderboard_player_id"))
+                                        from game_data import get_account_id
+                                        leaderboard_client.async_fetch_leaderboard(leaderboard_tab, get_account_id())
                                         sfx_click.play()
                                         break
 
@@ -1901,25 +1912,29 @@ def run_game():
                                 current_state = STATE_MAIN_MENU
                                 sfx_click.play()
                             elif lb_ui.get("refresh") and lb_ui["refresh"].collidepoint(touch_pos):
-                                leaderboard_client.async_submit_score(savedata)
-                                leaderboard_client.async_fetch_leaderboard(leaderboard_tab, savedata.get("leaderboard_player_id"), force=True)
+                                from game_data import get_account_id
+                                leaderboard_client.async_submit_score(savedata, force=True)
+                                leaderboard_client.async_fetch_leaderboard(leaderboard_tab, get_account_id(), force=True)
                                 sfx_click.play()
                             elif lb_ui.get("rename") and lb_ui["rename"].collidepoint(touch_pos):
-                                leaderboard_modal = {"type": "rename", "text": savedata.get("PlayerName", "Игрок")}
+                                from game_data import get_account_nickname
+                                leaderboard_modal = {"type": "rename", "text": get_account_nickname(fallback=savedata.get("PlayerName", "Игрок"))}
                                 sfx_click.play()
                             elif lb_ui.get("info") and lb_ui["info"].collidepoint(touch_pos):
                                 leaderboard_modal = {"type": "score_info"}
                                 sfx_click.play()
                             elif lb_ui.get("submit") and lb_ui["submit"].collidepoint(touch_pos):
-                                leaderboard_client.async_submit_score(savedata)
-                                leaderboard_client.async_fetch_leaderboard(leaderboard_tab, savedata.get("leaderboard_player_id"), force=True)
+                                from game_data import get_account_id
+                                leaderboard_client.async_submit_score(savedata, force=True)
+                                leaderboard_client.async_fetch_leaderboard(leaderboard_tab, get_account_id(), force=True)
                                 sfx_click.play()
                             else:
                                 for t_key, t_r in lb_ui.get("tabs", {}).items():
                                     if t_r and t_r.collidepoint(touch_pos):
                                         leaderboard_tab = t_key
                                         leaderboard_scroll_y = 0
-                                        leaderboard_client.async_fetch_leaderboard(leaderboard_tab, savedata.get("leaderboard_player_id"))
+                                        from game_data import get_account_id
+                                        leaderboard_client.async_fetch_leaderboard(leaderboard_tab, get_account_id())
                                         sfx_click.play()
                                         break
 

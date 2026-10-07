@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """
 server_app.py - FastAPI сервер таблицы рекордов для Cactus TD.
+Поддерживает единый account_id на игрока, модификаторы сложности (hardcore x1.15, normal x1.0, casual x0.75),
+и хранение лучшего рекорда по аккаунту.
 """
 import os
 import hmac
@@ -15,7 +17,7 @@ APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(APP_DIR, "leaderboard.db")
 SECRET_SALT = b"cactus_td_secret_salt_2026_stars_and_thorns"
 
-app = FastAPI(title="Cactus TD Leaderboard API", version="1.0.0")
+app = FastAPI(title="Cactus TD Leaderboard API", version="1.1.0")
 
 def get_db():
     conn = sqlite3.connect(DB_PATH)
@@ -40,10 +42,17 @@ def init_db():
             achievements INTEGER NOT NULL,
             bestiary INTEGER NOT NULL,
             credits_seen INTEGER NOT NULL,
+            difficulty TEXT NOT NULL DEFAULT 'normal',
             device_os TEXT NOT NULL DEFAULT 'unknown',
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
         """)
+        # Миграция таблицы, если колонки difficulty ещё нет
+        cursor = conn.execute("PRAGMA table_info(leaderboard)")
+        cols = [r["name"] for r in cursor.fetchall()]
+        if "difficulty" not in cols:
+            conn.execute("ALTER TABLE leaderboard ADD COLUMN difficulty TEXT NOT NULL DEFAULT 'normal'")
+
         conn.execute("CREATE INDEX IF NOT EXISTS idx_score ON leaderboard(score DESC);")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_waves ON leaderboard(waves DESC);")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_stars ON leaderboard(star_cacti DESC);")
@@ -54,7 +63,18 @@ init_db()
 
 def compute_score(waves: int, star_cacti: int, dark_cacti: int, upgrades: int,
                   greenhouse: int, relics: int, playtime_min: float,
-                  achievements: int, bestiary: int, credits_seen: bool) -> float:
+                  achievements: int, bestiary: int, credits_seen: bool,
+                  difficulty: str = "normal") -> float:
+    # Модификатор сложности:
+    # hardcore -> x1.15, normal -> x1.0, casual -> x0.75
+    diff_lower = str(difficulty).lower()
+    if diff_lower == "hardcore":
+        diff_mult = 1.15
+    elif diff_lower == "casual":
+        diff_mult = 0.75
+    else:
+        diff_mult = 1.0
+
     val = (
         (max(0, waves) + 1)**0.5 *
         (max(0, star_cacti) + 1)**0.25 *
@@ -65,7 +85,8 @@ def compute_score(waves: int, star_cacti: int, dark_cacti: int, upgrades: int,
         (max(0.0, playtime_min) + 1)**0.1 *
         (max(0, achievements) + 1)**0.2 *
         (max(0, bestiary) + 1)**0.33 *
-        (1.1 if credits_seen else 1.0)
+        (1.1 if credits_seen else 1.0) *
+        diff_mult
     )
     return round(val, 1)
 
@@ -94,6 +115,7 @@ class SubmitRequest(BaseModel):
     achievements: int
     bestiary: int
     credits_seen: bool
+    difficulty: str = "normal"
     device_os: str = "windows"
     sig: str
 
@@ -112,9 +134,13 @@ def health():
 
 @app.post("/api/leaderboard/submit")
 def submit_score(req: SubmitRequest):
-    # Проверка HMAC подписи для защиты от ботов/ручного curl
-    sig_payload = f"{req.player_id}:{req.waves}:{req.star_cacti}:{req.dark_cacti}:{req.upgrades}:{req.greenhouse}:{req.relics}:{int(req.playtime_min)}:{req.achievements}:{req.bestiary}:{1 if req.credits_seen else 0}"
-    if not verify_sig(sig_payload, req.sig):
+    # Проверка HMAC подписи:
+    # формат: player_id:waves:stars:dark:upg:gh:rel:playtime:ach:best:cred:diff
+    diff_val = req.difficulty.lower()
+    sig_payload = f"{req.player_id}:{req.waves}:{req.star_cacti}:{req.dark_cacti}:{req.upgrades}:{req.greenhouse}:{req.relics}:{int(req.playtime_min)}:{req.achievements}:{req.bestiary}:{1 if req.credits_seen else 0}:{diff_val}"
+    # Для обратной совместимости, если подпись была старого формата (без :diff)
+    sig_payload_legacy = f"{req.player_id}:{req.waves}:{req.star_cacti}:{req.dark_cacti}:{req.upgrades}:{req.greenhouse}:{req.relics}:{int(req.playtime_min)}:{req.achievements}:{req.bestiary}:{1 if req.credits_seen else 0}"
+    if not verify_sig(sig_payload, req.sig) and not verify_sig(sig_payload_legacy, req.sig):
         raise HTTPException(status_code=400, detail="Invalid signature")
 
     nick = sanitize_nickname(req.nickname)
@@ -128,39 +154,62 @@ def submit_score(req: SubmitRequest):
         playtime_min=req.playtime_min,
         achievements=req.achievements,
         bestiary=req.bestiary,
-        credits_seen=req.credits_seen
+        credits_seen=req.credits_seen,
+        difficulty=req.difficulty
     )
 
     now_iso = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
     conn = get_db()
     with conn:
-        conn.execute("""
-        INSERT INTO leaderboard (
-            player_id, nickname, score, waves, star_cacti, dark_cacti,
-            upgrades, greenhouse, relics, playtime_min, achievements,
-            bestiary, credits_seen, device_os, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(player_id) DO UPDATE SET
-            nickname = excluded.nickname,
-            score = MAX(leaderboard.score, excluded.score),
-            waves = MAX(leaderboard.waves, excluded.waves),
-            star_cacti = MAX(leaderboard.star_cacti, excluded.star_cacti),
-            dark_cacti = MAX(leaderboard.dark_cacti, excluded.dark_cacti),
-            upgrades = MAX(leaderboard.upgrades, excluded.upgrades),
-            greenhouse = MAX(leaderboard.greenhouse, excluded.greenhouse),
-            relics = MAX(leaderboard.relics, excluded.relics),
-            playtime_min = MAX(leaderboard.playtime_min, excluded.playtime_min),
-            achievements = MAX(leaderboard.achievements, excluded.achievements),
-            bestiary = MAX(leaderboard.bestiary, excluded.bestiary),
-            credits_seen = MAX(leaderboard.credits_seen, excluded.credits_seen),
-            device_os = excluded.device_os,
-            updated_at = excluded.updated_at
-        """, (
-            req.player_id, nick, calculated_score, req.waves, req.star_cacti, req.dark_cacti,
-            req.upgrades, req.greenhouse, req.relics, req.playtime_min, req.achievements,
-            req.bestiary, 1 if req.credits_seen else 0, req.device_os, now_iso
-        ))
+        # Проверяем существующую запись игрока
+        existing = conn.execute("SELECT * FROM leaderboard WHERE player_id = ?", (req.player_id,)).fetchone()
+        if existing:
+            # Обновляем только если новый счёт лучше, ЛИБО если тот же игрок обновляет ник
+            # При обновлении берём максимум по ключевым показателям рекорда
+            best_score = max(existing["score"], calculated_score)
+            # Если новый счёт строго выше, обновляем показатели сложности и волн на показатели этого лучшего сейва
+            if calculated_score >= existing["score"]:
+                conn.execute("""
+                UPDATE leaderboard SET
+                    nickname = ?,
+                    score = ?,
+                    waves = MAX(waves, ?),
+                    star_cacti = MAX(star_cacti, ?),
+                    dark_cacti = MAX(dark_cacti, ?),
+                    upgrades = MAX(upgrades, ?),
+                    greenhouse = MAX(greenhouse, ?),
+                    relics = MAX(relics, ?),
+                    playtime_min = MAX(playtime_min, ?),
+                    achievements = MAX(achievements, ?),
+                    bestiary = MAX(bestiary, ?),
+                    credits_seen = MAX(credits_seen, ?),
+                    difficulty = ?,
+                    device_os = ?,
+                    updated_at = ?
+                WHERE player_id = ?
+                """, (
+                    nick, best_score, req.waves, req.star_cacti, req.dark_cacti,
+                    req.upgrades, req.greenhouse, req.relics, req.playtime_min,
+                    req.achievements, req.bestiary, 1 if req.credits_seen else 0,
+                    diff_val, req.device_os, now_iso, req.player_id
+                ))
+            else:
+                # Если новый счёт меньше текущего рекорда игрока, просто обновляем ник, если изменился
+                conn.execute("UPDATE leaderboard SET nickname = ?, device_os = ? WHERE player_id = ?",
+                             (nick, req.device_os, req.player_id))
+        else:
+            conn.execute("""
+            INSERT INTO leaderboard (
+                player_id, nickname, score, waves, star_cacti, dark_cacti,
+                upgrades, greenhouse, relics, playtime_min, achievements,
+                bestiary, credits_seen, difficulty, device_os, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                req.player_id, nick, calculated_score, req.waves, req.star_cacti, req.dark_cacti,
+                req.upgrades, req.greenhouse, req.relics, req.playtime_min, req.achievements,
+                req.bestiary, 1 if req.credits_seen else 0, diff_val, req.device_os, now_iso
+            ))
 
         # Вычисляем текущее место игрока по очкам
         row_rank = conn.execute(
@@ -208,7 +257,7 @@ def get_leaderboard(
     cursor = conn.execute(f"""
         SELECT player_id, nickname, score, waves, star_cacti, dark_cacti,
                upgrades, greenhouse, relics, playtime_min, achievements,
-               bestiary, credits_seen, device_os, updated_at
+               bestiary, credits_seen, difficulty, device_os, updated_at
         FROM leaderboard
         ORDER BY {sort_col} DESC, updated_at ASC
         LIMIT ?
@@ -232,6 +281,7 @@ def get_leaderboard(
             "achievements": r["achievements"],
             "bestiary": r["bestiary"],
             "credits_seen": bool(r["credits_seen"]),
+            "difficulty": r["difficulty"] if "difficulty" in r.keys() else "normal",
             "device_os": r["device_os"],
             "updated_at": r["updated_at"]
         })
@@ -259,6 +309,7 @@ def get_leaderboard(
                 "achievements": p_row["achievements"],
                 "bestiary": p_row["bestiary"],
                 "credits_seen": bool(p_row["credits_seen"]),
+                "difficulty": p_row["difficulty"] if "difficulty" in p_row.keys() else "normal",
                 "device_os": p_row["device_os"],
                 "updated_at": p_row["updated_at"]
             }

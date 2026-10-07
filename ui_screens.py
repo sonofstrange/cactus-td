@@ -7570,10 +7570,10 @@ def draw_leaderboard_screen(surface, mouse_pos, savedata, active_tab="score", sc
     generate_background(surface, bg_time, custom_cols=((14, 20, 30), (20, 28, 42)))
 
     import leaderboard_client
-    from game_data import calculate_account_score
+    from game_data import calculate_account_score, get_account_id, get_account_nickname
 
-    player_id = savedata.get("leaderboard_player_id", "")
-    curr_nick = savedata.get("PlayerName", "Игрок")
+    player_id = get_account_id()
+    curr_nick = get_account_nickname(fallback=savedata.get("PlayerName", "Игрок"))
     score_val, score_details = calculate_account_score(savedata)
 
     # 1. Заголовок и верхняя панель (y = 0 .. 100)
@@ -7650,6 +7650,9 @@ def draw_leaderboard_screen(surface, mouse_pos, savedata, active_tab="score", sc
     h_nick = get_rendered_text(tiny_font, "ИМЯ ИГРОКА", (140, 175, 210))
     surface.blit(h_nick, (col_hdr_rect.left + 110, col_hdr_rect.centery - h_nick.get_height() // 2))
 
+    h_diff = get_rendered_text(tiny_font, "СЛОЖНОСТЬ", (140, 175, 210))
+    surface.blit(h_diff, (col_hdr_rect.right - 440, col_hdr_rect.centery - h_diff.get_height() // 2))
+
     h_val_name = "ОЧКИ АККАУНТА" if active_tab == "score" else ("СУММА ВОЛН" if active_tab == "waves" else ("ВСЕГО ЗВ. КАКТУСОВ" if active_tab == "stars" else "ВСЕГО ТЁМН. КАКТУСОВ"))
     h_val = get_rendered_text(tiny_font, h_val_name, (255, 215, 100))
     surface.blit(h_val, (col_hdr_rect.right - 280, col_hdr_rect.centery - h_val.get_height() // 2))
@@ -7697,21 +7700,24 @@ def draw_leaderboard_screen(surface, mouse_pos, savedata, active_tab="score", sc
             pygame.draw.rect(surface, r_bg, r_rect, border_radius=6)
             pygame.draw.rect(surface, r_brd, r_rect, width=1, border_radius=6)
 
-            # Бейдж ранга
+            # Бейдж ранга (чистый текст без неподдерживаемых эмодзи)
             rank_num = entry.get("rank", idx + 1)
             rank_box = pygame.Rect(r_rect.left + 14, r_rect.centery - 15, 60, 30)
             if rank_num == 1:
                 pygame.draw.rect(surface, (180, 140, 20), rank_box, border_radius=6)
-                r_txt = get_rendered_text(font, "1 🏆", (255, 255, 200))
+                pygame.draw.rect(surface, GOLD, rank_box, width=1, border_radius=6)
+                r_txt = get_rendered_text(font, "1 МЕСТО", (255, 255, 220))
             elif rank_num == 2:
-                pygame.draw.rect(surface, (120, 130, 145), rank_box, border_radius=6)
-                r_txt = get_rendered_text(font, "2 🥈", WHITE)
+                pygame.draw.rect(surface, (95, 110, 130), rank_box, border_radius=6)
+                pygame.draw.rect(surface, (190, 210, 235), rank_box, width=1, border_radius=6)
+                r_txt = get_rendered_text(font, "2 МЕСТО", WHITE)
             elif rank_num == 3:
-                pygame.draw.rect(surface, (140, 85, 45), rank_box, border_radius=6)
-                r_txt = get_rendered_text(font, "3 🥉", (255, 215, 180))
+                pygame.draw.rect(surface, (135, 75, 35), rank_box, border_radius=6)
+                pygame.draw.rect(surface, (235, 160, 110), rank_box, width=1, border_radius=6)
+                r_txt = get_rendered_text(font, "3 МЕСТО", (255, 225, 200))
             else:
                 pygame.draw.rect(surface, (28, 38, 52), rank_box, border_radius=6)
-                r_txt = get_rendered_text(font, str(rank_num), (170, 195, 225))
+                r_txt = get_rendered_text(font, f"#{rank_num}", (170, 195, 225))
             surface.blit(r_txt, (rank_box.centerx - r_txt.get_width() // 2, rank_box.centery - r_txt.get_height() // 2))
 
             # Никнейм
@@ -7722,6 +7728,27 @@ def draw_leaderboard_screen(surface, mouse_pos, savedata, active_tab="score", sc
             n_surf = get_rendered_text(font, nick_str, n_col)
             surface.blit(n_surf, (r_rect.left + 110, r_rect.centery - n_surf.get_height() // 2))
 
+            # Сложность
+            e_diff = str(entry.get("difficulty", "normal")).lower()
+            if e_diff == "hardcore":
+                d_badge_txt = "ХАРДКОР"
+                d_badge_col = (255, 110, 120)
+                d_badge_bg = (60, 20, 24)
+            elif e_diff == "casual":
+                d_badge_txt = "КАЗУАЛ"
+                d_badge_col = (110, 220, 140)
+                d_badge_bg = (20, 50, 30)
+            else:
+                d_badge_txt = "НОРМАЛ"
+                d_badge_col = (130, 200, 255)
+                d_badge_bg = (20, 36, 56)
+
+            df_box = pygame.Rect(r_rect.right - 445, r_rect.centery - 11, 75, 22)
+            pygame.draw.rect(surface, d_badge_bg, df_box, border_radius=4)
+            pygame.draw.rect(surface, d_badge_col, df_box, width=1, border_radius=4)
+            df_lbl = get_rendered_text(tiny_font, d_badge_txt, d_badge_col)
+            surface.blit(df_lbl, (df_box.centerx - df_lbl.get_width() // 2, df_box.centery - df_lbl.get_height() // 2))
+
             # Значение категории
             if active_tab == "score":
                 val_val = entry.get("score", 0.0)
@@ -7731,10 +7758,10 @@ def draw_leaderboard_screen(surface, mouse_pos, savedata, active_tab="score", sc
                 val_str = f"{val_val:,} волн".replace(",", " ")
             elif active_tab == "stars":
                 val_val = entry.get("star_cacti", 0)
-                val_str = f"{val_val:,} ★".replace(",", " ")
+                val_str = f"{val_val:,} звёзд".replace(",", " ")
             else:
                 val_val = entry.get("dark_cacti", 0)
-                val_str = f"{val_val:,} ✦".replace(",", " ")
+                val_str = f"{val_val:,} тёмных".replace(",", " ")
 
             val_surf = get_rendered_text(font, val_str, GOLD if rank_num <= 3 else (240, 248, 255))
             surface.blit(val_surf, (r_rect.right - 280, r_rect.centery - val_surf.get_height() // 2))
@@ -7867,7 +7894,7 @@ def draw_leaderboard_screen(surface, mouse_pos, savedata, active_tab="score", sc
         dim_surf = get_settings_dim_surf()
         surface.blit(dim_surf, (0, 0))
 
-        mw, mh = 780, 520
+        mw, mh = 800, 540
         mx = (SCREEN_WIDTH - mw) // 2
         my = (SCREEN_HEIGHT - mh) // 2
         m_rect = pygame.Rect(mx, my, mw, mh)
@@ -7876,42 +7903,43 @@ def draw_leaderboard_screen(surface, mouse_pos, savedata, active_tab="score", sc
         pygame.draw.rect(surface, (90, 205, 140), m_rect, width=2, border_radius=14)
 
         m_title = get_rendered_text(large_font, "КАК РАССЧИТЫВАЮТСЯ ОЧКИ АККАУНТА", GOLD)
-        surface.blit(m_title, (m_rect.centerx - m_title.get_width() // 2, my + 18))
+        surface.blit(m_title, (m_rect.centerx - m_title.get_width() // 2, my + 16))
 
-        sub_f = get_rendered_text(tiny_font, "Итоговые очки = произведение 9 множителей прогресса сейва:", (170, 210, 240))
-        surface.blit(sub_f, (m_rect.centerx - sub_f.get_width() // 2, my + 54))
+        sub_f = get_rendered_text(tiny_font, "Итоговые очки = произведение 10 множителей прогресса текущего сейва:", (170, 210, 240))
+        surface.blit(sub_f, (m_rect.centerx - sub_f.get_width() // 2, my + 50))
 
         # Таблица множителей
         rows = [
-            ("1. Сумма макс. волн по всем картам", f"{score_details['waves']} волн", f"× {score_details['m_waves']}  ((1+w)^0.50)"),
-            ("2. Звёздные кактусы (за весь сейв)", f"{score_details['star_cacti']} шт", f"× {score_details['m_stars']}  ((1+s)^0.25)"),
-            ("3. Тёмные кактусы (за весь сейв)", f"{score_details['dark_cacti']} шт", f"× {score_details['m_dark']}  ((1+d)^0.33)"),
-            ("4. Ранги талантов Древа", f"{score_details['upgrades']} уровней", f"× {score_details['m_upg']}  ((1+u)^0.40)"),
-            ("5. Оранжерея Флоры", f"{score_details['greenhouse']} уровней", f"× {score_details['m_gh']}  ((1+g)^0.33)"),
-            ("6. Музей Реликвий", f"{score_details['relics']} уровней", f"× {score_details['m_rel']}  ((1+r)^0.33)"),
-            ("7. Время игры", f"{int(score_details['playtime_min'])} мин", f"× {score_details['m_play']}  ((1+t)^0.10)"),
-            ("8. Достижения профиля", f"{score_details['achievements']} шт", f"× {score_details['m_ach']}  ((1+a)^0.20)"),
-            ("9. Тиры Бестиария", f"{score_details['bestiary']} тиров", f"× {score_details['m_best']}  ((1+b)^0.33)"),
-            ("10. Просмотр финальных титров", "Да" if score_details['credits_seen'] else "Нет", f"× {score_details['m_cred']}")
+            ("1. Сумма макс. волн по всем картам", f"{score_details['waves']} волн", f"x {score_details['m_waves']}  ((1+w)^0.50)"),
+            ("2. Звёздные кактусы (за весь сейв)", f"{score_details['star_cacti']} шт", f"x {score_details['m_stars']}  ((1+s)^0.25)"),
+            ("3. Тёмные кактусы (за весь сейв)", f"{score_details['dark_cacti']} шт", f"x {score_details['m_dark']}  ((1+d)^0.33)"),
+            ("4. Ранги талантов Древа", f"{score_details['upgrades']} уровней", f"x {score_details['m_upg']}  ((1+u)^0.40)"),
+            ("5. Оранжерея Флоры", f"{score_details['greenhouse']} уровней", f"x {score_details['m_gh']}  ((1+g)^0.33)"),
+            ("6. Музей Реликвий", f"{score_details['relics']} уровней", f"x {score_details['m_rel']}  ((1+r)^0.33)"),
+            ("7. Время игры", f"{int(score_details['playtime_min'])} мин", f"x {score_details['m_play']}  ((1+t)^0.10)"),
+            ("8. Достижения профиля", f"{score_details['achievements']} шт", f"x {score_details['m_ach']}  ((1+a)^0.20)"),
+            ("9. Тиры Бестиария", f"{score_details['bestiary']} тиров", f"x {score_details['m_best']}  ((1+b)^0.33)"),
+            ("10. Просмотр финальных титров", "Да" if score_details['credits_seen'] else "Нет", f"x {score_details['m_cred']}"),
+            ("11. Модификатор сложности", f"{score_details['difficulty_name']}", f"x {score_details['m_diff']}  (Х:1.15 / Н:1.0 / К:0.75)")
         ]
 
-        start_ry = my + 84
+        start_ry = my + 78
         for idx, (param, val, mult) in enumerate(rows):
-            cur_y = start_ry + idx * 34
+            cur_y = start_ry + idx * 31
             bg_col = (22, 30, 44) if idx % 2 == 0 else (18, 25, 36)
-            pygame.draw.rect(surface, bg_col, (mx + 25, cur_y, mw - 50, 30), border_radius=4)
+            pygame.draw.rect(surface, bg_col, (mx + 25, cur_y, mw - 50, 28), border_radius=4)
 
             p_t = get_rendered_text(tiny_font, param, (220, 235, 250))
-            surface.blit(p_t, (mx + 35, cur_y + 15 - p_t.get_height() // 2))
+            surface.blit(p_t, (mx + 35, cur_y + 14 - p_t.get_height() // 2))
 
             v_t = get_rendered_text(tiny_font, val, WHITE)
-            surface.blit(v_t, (mx + 410, cur_y + 15 - v_t.get_height() // 2))
+            surface.blit(v_t, (mx + 410, cur_y + 14 - v_t.get_height() // 2))
 
-            m_t = get_rendered_text(tiny_font, mult, GOLD if "1.1" in mult else (120, 255, 170))
-            surface.blit(m_t, (mx + 540, cur_y + 15 - m_t.get_height() // 2))
+            m_t = get_rendered_text(tiny_font, mult, GOLD if ("1.1" in mult or "1.15" in mult) else (120, 255, 170))
+            surface.blit(m_t, (mx + 530, cur_y + 14 - m_t.get_height() // 2))
 
         # Итоговая плашка
-        tot_rect = pygame.Rect(mx + 25, my + mh - 76, mw - 50, 52)
+        tot_rect = pygame.Rect(mx + 25, my + mh - 70, mw - 50, 52)
         pygame.draw.rect(surface, (24, 40, 32), tot_rect, border_radius=8)
         pygame.draw.rect(surface, (80, 220, 140), tot_rect, width=1, border_radius=8)
 

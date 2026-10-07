@@ -74,14 +74,9 @@ def async_submit_score(savedata: dict, on_complete: Optional[Callable[[bool, Any
 
     def _worker():
         try:
-            from game_data import calculate_account_score
-            player_id = savedata.get("leaderboard_player_id")
-            if not player_id:
-                import uuid
-                player_id = str(uuid.uuid4())
-                savedata["leaderboard_player_id"] = player_id
-
-            nickname = savedata.get("PlayerName", "Игрок")
+            from game_data import calculate_account_score, get_account_id, get_account_nickname
+            player_id = get_account_id()
+            nickname = get_account_nickname(fallback=savedata.get("PlayerName", "Игрок"))
             score, details = calculate_account_score(savedata)
 
             waves = details["waves"]
@@ -94,11 +89,12 @@ def async_submit_score(savedata: dict, on_complete: Optional[Callable[[bool, Any
             achievements = details["achievements"]
             bestiary = details["bestiary"]
             credits_seen = details["credits_seen"]
+            diff_val = details.get("difficulty", "normal")
 
             device_os = "android" if IS_ANDROID else "windows"
 
-            # HMAC подпись
-            sig_payload = f"{player_id}:{waves}:{star_cacti}:{dark_cacti}:{upgrades}:{greenhouse}:{relics}:{int(playtime_min)}:{achievements}:{bestiary}:{1 if credits_seen else 0}"
+            # HMAC подпись включает :diff_val
+            sig_payload = f"{player_id}:{waves}:{star_cacti}:{dark_cacti}:{upgrades}:{greenhouse}:{relics}:{int(playtime_min)}:{achievements}:{bestiary}:{1 if credits_seen else 0}:{diff_val}"
             sig = _make_sig(sig_payload)
 
             payload = {
@@ -114,6 +110,7 @@ def async_submit_score(savedata: dict, on_complete: Optional[Callable[[bool, Any
                 "achievements": achievements,
                 "bestiary": bestiary,
                 "credits_seen": credits_seen,
+                "difficulty": diff_val,
                 "device_os": device_os,
                 "sig": sig
             }
