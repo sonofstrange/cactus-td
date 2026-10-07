@@ -7430,15 +7430,15 @@ def draw_main_menu_screen(surface, mouse_pos, demo_sim, bg_time=None):
     btn_x = cx - btn_w // 2
 
     # Кнопка: В БОЙ
-    play_btn = pygame.Rect(btn_x, 318, btn_w, 60)
+    play_btn = pygame.Rect(btn_x, 280, btn_w, 56)
     p_hov = play_btn.collidepoint(mouse_pos)
     p_surf = _main_menu_btn_cache.get(("play", p_hov))
     if p_surf is None:
-        p_surf = pygame.Surface((btn_w, 60), pygame.SRCALPHA)
+        p_surf = pygame.Surface((btn_w, 56), pygame.SRCALPHA)
         p_bg = (28, 92, 48, 230) if p_hov else (18, 56, 32, 190)
         p_brd = (120, 255, 170, 255) if p_hov else (60, 180, 100, 220)
-        pygame.draw.rect(p_surf, p_bg, (0, 0, btn_w, 60), border_radius=16)
-        pygame.draw.rect(p_surf, p_brd, (0, 0, btn_w, 60), width=2, border_radius=16)
+        pygame.draw.rect(p_surf, p_bg, (0, 0, btn_w, 56), border_radius=14)
+        pygame.draw.rect(p_surf, p_brd, (0, 0, btn_w, 56), width=2, border_radius=14)
         try:
             p_surf = p_surf.convert_alpha()
         except Exception:
@@ -7449,16 +7449,36 @@ def draw_main_menu_screen(surface, mouse_pos, demo_sim, bg_time=None):
     p_txt = get_rendered_text(large_font, "В БОЙ", WHITE)
     surface.blit(p_txt, (play_btn.centerx - p_txt.get_width() // 2, play_btn.centery - p_txt.get_height() // 2))
 
+    # Кнопка: ЗАЛ СЛАВЫ (ОНЛАЙН ЛИДЕРБОРД)
+    lead_btn = pygame.Rect(btn_x, 346, btn_w, 50)
+    l_hov = lead_btn.collidepoint(mouse_pos)
+    l_surf = _main_menu_btn_cache.get(("lead", l_hov))
+    if l_surf is None:
+        l_surf = pygame.Surface((btn_w, 50), pygame.SRCALPHA)
+        l_bg = (22, 75, 105, 230) if l_hov else (16, 48, 72, 190)
+        l_brd = (80, 220, 255, 255) if l_hov else (45, 150, 195, 220)
+        pygame.draw.rect(l_surf, l_bg, (0, 0, btn_w, 50), border_radius=14)
+        pygame.draw.rect(l_surf, l_brd, (0, 0, btn_w, 50), width=2, border_radius=14)
+        try:
+            l_surf = l_surf.convert_alpha()
+        except Exception:
+            pass
+        _main_menu_btn_cache[("lead", l_hov)] = l_surf
+    surface.blit(l_surf, lead_btn)
+
+    l_txt = get_rendered_text(font, "ТАБЛИЦА РЕКОРДОВ", (220, 245, 255))
+    surface.blit(l_txt, (lead_btn.centerx - l_txt.get_width() // 2, lead_btn.centery - l_txt.get_height() // 2))
+
     # Кнопка: ДОСТИЖЕНИЯ
-    ach_btn = pygame.Rect(btn_x, 390, btn_w, 54)
+    ach_btn = pygame.Rect(btn_x, 406, btn_w, 48)
     a_hov = ach_btn.collidepoint(mouse_pos)
     a_surf = _main_menu_btn_cache.get(("ach", a_hov))
     if a_surf is None:
-        a_surf = pygame.Surface((btn_w, 54), pygame.SRCALPHA)
+        a_surf = pygame.Surface((btn_w, 48), pygame.SRCALPHA)
         a_bg = (110, 80, 24, 230) if a_hov else (65, 48, 14, 190)
         a_brd = (255, 225, 100, 255) if a_hov else (180, 140, 45, 220)
-        pygame.draw.rect(a_surf, a_bg, (0, 0, btn_w, 54), border_radius=14)
-        pygame.draw.rect(a_surf, a_brd, (0, 0, btn_w, 54), width=2, border_radius=14)
+        pygame.draw.rect(a_surf, a_bg, (0, 0, btn_w, 48), border_radius=14)
+        pygame.draw.rect(a_surf, a_brd, (0, 0, btn_w, 48), width=2, border_radius=14)
         try:
             a_surf = a_surf.convert_alpha()
         except Exception:
@@ -7470,15 +7490,15 @@ def draw_main_menu_screen(surface, mouse_pos, demo_sim, bg_time=None):
     surface.blit(a_txt, (ach_btn.centerx - a_txt.get_width() // 2, ach_btn.centery - a_txt.get_height() // 2))
 
     # Кнопка: НАСТРОЙКИ
-    set_btn = pygame.Rect(btn_x, 456, btn_w, 52)
+    set_btn = pygame.Rect(btn_x, 464, btn_w, 46)
     s_hov = set_btn.collidepoint(mouse_pos)
     s_surf = _main_menu_btn_cache.get(("settings", s_hov))
     if s_surf is None:
-        s_surf = pygame.Surface((btn_w, 52), pygame.SRCALPHA)
+        s_surf = pygame.Surface((btn_w, 46), pygame.SRCALPHA)
         s_bg = (30, 62, 98, 230) if s_hov else (20, 38, 62, 190)
         s_brd = (110, 205, 255, 255) if s_hov else (55, 100, 155, 220)
-        pygame.draw.rect(s_surf, s_bg, (0, 0, btn_w, 52), border_radius=14)
-        pygame.draw.rect(s_surf, s_brd, (0, 0, btn_w, 52), width=2, border_radius=14)
+        pygame.draw.rect(s_surf, s_bg, (0, 0, btn_w, 46), border_radius=14)
+        pygame.draw.rect(s_surf, s_brd, (0, 0, btn_w, 46), width=2, border_radius=14)
         try:
             s_surf = s_surf.convert_alpha()
         except Exception:
@@ -7490,15 +7510,15 @@ def draw_main_menu_screen(surface, mouse_pos, demo_sim, bg_time=None):
     surface.blit(s_txt, (set_btn.centerx - s_txt.get_width() // 2, set_btn.centery - s_txt.get_height() // 2))
 
     # Кнопка: ВЫХОД
-    exit_btn = pygame.Rect(btn_x, 520, btn_w, 48)
+    exit_btn = pygame.Rect(btn_x, 520, btn_w, 44)
     e_hov = exit_btn.collidepoint(mouse_pos)
     e_surf = _main_menu_btn_cache.get(("exit", e_hov))
     if e_surf is None:
-        e_surf = pygame.Surface((btn_w, 48), pygame.SRCALPHA)
+        e_surf = pygame.Surface((btn_w, 44), pygame.SRCALPHA)
         e_bg = (95, 30, 36, 230) if e_hov else (58, 20, 24, 190)
         e_brd = (255, 110, 120, 255) if e_hov else (145, 45, 52, 220)
-        pygame.draw.rect(e_surf, e_bg, (0, 0, btn_w, 48), border_radius=14)
-        pygame.draw.rect(e_surf, e_brd, (0, 0, btn_w, 48), width=2, border_radius=14)
+        pygame.draw.rect(e_surf, e_bg, (0, 0, btn_w, 44), border_radius=14)
+        pygame.draw.rect(e_surf, e_brd, (0, 0, btn_w, 44), width=2, border_radius=14)
         try:
             e_surf = e_surf.convert_alpha()
         except Exception:
@@ -7528,9 +7548,395 @@ def draw_main_menu_screen(surface, mouse_pos, demo_sim, bg_time=None):
     surface.blit(foot_pill, (cx - fp_w // 2, foot_y))
     surface.blit(foot_txt, (cx - foot_txt.get_width() // 2, foot_y + (fp_h - foot_txt.get_height()) // 2))
 
-    return play_btn, ach_btn, set_btn, exit_btn
+    return play_btn, lead_btn, ach_btn, set_btn, exit_btn
 
-    return play_btn, ach_btn, set_btn, exit_btn
+
+# -------------------------------------------------------------------------
+# ЭКРАН ОНЛАЙН ТАБЛИЦЫ РЕКОРДОВ (LEADERBOARD)
+# -------------------------------------------------------------------------
+_leaderboard_tab_cache = {}
+
+def draw_leaderboard_screen(surface, mouse_pos, savedata, active_tab="score", scroll_y=0, modal_state=None, bg_time=None):
+    """
+    Отрисовывает онлайн Зал Славы (Leaderboard):
+    - Вкладки категорий: [ОБЩИЙ СЧЁТ], [МАКС. ВОЛНЫ], [ЗВЁЗДНЫЕ КАКТУСЫ], [ТЁМНЫЕ КАКТУСЫ]
+    - Топ-50 игроков с красивыми бейджами мест (🥇, 🥈, 🥉)
+    - Персональная панель текущего игрока внизу с его рангом и очками
+    - Кнопки: «Сменить ник», «Обновить», «Разбор формулы», «Назад»
+    - Модальные окна ввода никнейма и детального разбора очков
+    """
+    if bg_time is None:
+        bg_time = pygame.time.get_ticks()
+    generate_background(surface, bg_time, custom_cols=((14, 20, 30), (20, 28, 42)))
+
+    import leaderboard_client
+    from game_data import calculate_account_score
+
+    player_id = savedata.get("leaderboard_player_id", "")
+    curr_nick = savedata.get("PlayerName", "Игрок")
+    score_val, score_details = calculate_account_score(savedata)
+
+    # 1. Заголовок и верхняя панель (y = 0 .. 100)
+    header_h = 100
+    pygame.draw.rect(surface, (12, 16, 24), (0, 0, SCREEN_WIDTH, header_h))
+    pygame.draw.line(surface, (45, 65, 90), (0, header_h), (SCREEN_WIDTH, header_h), 2)
+
+    # Кнопка «Назад»
+    back_btn = pygame.Rect(25, 26, 130, 48)
+    b_hov = back_btn.collidepoint(mouse_pos)
+    pygame.draw.rect(surface, (190, 50, 50) if b_hov else (145, 38, 38), back_btn, border_radius=10)
+    pygame.draw.rect(surface, WHITE, back_btn, width=2, border_radius=10)
+    b_txt = get_rendered_text(font, "< НАЗАД", WHITE)
+    surface.blit(b_txt, (back_btn.centerx - b_txt.get_width() // 2, back_btn.centery - b_txt.get_height() // 2))
+
+    # Заголовок по центру
+    title_txt = get_rendered_text(large_font, "ТАБЛИЦА РЕКОРДОВ", GOLD)
+    surface.blit(title_txt, (SCREEN_WIDTH // 2 - title_txt.get_width() // 2, 16))
+
+    sub_txt = get_rendered_text(tiny_font, "Единый всемирный рейтинг защитников Оазиса", (170, 205, 235))
+    surface.blit(sub_txt, (SCREEN_WIDTH // 2 - sub_txt.get_width() // 2, 54))
+
+    # Кнопка «Обновить»
+    refresh_btn = pygame.Rect(SCREEN_WIDTH - 165, 26, 140, 48)
+    rf_hov = refresh_btn.collidepoint(mouse_pos)
+    pygame.draw.rect(surface, (30, 95, 150) if rf_hov else (20, 68, 110), refresh_btn, border_radius=10)
+    pygame.draw.rect(surface, (100, 215, 255) if rf_hov else (55, 140, 205), refresh_btn, width=2, border_radius=10)
+    rf_txt = get_rendered_text(font, "ОБНОВИТЬ", WHITE)
+    surface.blit(rf_txt, (refresh_btn.centerx - rf_txt.get_width() // 2, refresh_btn.centery - rf_txt.get_height() // 2))
+
+    # 2. Вкладки категорий (y = 108 .. 156)
+    tabs_data = [
+        ("score", "ОБЩИЙ СЧЁТ"),
+        ("waves", "МАКС. ВОЛНЫ"),
+        ("stars", "ЗВЁЗДНЫЕ КАКТУСЫ"),
+        ("dark", "ТЁМНЫЕ КАКТУСЫ")
+    ]
+    tab_btns = {}
+    tw = 260
+    th = 42
+    start_tx = (SCREEN_WIDTH - (len(tabs_data) * (tw + 12) - 12)) // 2
+    ty = 110
+
+    for idx, (t_id, t_title) in enumerate(tabs_data):
+        tx = start_tx + idx * (tw + 12)
+        t_rect = pygame.Rect(tx, ty, tw, th)
+        tab_btns[t_id] = t_rect
+        is_act = (t_id == active_tab)
+        t_hov = t_rect.collidepoint(mouse_pos)
+
+        t_bg = (35, 105, 65) if is_act else ((28, 42, 60) if t_hov else (18, 26, 38))
+        t_brd = (120, 255, 170) if is_act else ((80, 160, 220) if t_hov else (45, 65, 90))
+        pygame.draw.rect(surface, t_bg, t_rect, border_radius=8)
+        pygame.draw.rect(surface, t_brd, t_rect, width=2 if is_act else 1, border_radius=8)
+
+        txt_col = GOLD if is_act else (WHITE if t_hov else (180, 200, 225))
+        t_surf = get_rendered_text(font, t_title, txt_col)
+        surface.blit(t_surf, (t_rect.centerx - t_surf.get_width() // 2, t_rect.centery - t_surf.get_height() // 2))
+
+    # 3. Список лидеров (y = 162 .. SCREEN_HEIGHT - 90)
+    list_top_y = 162
+    list_bot_y = SCREEN_HEIGHT - 90
+    list_h = list_bot_y - list_top_y
+
+    # Шапка таблицы колонок
+    col_hdr_h = 32
+    col_hdr_rect = pygame.Rect(35, list_top_y, SCREEN_WIDTH - 70, col_hdr_h)
+    pygame.draw.rect(surface, (18, 25, 36), col_hdr_rect, border_radius=6)
+    pygame.draw.rect(surface, (40, 55, 75), col_hdr_rect, width=1, border_radius=6)
+
+    h_rank = get_rendered_text(tiny_font, "МЕСТО", (140, 175, 210))
+    surface.blit(h_rank, (col_hdr_rect.left + 20, col_hdr_rect.centery - h_rank.get_height() // 2))
+
+    h_nick = get_rendered_text(tiny_font, "ИМЯ ИГРОКА", (140, 175, 210))
+    surface.blit(h_nick, (col_hdr_rect.left + 110, col_hdr_rect.centery - h_nick.get_height() // 2))
+
+    h_val_name = "ОЧКИ АККАУНТА" if active_tab == "score" else ("СУММА ВОЛН" if active_tab == "waves" else ("ВСЕГО ЗВ. КАКТУСОВ" if active_tab == "stars" else "ВСЕГО ТЁМН. КАКТУСОВ"))
+    h_val = get_rendered_text(tiny_font, h_val_name, (255, 215, 100))
+    surface.blit(h_val, (col_hdr_rect.right - 280, col_hdr_rect.centery - h_val.get_height() // 2))
+
+    h_date = get_rendered_text(tiny_font, "ОБНОВЛЕНО", (140, 175, 210))
+    surface.blit(h_date, (col_hdr_rect.right - 130, col_hdr_rect.centery - h_date.get_height() // 2))
+
+    # Данные из кэша
+    cached_data = leaderboard_client.get_cached_leaderboard(active_tab)
+    is_loading = leaderboard_client.is_fetching()
+    last_err = leaderboard_client.get_last_error()
+
+    table_y = list_top_y + col_hdr_h + 6
+    table_h = list_bot_y - table_y
+
+    row_h = 44
+    top_entries = cached_data.get("top", []) if cached_data else []
+    total_content_h = len(top_entries) * (row_h + 4)
+    max_scroll = max(0, total_content_h - table_h)
+
+    # Клиппинг зоны строк
+    viewport_rect = pygame.Rect(35, table_y, SCREEN_WIDTH - 70, table_h)
+    surface.set_clip(viewport_rect)
+
+    if top_entries:
+        for idx, entry in enumerate(top_entries):
+            ry = table_y + idx * (row_h + 4) - scroll_y
+            if ry + row_h < table_y or ry > list_bot_y:
+                continue
+
+            r_rect = pygame.Rect(35, ry, SCREEN_WIDTH - 70, row_h)
+            is_me = (entry.get("player_id") == player_id)
+
+            # Фон строки
+            if is_me:
+                r_bg = (32, 60, 48)
+                r_brd = (90, 220, 140)
+            elif idx % 2 == 0:
+                r_bg = (20, 27, 38)
+                r_brd = (38, 52, 72)
+            else:
+                r_bg = (16, 22, 32)
+                r_brd = (30, 42, 60)
+
+            pygame.draw.rect(surface, r_bg, r_rect, border_radius=6)
+            pygame.draw.rect(surface, r_brd, r_rect, width=1, border_radius=6)
+
+            # Бейдж ранга
+            rank_num = entry.get("rank", idx + 1)
+            rank_box = pygame.Rect(r_rect.left + 14, r_rect.centery - 15, 60, 30)
+            if rank_num == 1:
+                pygame.draw.rect(surface, (180, 140, 20), rank_box, border_radius=6)
+                r_txt = get_rendered_text(font, "1 🏆", (255, 255, 200))
+            elif rank_num == 2:
+                pygame.draw.rect(surface, (120, 130, 145), rank_box, border_radius=6)
+                r_txt = get_rendered_text(font, "2 🥈", WHITE)
+            elif rank_num == 3:
+                pygame.draw.rect(surface, (140, 85, 45), rank_box, border_radius=6)
+                r_txt = get_rendered_text(font, "3 🥉", (255, 215, 180))
+            else:
+                pygame.draw.rect(surface, (28, 38, 52), rank_box, border_radius=6)
+                r_txt = get_rendered_text(font, str(rank_num), (170, 195, 225))
+            surface.blit(r_txt, (rank_box.centerx - r_txt.get_width() // 2, rank_box.centery - r_txt.get_height() // 2))
+
+            # Никнейм
+            nick_str = entry.get("nickname", "Неизвестный")
+            if is_me:
+                nick_str += " (ВЫ)"
+            n_col = (130, 255, 180) if is_me else (WHITE if rank_num <= 3 else (210, 225, 240))
+            n_surf = get_rendered_text(font, nick_str, n_col)
+            surface.blit(n_surf, (r_rect.left + 110, r_rect.centery - n_surf.get_height() // 2))
+
+            # Значение категории
+            if active_tab == "score":
+                val_val = entry.get("score", 0.0)
+                val_str = f"{val_val:,.1f}".replace(",", " ")
+            elif active_tab == "waves":
+                val_val = entry.get("waves", 0)
+                val_str = f"{val_val:,} волн".replace(",", " ")
+            elif active_tab == "stars":
+                val_val = entry.get("star_cacti", 0)
+                val_str = f"{val_val:,} ★".replace(",", " ")
+            else:
+                val_val = entry.get("dark_cacti", 0)
+                val_str = f"{val_val:,} ✦".replace(",", " ")
+
+            val_surf = get_rendered_text(font, val_str, GOLD if rank_num <= 3 else (240, 248, 255))
+            surface.blit(val_surf, (r_rect.right - 280, r_rect.centery - val_surf.get_height() // 2))
+
+            # Дата обновления
+            upd_str = entry.get("updated_at", "")
+            if len(upd_str) >= 10:
+                upd_date = upd_str[:10]
+            else:
+                upd_date = "Недавно"
+            d_surf = get_rendered_text(tiny_font, upd_date, (140, 165, 195))
+            surface.blit(d_surf, (r_rect.right - 130, r_rect.centery - d_surf.get_height() // 2))
+
+    elif is_loading:
+        ld_surf = get_rendered_text(font, "Загрузка таблицы с сервера...", (120, 215, 255))
+        surface.blit(ld_surf, (SCREEN_WIDTH // 2 - ld_surf.get_width() // 2, table_y + 120))
+    elif last_err:
+        err_surf = get_rendered_text(font, f"Не удалось загрузить данные: {last_err}", (255, 120, 120))
+        surface.blit(err_surf, (SCREEN_WIDTH // 2 - err_surf.get_width() // 2, table_y + 100))
+        sub_err = get_rendered_text(tiny_font, "Проверьте интернет-соединение и нажмите «ОБНОВИТЬ»", (180, 200, 220))
+        surface.blit(sub_err, (SCREEN_WIDTH // 2 - sub_err.get_width() // 2, table_y + 140))
+    else:
+        empty_surf = get_rendered_text(font, "Пока нет записей в таблице. Будьте первым!", (160, 190, 220))
+        surface.blit(empty_surf, (SCREEN_WIDTH // 2 - empty_surf.get_width() // 2, table_y + 120))
+
+    surface.set_clip(None)
+
+    # Скроллбар
+    if max_scroll > 0:
+        sb_track = pygame.Rect(SCREEN_WIDTH - 24, table_y, 6, table_h)
+        pygame.draw.rect(surface, (20, 28, 40), sb_track, border_radius=3)
+        sb_thumb_h = max(35, int(table_h * (table_h / total_content_h)))
+        sb_thumb_y = table_y + int((table_h - sb_thumb_h) * (scroll_y / max_scroll))
+        sb_thumb = pygame.Rect(SCREEN_WIDTH - 24, sb_thumb_y, 6, sb_thumb_h)
+        pygame.draw.rect(surface, (70, 130, 195), sb_thumb, border_radius=3)
+
+    # 4. Нижняя панель текущего игрока (y = SCREEN_HEIGHT - 82 .. SCREEN_HEIGHT)
+    bot_y = SCREEN_HEIGHT - 82
+    bot_rect = pygame.Rect(0, bot_y, SCREEN_WIDTH, 82)
+    pygame.draw.rect(surface, (14, 18, 26), bot_rect)
+    pygame.draw.line(surface, (40, 58, 80), (0, bot_y), (SCREEN_WIDTH, bot_y), 2)
+
+    # Плашка игрока слева
+    my_rank_str = "—"
+    if cached_data and cached_data.get("player"):
+        my_rank_str = f"#{cached_data['player']['rank']}"
+
+    p_badge = pygame.Rect(25, bot_y + 14, 280, 54)
+    pygame.draw.rect(surface, (22, 34, 48), p_badge, border_radius=8)
+    pygame.draw.rect(surface, (60, 95, 140), p_badge, width=1, border_radius=8)
+
+    p_lbl = get_rendered_text(tiny_font, f"Ваш профиль: {curr_nick}", (140, 220, 255))
+    surface.blit(p_lbl, (p_badge.left + 14, p_badge.top + 8))
+    p_sc = get_rendered_text(font, f"Очки: {score_val:,.1f}".replace(",", " "), GOLD)
+    surface.blit(p_sc, (p_badge.left + 14, p_badge.top + 26))
+
+    # Кнопка «Сменить ник»
+    rename_btn = pygame.Rect(320, bot_y + 16, 170, 50)
+    rn_hov = rename_btn.collidepoint(mouse_pos)
+    pygame.draw.rect(surface, (30, 85, 130) if rn_hov else (20, 58, 92), rename_btn, border_radius=8)
+    pygame.draw.rect(surface, (100, 210, 255) if rn_hov else (50, 130, 190), rename_btn, width=1, border_radius=8)
+    rn_txt = get_rendered_text(font, "СМЕНИТЬ НИК", WHITE)
+    surface.blit(rn_txt, (rename_btn.centerx - rn_txt.get_width() // 2, rename_btn.centery - rn_txt.get_height() // 2))
+
+    # Кнопка «Разбор формулы»
+    info_btn = pygame.Rect(505, bot_y + 16, 190, 50)
+    if_hov = info_btn.collidepoint(mouse_pos)
+    pygame.draw.rect(surface, (40, 90, 60) if if_hov else (26, 64, 42), info_btn, border_radius=8)
+    pygame.draw.rect(surface, (110, 230, 150) if if_hov else (55, 150, 95), info_btn, width=1, border_radius=8)
+    if_txt = get_rendered_text(font, "РАЗБОР ОЧКОВ", (220, 255, 230))
+    surface.blit(if_txt, (info_btn.centerx - if_txt.get_width() // 2, info_btn.centery - if_txt.get_height() // 2))
+
+    # Кнопка «Отправить рекорд»
+    submit_btn = pygame.Rect(SCREEN_WIDTH - 235, bot_y + 16, 210, 50)
+    sm_hov = submit_btn.collidepoint(mouse_pos)
+    pygame.draw.rect(surface, (35, 130, 65) if sm_hov else (24, 95, 48), submit_btn, border_radius=8)
+    pygame.draw.rect(surface, (130, 255, 175) if sm_hov else (60, 185, 105), submit_btn, width=2, border_radius=8)
+    sm_txt = get_rendered_text(font, "ОТПРАВИТЬ СЧЁТ", WHITE)
+    surface.blit(sm_txt, (submit_btn.centerx - sm_txt.get_width() // 2, submit_btn.centery - sm_txt.get_height() // 2))
+
+    modal_ok_btn = None
+    modal_cancel_btn = None
+
+    # 5. Модальные окна
+    if modal_state and modal_state.get("type") == "rename":
+        dim_surf = get_settings_dim_surf()
+        surface.blit(dim_surf, (0, 0))
+
+        mw, mh = 560, 260
+        mx = (SCREEN_WIDTH - mw) // 2
+        my = (SCREEN_HEIGHT - mh) // 2
+        m_rect = pygame.Rect(mx, my, mw, mh)
+
+        pygame.draw.rect(surface, (18, 25, 38), m_rect, border_radius=12)
+        pygame.draw.rect(surface, (80, 185, 240), m_rect, width=2, border_radius=12)
+
+        m_title = get_rendered_text(large_font, "СМЕНА ИМЕНИ ИГРОКА", (240, 250, 255))
+        surface.blit(m_title, (m_rect.centerx - m_title.get_width() // 2, my + 20))
+
+        sub_msg = get_rendered_text(tiny_font, "Введите ваш никнейм для таблицы рекордов (до 16 символов):", (150, 195, 235))
+        surface.blit(sub_msg, (m_rect.centerx - sub_msg.get_width() // 2, my + 60))
+
+        input_rect = pygame.Rect(mx + 36, my + 94, mw - 72, 44)
+        pygame.draw.rect(surface, (12, 16, 26), input_rect, border_radius=8)
+        pygame.draw.rect(surface, GOLD, input_rect, width=2, border_radius=8)
+
+        text_str = modal_state.get("text", "")
+        cursor_visible = (int(time.time() * 2.2) % 2 == 0)
+        display_str = text_str + ("|" if cursor_visible else "")
+        t_surf = get_rendered_text(font, display_str, WHITE)
+        surface.blit(t_surf, (input_rect.left + 14, input_rect.centery - t_surf.get_height() // 2))
+
+        modal_ok_btn = pygame.Rect(mx + 36, my + 170, 220, 48)
+        modal_cancel_btn = pygame.Rect(mx + mw - 256, my + 170, 220, 48)
+
+        m_ok_hov = modal_ok_btn.collidepoint(mouse_pos)
+        m_can_hov = modal_cancel_btn.collidepoint(mouse_pos)
+
+        pygame.draw.rect(surface, (35, 135, 75) if m_ok_hov else (25, 105, 58), modal_ok_btn, border_radius=8)
+        pygame.draw.rect(surface, GOLD if m_ok_hov else (120, 235, 160), modal_ok_btn, width=2, border_radius=8)
+        t_ok = get_rendered_text(font, "СОХРАНИТЬ [ENTER]", WHITE)
+        surface.blit(t_ok, (modal_ok_btn.centerx - t_ok.get_width() // 2, modal_ok_btn.centery - t_ok.get_height() // 2))
+
+        pygame.draw.rect(surface, (135, 45, 52) if m_can_hov else (105, 32, 38), modal_cancel_btn, border_radius=8)
+        pygame.draw.rect(surface, WHITE if m_can_hov else (210, 110, 120), modal_cancel_btn, width=2, border_radius=8)
+        t_can = get_rendered_text(font, "ОТМЕНА [ESC]", WHITE)
+        surface.blit(t_can, (modal_cancel_btn.centerx - t_can.get_width() // 2, modal_cancel_btn.centery - t_can.get_height() // 2))
+
+    elif modal_state and modal_state.get("type") == "score_info":
+        dim_surf = get_settings_dim_surf()
+        surface.blit(dim_surf, (0, 0))
+
+        mw, mh = 780, 520
+        mx = (SCREEN_WIDTH - mw) // 2
+        my = (SCREEN_HEIGHT - mh) // 2
+        m_rect = pygame.Rect(mx, my, mw, mh)
+
+        pygame.draw.rect(surface, (16, 22, 32), m_rect, border_radius=14)
+        pygame.draw.rect(surface, (90, 205, 140), m_rect, width=2, border_radius=14)
+
+        m_title = get_rendered_text(large_font, "КАК РАССЧИТЫВАЮТСЯ ОЧКИ АККАУНТА", GOLD)
+        surface.blit(m_title, (m_rect.centerx - m_title.get_width() // 2, my + 18))
+
+        sub_f = get_rendered_text(tiny_font, "Итоговые очки = произведение 9 множителей прогресса сейва:", (170, 210, 240))
+        surface.blit(sub_f, (m_rect.centerx - sub_f.get_width() // 2, my + 54))
+
+        # Таблица множителей
+        rows = [
+            ("1. Сумма макс. волн по всем картам", f"{score_details['waves']} волн", f"× {score_details['m_waves']}  ((1+w)^0.50)"),
+            ("2. Звёздные кактусы (за весь сейв)", f"{score_details['star_cacti']} шт", f"× {score_details['m_stars']}  ((1+s)^0.25)"),
+            ("3. Тёмные кактусы (за весь сейв)", f"{score_details['dark_cacti']} шт", f"× {score_details['m_dark']}  ((1+d)^0.33)"),
+            ("4. Ранги талантов Древа", f"{score_details['upgrades']} уровней", f"× {score_details['m_upg']}  ((1+u)^0.40)"),
+            ("5. Оранжерея Флоры", f"{score_details['greenhouse']} уровней", f"× {score_details['m_gh']}  ((1+g)^0.33)"),
+            ("6. Музей Реликвий", f"{score_details['relics']} уровней", f"× {score_details['m_rel']}  ((1+r)^0.33)"),
+            ("7. Время игры", f"{int(score_details['playtime_min'])} мин", f"× {score_details['m_play']}  ((1+t)^0.10)"),
+            ("8. Достижения профиля", f"{score_details['achievements']} шт", f"× {score_details['m_ach']}  ((1+a)^0.20)"),
+            ("9. Тиры Бестиария", f"{score_details['bestiary']} тиров", f"× {score_details['m_best']}  ((1+b)^0.33)"),
+            ("10. Просмотр финальных титров", "Да" if score_details['credits_seen'] else "Нет", f"× {score_details['m_cred']}")
+        ]
+
+        start_ry = my + 84
+        for idx, (param, val, mult) in enumerate(rows):
+            cur_y = start_ry + idx * 34
+            bg_col = (22, 30, 44) if idx % 2 == 0 else (18, 25, 36)
+            pygame.draw.rect(surface, bg_col, (mx + 25, cur_y, mw - 50, 30), border_radius=4)
+
+            p_t = get_rendered_text(tiny_font, param, (220, 235, 250))
+            surface.blit(p_t, (mx + 35, cur_y + 15 - p_t.get_height() // 2))
+
+            v_t = get_rendered_text(tiny_font, val, WHITE)
+            surface.blit(v_t, (mx + 410, cur_y + 15 - v_t.get_height() // 2))
+
+            m_t = get_rendered_text(tiny_font, mult, GOLD if "1.1" in mult else (120, 255, 170))
+            surface.blit(m_t, (mx + 540, cur_y + 15 - m_t.get_height() // 2))
+
+        # Итоговая плашка
+        tot_rect = pygame.Rect(mx + 25, my + mh - 76, mw - 50, 52)
+        pygame.draw.rect(surface, (24, 40, 32), tot_rect, border_radius=8)
+        pygame.draw.rect(surface, (80, 220, 140), tot_rect, width=1, border_radius=8)
+
+        t_res = get_rendered_text(font, f"ИТОГО ОЧКОВ: {score_val:,.1f}".replace(",", " "), GOLD)
+        surface.blit(t_res, (tot_rect.left + 20, tot_rect.centery - t_res.get_height() // 2))
+
+        modal_cancel_btn = pygame.Rect(tot_rect.right - 180, tot_rect.centery - 20, 160, 40)
+        c_hov = modal_cancel_btn.collidepoint(mouse_pos)
+        pygame.draw.rect(surface, (140, 45, 52) if c_hov else (100, 32, 38), modal_cancel_btn, border_radius=6)
+        pygame.draw.rect(surface, WHITE if c_hov else (210, 110, 120), modal_cancel_btn, width=1, border_radius=6)
+        c_t = get_rendered_text(font, "ЗАКРЫТЬ", WHITE)
+        surface.blit(c_t, (modal_cancel_btn.centerx - c_t.get_width() // 2, modal_cancel_btn.centery - c_t.get_height() // 2))
+
+    return {
+        "back": back_btn,
+        "refresh": refresh_btn,
+        "tabs": tab_btns,
+        "rename": rename_btn,
+        "info": info_btn,
+        "submit": submit_btn,
+        "max_scroll": max_scroll,
+        "modal_ok": modal_ok_btn,
+        "modal_cancel": modal_cancel_btn
+    }
+
 
 
 

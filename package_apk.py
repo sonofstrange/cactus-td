@@ -27,7 +27,7 @@ os.makedirs(PYC_DIR, exist_ok=True)
 # Copy python source files and compile to Python 3.10 bytecode (.pyc)
 py_files = [
     "main.py", "config.py", "entities.py", "game_data.py", 
-    "tree_data_v02.py", "ui_screens.py"
+    "tree_data_v02.py", "ui_screens.py", "leaderboard_client.py"
 ]
 for extra in ["relic_art.py", "sitecustomize.py"]:
     p = os.path.join(PROJECT_DIR, extra)

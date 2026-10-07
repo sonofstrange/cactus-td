@@ -1087,6 +1087,7 @@ DEFAULT_SAVE = {
         "total_crits": 0,
         "total_kills": 0,
         "total_stellar_earned": 0,
+        "total_dark_earned": 0,
         "meteorites_destroyed": 0,
         "killed_golden": 0,
         "bosses_defeated": 0,
@@ -1862,6 +1863,9 @@ def load_data(save_id=None):
             data["UpdatedAt"] = now_str
         if "PlayerName" not in data:
             data["PlayerName"] = "Игрок"
+        if "leaderboard_player_id" not in data or not data["leaderboard_player_id"]:
+            import uuid
+            data["leaderboard_player_id"] = str(uuid.uuid4())
         if "LevelsRecords" not in data or len(data["LevelsRecords"]) < len(MAP_NAMES_LIST):
             old_recs = data.get("LevelsRecords", [])
             data["LevelsRecords"] = old_recs + [0] * (len(MAP_NAMES_LIST) - len(old_recs))
@@ -2051,6 +2055,7 @@ def save_data(data):
     try:
         try:
             get_total_stellar_earned(data)
+            get_total_dark_earned(data)
         except Exception:
             pass
         if "Settings" in data and isinstance(data["Settings"], dict):
@@ -2069,6 +2074,11 @@ def save_data(data):
             except Exception:
                 pass
         update_global_achievements(data)
+        try:
+            import leaderboard_client
+            leaderboard_client.async_submit_score(data, force=False)
+        except Exception:
+            pass
     except Exception as e:
         print(f"Save error: {e}")
 
@@ -2130,6 +2140,148 @@ def get_total_stellar_earned(sdata):
     if stats.get("total_stellar_earned", 0) < total_val:
         stats["total_stellar_earned"] = total_val
     return total_val
+
+
+def get_total_dark_earned(sdata):
+    """
+    Возвращает суммарное количество Тёмных кактусов, когда-либо заработанных игроком.
+    Учитывает:
+    - Текущий баланс в кошельке sdata['DarkCactuses']
+    - Все тёмные кактусы, потраченные на прокачку талантов Древа
+    - Монотонный счётчик sdata['Stats']['total_dark_earned']
+    Счётчик никогда не уменьшается при трате тёмных кактусов!
+    """
+    if not sdata or not isinstance(sdata, dict):
+        return 0
+    wallet = max(0, sdata.get("DarkCactuses", 0))
+
+    spent_tree = 0
+    upgrades = sdata.get("Upgrades", {})
+    nodes = globals().get("UPGRADE_TREE_NODES")
+    if not nodes:
+        from tree_data_v02 import get_all_81_nodes
+        nodes = get_all_81_nodes()
+
+    if nodes and isinstance(upgrades, dict):
+        for nid, lvl in upgrades.items():
+            if lvl > 0 and nid in nodes:
+                node = nodes[nid]
+                curr = node.get("currency", "stellar")
+                if curr == "dark":
+                    costs = node.get("costs", [])
+                    if costs:
+                        spent_tree += sum(costs[:lvl])
+                elif curr == "hybrid" or "dark_costs" in node:
+                    d_costs = node.get("dark_costs", [])
+                    if d_costs:
+                        spent_tree += sum(d_costs[:lvl])
+
+    stats = sdata.setdefault("Stats", {})
+    recorded = stats.get("total_dark_earned", 0)
+    total_val = max(recorded, wallet + spent_tree)
+    if stats.get("total_dark_earned", 0) < total_val:
+        stats["total_dark_earned"] = total_val
+    return total_val
+
+
+def calculate_account_score(sdata):
+    """
+    Вычисляет очки аккаунта для таблицы рекордов по согласованной формуле:
+    (1 + waves)**0.5 *
+    (1 + star_cacti)**0.25 *
+    (1 + dark_cacti)**0.33 *
+    (1 + total_upgrades)**0.4 *
+    (1 + total_cactus_levels)**0.33 *
+    (1 + total_relics_levels)**0.33 *
+    (1 + playtime_min)**0.1 *
+    (1 + achievements)**0.2 *
+    (1 + total_bestiary_levels)**0.33 *
+    (1.1 if credits_watched else 1.0)
+    """
+    if not sdata or not isinstance(sdata, dict):
+        return 0.0, {}
+
+    # 1. Сумма максимальных волн по всем картам
+    records = sdata.get("LevelsRecords", [])
+    waves = sum(records)
+
+    # 2. Звёздные кактусы (суммарно за весь сейв)
+    star_cacti = get_total_stellar_earned(sdata)
+
+    # 3. Тёмные кактусы (суммарно за весь сейв)
+    dark_cacti = get_total_dark_earned(sdata)
+
+    # 4. Суммарный уровень всех талантов
+    upgrades_dict = sdata.get("Upgrades", {})
+    upgrades = sum(v for v in upgrades_dict.values() if isinstance(v, (int, float)) and v > 0)
+
+    # 5. Суммарный уровень кактусов в оранжерее
+    gh_dict = sdata.get("Greenhouse", {})
+    greenhouse = sum(v.get("level", 0) for v in gh_dict.values() if isinstance(v, dict))
+
+    # 6. Суммарный уровень реликвий
+    relics_dict = sdata.get("Relics", {})
+    relics = sum((v.get("level", 0) if isinstance(v, dict) else v) for v in relics_dict.values() if isinstance(v, (int, float, dict)))
+
+    # 7. Время игры в минутах
+    playtime_sec = sdata.get("Stats", {}).get("play_time_seconds", 0.0)
+    playtime_min = max(0.0, float(playtime_sec) / 60.0)
+
+    # 8. Локальные ачивки текущего сейва
+    ach_dict = sdata.get("Achievements", {})
+    achievements = sum(1 for v in ach_dict.values() if (v is True or (isinstance(v, dict) and v.get("unlocked", False))))
+
+    # 9. Суммарный уровень бестиария (тиры всех мобов)
+    from tree_data_v02 import get_mob_bestiary_tier
+    bkills = sdata.get("BestiaryKills", {})
+    bestiary = 0
+    all_mob_ids = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 51, 52, 53, 777, 1000, 2000, 3000, 4000]
+    for mid in all_mob_ids:
+        k = bkills.get(str(mid), bkills.get(mid, 0))
+        bestiary += get_mob_bestiary_tier(mid, k)
+
+    # 10. Просмотрены ли финальные титры
+    credits_seen = bool(sdata.get("CreditsSeen", False) or sdata.get("GameCompleted", False))
+
+    # Множители формулы
+    m_waves = (waves + 1) ** 0.5
+    m_stars = (star_cacti + 1) ** 0.25
+    m_dark = (dark_cacti + 1) ** 0.33
+    m_upg = (upgrades + 1) ** 0.4
+    m_gh = (greenhouse + 1) ** 0.33
+    m_rel = (relics + 1) ** 0.33
+    m_play = (playtime_min + 1) ** 0.1
+    m_ach = (achievements + 1) ** 0.2
+    m_best = (bestiary + 1) ** 0.33
+    m_cred = 1.1 if credits_seen else 1.0
+
+    score = m_waves * m_stars * m_dark * m_upg * m_gh * m_rel * m_play * m_ach * m_best * m_cred
+    score = round(score, 1)
+
+    details = {
+        "score": score,
+        "waves": waves,
+        "star_cacti": star_cacti,
+        "dark_cacti": dark_cacti,
+        "upgrades": upgrades,
+        "greenhouse": greenhouse,
+        "relics": relics,
+        "playtime_min": round(playtime_min, 1),
+        "achievements": achievements,
+        "bestiary": bestiary,
+        "credits_seen": credits_seen,
+        "m_waves": round(m_waves, 2),
+        "m_stars": round(m_stars, 2),
+        "m_dark": round(m_dark, 2),
+        "m_upg": round(m_upg, 2),
+        "m_gh": round(m_gh, 2),
+        "m_rel": round(m_rel, 2),
+        "m_play": round(m_play, 2),
+        "m_ach": round(m_ach, 2),
+        "m_best": round(m_best, 2),
+        "m_cred": m_cred,
+    }
+    return score, details
 
 
 def check_node_requirements(node_id, savedata):

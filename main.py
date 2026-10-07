@@ -189,6 +189,7 @@ def run_game():
     STATE_UPGRADES = "UPGRADES"
     STATE_ACHIEVEMENTS = "ACHIEVEMENTS"
     STATE_GLOBAL_ACHIEVEMENTS = "GLOBAL_ACHIEVEMENTS"
+    STATE_LEADERBOARD = "LEADERBOARD"
     STATE_BESTIARY = "BESTIARY"
     STATE_GREENHOUSE = "GREENHOUSE"
     STATE_RELICS = "RELICS"
@@ -242,6 +243,13 @@ def run_game():
     global_ach_drag_start_y = 0
     global_ach_drag_start_scroll = 0
     global_ach_drag_moved = False
+    leaderboard_tab = "score"
+    leaderboard_scroll_y = 0
+    is_dragging_leaderboard = False
+    leaderboard_drag_start_y = 0
+    leaderboard_drag_start_scroll = 0
+    leaderboard_drag_moved = False
+    leaderboard_modal = None
     inspected_greenhouse_cactus = None
     credits_scroll_y = 0.0
     credits_source = "game"
@@ -314,6 +322,9 @@ def run_game():
         elif current_state == STATE_GLOBAL_ACHIEVEMENTS:
             # Справа от кнопки Назад (x=30..170)
             bx, by = 190, 36
+        elif current_state == STATE_LEADERBOARD:
+            # Справа от кнопки Назад (x=25..155)
+            bx, by = 175, 34
         elif current_state == STATE_RELICS:
             # В шапке перед кнопкой Инфо (x=982)
             bx, by = 820, 20
@@ -642,6 +653,8 @@ def run_game():
             win_mgr.set_title("CactusTD Remastered | Достижения")
         elif current_state == STATE_GLOBAL_ACHIEVEMENTS:
             win_mgr.set_title("CactusTD Remastered | Глобальные Достижения")
+        elif current_state == STATE_LEADERBOARD:
+            win_mgr.set_title("CactusTD Remastered | Таблица Рекордов")
         elif current_state == STATE_SETTINGS:
             win_mgr.set_title("CactusTD Remastered | Настройки")
         elif current_state == STATE_CREDITS:
@@ -652,7 +665,7 @@ def run_game():
         # =================================================================
         if current_state == STATE_MAIN_MENU:
             demo_sim.update(raw_dt)
-            play_btn, ach_btn, set_btn, exit_btn = draw_main_menu_screen(screen, mouse_pos, demo_sim, bg_time=bg_time)
+            play_btn, lead_btn, ach_btn, set_btn, exit_btn = draw_main_menu_screen(screen, mouse_pos, demo_sim, bg_time=bg_time)
 
             diff_btns = {}
             confirm_btn = None
@@ -709,6 +722,14 @@ def run_game():
                         difficulty_modal_active = False
                         current_state = STATE_MAP_SELECT
                         sfx_click.play()
+                    elif event.key in [pygame.K_l, pygame.K_t]:
+                        import leaderboard_client
+                        current_state = STATE_LEADERBOARD
+                        leaderboard_scroll_y = 0
+                        leaderboard_modal = None
+                        leaderboard_client.async_submit_score(savedata)
+                        leaderboard_client.async_fetch_leaderboard(leaderboard_tab, savedata.get("leaderboard_player_id"))
+                        sfx_click.play()
                     elif event.key == pygame.K_a:
                         current_state = STATE_GLOBAL_ACHIEVEMENTS
                         global_ach_scroll_y = 0
@@ -725,6 +746,14 @@ def run_game():
                         savedata["difficulty_selected"] = True
                         difficulty_modal_active = False
                         current_state = STATE_MAP_SELECT
+                        sfx_click.play()
+                    elif lead_btn and lead_btn.collidepoint(mouse_pos):
+                        import leaderboard_client
+                        current_state = STATE_LEADERBOARD
+                        leaderboard_scroll_y = 0
+                        leaderboard_modal = None
+                        leaderboard_client.async_submit_score(savedata)
+                        leaderboard_client.async_fetch_leaderboard(leaderboard_tab, savedata.get("leaderboard_player_id"))
                         sfx_click.play()
                     elif ach_btn and ach_btn.collidepoint(mouse_pos):
                         current_state = STATE_GLOBAL_ACHIEVEMENTS
@@ -1701,6 +1730,198 @@ def run_game():
                             if back_rect.collidepoint(touch_pos):
                                 current_state = STATE_MAIN_MENU
                                 sfx_click.play()
+
+            render_achievement_toasts(screen, raw_dt)
+            pygame.display.flip()
+            continue
+
+        # =================================================================
+        # ЭКРАН 0.5: ОНЛАЙН ТАБЛИЦА РЕКОРДОВ (LEADERBOARD)
+        # =================================================================
+        elif current_state == STATE_LEADERBOARD:
+            import leaderboard_client
+            lb_ui = draw_leaderboard_screen(
+                screen, mouse_pos, savedata,
+                active_tab=leaderboard_tab,
+                scroll_y=leaderboard_scroll_y,
+                modal_state=leaderboard_modal,
+                bg_time=bg_time
+            )
+            max_lb_scroll = lb_ui.get("max_scroll", 0)
+
+            for event in pygame.event.get():
+                if hasattr(event, "pos"):
+                    mouse_pos = event.pos
+                if event.type == pygame.QUIT:
+                    running = False
+
+                # Обработка активных модальных окон (Смена ника / Разбор очков)
+                if leaderboard_modal:
+                    m_type = leaderboard_modal.get("type")
+                    if m_type == "rename":
+                        if event.type == pygame.KEYDOWN:
+                            if event.key in [pygame.K_RETURN, pygame.K_KP_ENTER]:
+                                new_name = leaderboard_modal.get("text", "").strip()
+                                if new_name:
+                                    clean_nick = new_name[:16]
+                                    savedata["PlayerName"] = clean_nick
+                                    save_data(savedata)
+                                    p_id = savedata.get("leaderboard_player_id")
+                                    leaderboard_client.async_rename_player(p_id, clean_nick)
+                                    leaderboard_client.async_submit_score(savedata)
+                                    leaderboard_client.async_fetch_leaderboard(leaderboard_tab, p_id, force=True)
+                                leaderboard_modal = None
+                                sfx_click.play()
+                            elif event.key == pygame.K_ESCAPE:
+                                leaderboard_modal = None
+                                sfx_click.play()
+                            elif event.key == pygame.K_BACKSPACE:
+                                cur_t = leaderboard_modal.get("text", "")
+                                leaderboard_modal["text"] = cur_t[:-1]
+                            else:
+                                if event.unicode and len(leaderboard_modal.get("text", "")) < 16:
+                                    if event.unicode.isprintable():
+                                        leaderboard_modal["text"] += event.unicode
+                        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                            m_ok = lb_ui.get("modal_ok")
+                            m_can = lb_ui.get("modal_cancel")
+                            if m_ok and m_ok.collidepoint(mouse_pos):
+                                new_name = leaderboard_modal.get("text", "").strip()
+                                if new_name:
+                                    clean_nick = new_name[:16]
+                                    savedata["PlayerName"] = clean_nick
+                                    save_data(savedata)
+                                    p_id = savedata.get("leaderboard_player_id")
+                                    leaderboard_client.async_rename_player(p_id, clean_nick)
+                                    leaderboard_client.async_submit_score(savedata)
+                                    leaderboard_client.async_fetch_leaderboard(leaderboard_tab, p_id, force=True)
+                                leaderboard_modal = None
+                                sfx_click.play()
+                            elif m_can and m_can.collidepoint(mouse_pos):
+                                leaderboard_modal = None
+                                sfx_click.play()
+                        continue
+
+                    elif m_type == "score_info":
+                        if event.type == pygame.KEYDOWN:
+                            if event.key in [pygame.K_ESCAPE, pygame.K_SPACE, pygame.K_RETURN]:
+                                leaderboard_modal = None
+                                sfx_click.play()
+                        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                            m_can = lb_ui.get("modal_cancel")
+                            if m_can and m_can.collidepoint(mouse_pos):
+                                leaderboard_modal = None
+                                sfx_click.play()
+                        continue
+
+                # Обычные события экрана таблицы рекордов
+                if event.type == pygame.KEYDOWN:
+                    if event.key in [pygame.K_ESCAPE, pygame.K_l, pygame.K_SPACE, getattr(pygame, 'K_AC_BACK', -999)]:
+                        current_state = STATE_MAIN_MENU
+                        sfx_click.play()
+                    elif event.key in [pygame.K_UP, pygame.K_w]:
+                        leaderboard_scroll_y = max(0, leaderboard_scroll_y - 60)
+                    elif event.key in [pygame.K_DOWN, pygame.K_s]:
+                        leaderboard_scroll_y = min(max_lb_scroll, leaderboard_scroll_y + 60)
+                    elif event.key == pygame.K_r:
+                        leaderboard_client.async_submit_score(savedata)
+                        leaderboard_client.async_fetch_leaderboard(leaderboard_tab, savedata.get("leaderboard_player_id"), force=True)
+                        sfx_click.play()
+
+                elif event.type == pygame.MOUSEWHEEL:
+                    leaderboard_scroll_y = max(0, min(max_lb_scroll, leaderboard_scroll_y - event.y * 50))
+
+                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    is_dragging_leaderboard = True
+                    leaderboard_drag_start_y = mouse_pos[1]
+                    leaderboard_drag_start_scroll = leaderboard_scroll_y
+                    leaderboard_drag_moved = False
+
+                elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                    if is_dragging_leaderboard:
+                        is_dragging_leaderboard = False
+                        if not leaderboard_drag_moved:
+                            if lb_ui.get("back") and lb_ui["back"].collidepoint(mouse_pos):
+                                current_state = STATE_MAIN_MENU
+                                sfx_click.play()
+                            elif lb_ui.get("refresh") and lb_ui["refresh"].collidepoint(mouse_pos):
+                                leaderboard_client.async_submit_score(savedata)
+                                leaderboard_client.async_fetch_leaderboard(leaderboard_tab, savedata.get("leaderboard_player_id"), force=True)
+                                sfx_click.play()
+                            elif lb_ui.get("rename") and lb_ui["rename"].collidepoint(mouse_pos):
+                                leaderboard_modal = {"type": "rename", "text": savedata.get("PlayerName", "Игрок")}
+                                sfx_click.play()
+                            elif lb_ui.get("info") and lb_ui["info"].collidepoint(mouse_pos):
+                                leaderboard_modal = {"type": "score_info"}
+                                sfx_click.play()
+                            elif lb_ui.get("submit") and lb_ui["submit"].collidepoint(mouse_pos):
+                                leaderboard_client.async_submit_score(savedata)
+                                leaderboard_client.async_fetch_leaderboard(leaderboard_tab, savedata.get("leaderboard_player_id"), force=True)
+                                sfx_click.play()
+                            else:
+                                for t_key, t_r in lb_ui.get("tabs", {}).items():
+                                    if t_r and t_r.collidepoint(mouse_pos):
+                                        leaderboard_tab = t_key
+                                        leaderboard_scroll_y = 0
+                                        leaderboard_client.async_fetch_leaderboard(leaderboard_tab, savedata.get("leaderboard_player_id"))
+                                        sfx_click.play()
+                                        break
+
+                elif event.type == pygame.MOUSEMOTION:
+                    if is_dragging_leaderboard:
+                        dy = mouse_pos[1] - leaderboard_drag_start_y
+                        if abs(dy) > 5:
+                            leaderboard_drag_moved = True
+                        leaderboard_scroll_y = max(0, min(max_lb_scroll, leaderboard_drag_start_scroll - dy))
+
+                elif event.type == pygame.FINGERDOWN:
+                    touch_pos = (int(event.x * SCREEN_WIDTH), int(event.y * SCREEN_HEIGHT))
+                    mouse_pos = touch_pos
+                    is_dragging_leaderboard = True
+                    leaderboard_drag_start_y = touch_pos[1]
+                    leaderboard_drag_start_scroll = leaderboard_scroll_y
+                    leaderboard_drag_moved = False
+
+                elif event.type == pygame.FINGERMOTION:
+                    touch_pos = (int(event.x * SCREEN_WIDTH), int(event.y * SCREEN_HEIGHT))
+                    mouse_pos = touch_pos
+                    if is_dragging_leaderboard:
+                        delta_px = event.dy * SCREEN_HEIGHT * 1.5
+                        if abs(delta_px) > 2:
+                            leaderboard_drag_moved = True
+                        leaderboard_scroll_y = max(0, min(max_lb_scroll, leaderboard_scroll_y - delta_px))
+
+                elif event.type == pygame.FINGERUP:
+                    touch_pos = (int(event.x * SCREEN_WIDTH), int(event.y * SCREEN_HEIGHT))
+                    mouse_pos = touch_pos
+                    if is_dragging_leaderboard:
+                        is_dragging_leaderboard = False
+                        if not leaderboard_drag_moved:
+                            if lb_ui.get("back") and lb_ui["back"].collidepoint(touch_pos):
+                                current_state = STATE_MAIN_MENU
+                                sfx_click.play()
+                            elif lb_ui.get("refresh") and lb_ui["refresh"].collidepoint(touch_pos):
+                                leaderboard_client.async_submit_score(savedata)
+                                leaderboard_client.async_fetch_leaderboard(leaderboard_tab, savedata.get("leaderboard_player_id"), force=True)
+                                sfx_click.play()
+                            elif lb_ui.get("rename") and lb_ui["rename"].collidepoint(touch_pos):
+                                leaderboard_modal = {"type": "rename", "text": savedata.get("PlayerName", "Игрок")}
+                                sfx_click.play()
+                            elif lb_ui.get("info") and lb_ui["info"].collidepoint(touch_pos):
+                                leaderboard_modal = {"type": "score_info"}
+                                sfx_click.play()
+                            elif lb_ui.get("submit") and lb_ui["submit"].collidepoint(touch_pos):
+                                leaderboard_client.async_submit_score(savedata)
+                                leaderboard_client.async_fetch_leaderboard(leaderboard_tab, savedata.get("leaderboard_player_id"), force=True)
+                                sfx_click.play()
+                            else:
+                                for t_key, t_r in lb_ui.get("tabs", {}).items():
+                                    if t_r and t_r.collidepoint(touch_pos):
+                                        leaderboard_tab = t_key
+                                        leaderboard_scroll_y = 0
+                                        leaderboard_client.async_fetch_leaderboard(leaderboard_tab, savedata.get("leaderboard_player_id"))
+                                        sfx_click.play()
+                                        break
 
             render_achievement_toasts(screen, raw_dt)
             pygame.display.flip()
