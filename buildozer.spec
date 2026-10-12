@@ -34,7 +34,7 @@ fullscreen = 1
 icon.filename = %(source.dir)s/assets/textures/app_icon.png
 
 # (list) Permissions
-android.permissions = WAKE_LOCK
+android.permissions = WAKE_LOCK,INTERNET,ACCESS_NETWORK_STATE
 
 # (int) Target Android API
 android.api = 34

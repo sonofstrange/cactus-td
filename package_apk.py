@@ -148,17 +148,81 @@ tar_sha1 = hashlib.sha1(new_tar_bytes).hexdigest().encode('ascii')
 print(f"Updated private.tar (gzipped): old size = {len(old_tar_bytes):,}, new size = {len(new_tar_bytes):,} bytes")
 print(f"Computed SHA-1 of private.tar: {tar_sha1.decode('ascii')}")
 
-print("4. Updating AndroidManifest.xml and resources.arsc...")
-old_u16 = '0.2.0'.encode('utf-16le')
-new_u16 = '0.3.0'.encode('utf-16le')
-assert old_u16 in old_manifest, "old_u16 0.2.0 not found in AndroidManifest.xml"
-new_manifest = old_manifest.replace(old_u16, new_u16, 1)
+print("4. Compiling AndroidManifest.xml and updating resources.arsc...")
+manifest_xml = """<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="org.cactusteam.cactustd"
+    android:versionCode="1021300"
+    android:versionName="0.3.0"
+    android:installLocation="auto">
 
-old_vc = struct.pack('<I', 1021200)
-new_vc = struct.pack('<I', 1021300)
-assert old_vc in new_manifest, "old_vc 1021200 not found in AndroidManifest.xml"
-new_manifest = new_manifest.replace(old_vc, new_vc, 1)
-print(f"AndroidManifest.xml updated: {len(old_manifest)} -> {len(new_manifest)} bytes")
+    <supports-screens
+        android:anyDensity="true"
+        android:smallScreens="true"
+        android:normalScreens="true"
+        android:largeScreens="true"
+        android:xlargeScreens="true" />
+
+    <uses-feature android:glEsVersion="0x00020000" />
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <application
+        android:label="@string/app_name"
+        android:icon="@mipmap/icon"
+        android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
+        android:hardwareAccelerated="true"
+        android:allowBackup="true"
+        android:debuggable="true"
+        android:extractNativeLibs="true"
+        android:usesCleartextTraffic="true">
+
+        <meta-data android:name="wakelock" android:value="0" />
+
+        <activity
+            android:name="org.kivy.android.PythonActivity"
+            android:label="@string/app_name"
+            android:theme="@style/KivySupportCutout"
+            android:launchMode="singleTask"
+            android:screenOrientation="landscape"
+            android:configChanges="fontScale|keyboard|keyboardHidden|layoutDirection|locale|mcc|mnc|navigation|orientation|screenLayout|screenSize|smallestScreenSize|touchscreen|uiMode"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
+"""
+tmp_manifest_path = os.path.join(STAGING_DIR, "AndroidManifest.xml")
+with open(tmp_manifest_path, "w", encoding="utf-8") as mf:
+    mf.write(manifest_xml)
+
+compiled_res = os.path.join(PROJECT_DIR, "tools", "compiled_res.zip")
+android_jar = "/home/mechrevo/.buildozer/android/platform/android-sdk/platforms/android-34/android.jar"
+aapt2_bin = os.path.join(BUILD_TOOLS, "aapt2")
+tmp_apk_holder = os.path.join(STAGING_DIR, "manifest_holder.apk")
+
+subprocess.run([
+    aapt2_bin, "link",
+    "--auto-add-overlay",
+    "-R", compiled_res,
+    "-I", android_jar,
+    "--min-sdk-version", "21",
+    "--target-sdk-version", "34",
+    "--version-code", "1021300",
+    "--version-name", "0.3.0",
+    "--replace-version",
+    "-o", tmp_apk_holder,
+    "--manifest", tmp_manifest_path
+], check=True)
+
+with zipfile.ZipFile(tmp_apk_holder, "r") as zh:
+    new_manifest = zh.read("AndroidManifest.xml")
+print(f"Compiled binary AndroidManifest.xml: {len(new_manifest)} bytes")
 
 with zipfile.ZipFile(BASE_APK, "r") as zin:
     old_arsc = zin.read("resources.arsc")
